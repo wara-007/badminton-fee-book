@@ -1,0 +1,246 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  color: #1f2933;
+  background: #f7f5ef;
+}
+
+.appShell {
+  min-height: 100vh;
+  padding: 24px 0 40px;
+}
+
+.appContainer {
+  width: 100%;
+}
+
+.appHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.appTitle {
+  font-weight: 800;
+}
+
+.controlBand,
+.tablePanel,
+.summaryStat {
+  border: 1px solid #e7e2d8;
+  border-radius: 8px;
+}
+
+.controlBand {
+  padding: 16px;
+}
+
+.addPlayerForm {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  gap: 12px;
+  flex: 1;
+}
+
+.roomForm {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto;
+  gap: 12px;
+  min-width: 260px;
+}
+
+.searchField {
+  min-width: 180px;
+}
+
+.syncBar {
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.summaryStat {
+  display: flex;
+  min-height: 88px;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  background: #ffffff;
+}
+
+.summaryStat .MuiTypography-root {
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.scoreTableWrap {
+  max-height: calc(100vh - 320px);
+  min-height: 280px;
+}
+
+.sheetTabs {
+  padding: 0 12px;
+}
+
+.stickyName {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  min-width: 172px;
+  max-width: 220px;
+  background: #ffffff;
+  box-shadow: 1px 0 0 #e7e2d8;
+}
+
+thead .stickyName {
+  z-index: 5;
+  background: #f3eee3;
+}
+
+.shuttleHeader {
+  min-width: 48px;
+  background: #f3eee3;
+  font-weight: 800;
+}
+
+.shuttleCell {
+  min-width: 48px;
+  padding: 0;
+}
+
+.shuttleCell .MuiCheckbox-root {
+  width: 44px;
+  height: 44px;
+  color: #9aa4ad;
+}
+
+.shuttleCell .Mui-checked {
+  color: #0f766e;
+}
+
+.playerCell {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.countCell {
+  min-width: 64px;
+  font-weight: 800;
+}
+
+.amountCell {
+  min-width: 96px;
+  font-weight: 800;
+}
+
+.emptyCell {
+  height: 180px;
+  color: #5f6c7b;
+  text-align: center;
+}
+
+.paidSummaryPanel {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.emptyPaidSummary {
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  color: #5f6c7b;
+  border: 1px dashed #d8d1c5;
+  border-radius: 8px;
+}
+
+.paidDayGroup {
+  border: 1px solid #e7e2d8;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.paidDayHeader,
+.paidPlayerItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.paidDayHeader {
+  padding: 14px 16px;
+  background: #f3eee3;
+}
+
+.paidPlayerList {
+  padding: 0 16px;
+}
+
+.paidPlayerItem {
+  min-height: 68px;
+  padding: 12px 0;
+}
+
+@media (max-width: 900px) {
+  .appHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .summaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .paidPlayerItem {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .scoreTableWrap {
+    max-height: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .appShell {
+    padding: 16px 0 28px;
+  }
+
+  .addPlayerForm {
+    grid-template-columns: 1fr;
+  }
+
+  .roomForm {
+    grid-template-columns: 1fr;
+    min-width: 0;
+  }
+
+  .searchField {
+    min-width: 0;
+  }
+
+  .summaryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .stickyName {
+    min-width: 148px;
+  }
+}

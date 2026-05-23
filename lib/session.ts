@@ -1,0 +1,185 @@
+export type Player = {
+  id: string;
+  name: string;
+  shuttleCount: number;
+  paid: boolean;
+  paidAt?: string;
+};
+
+export type Pricing = {
+  baseFee: number;
+  shuttleFee: number;
+};
+
+export type SessionState = {
+  players: Player[];
+  pricing: Pricing;
+  updatedAt: string;
+};
+
+export type SessionSummary = {
+  playerCount: number;
+  shuttleCount: number;
+  totalAmount: number;
+  paidAmount: number;
+  unpaidAmount: number;
+};
+
+export type PaidPlayerSummary = {
+  name: string;
+  shuttleCount: number;
+  amount: number;
+};
+
+export type PaidDaySummary = {
+  dateKey: string;
+  totalAmount: number;
+  players: PaidPlayerSummary[];
+};
+
+export const DEFAULT_PRICING: Pricing = {
+  baseFee: 100,
+  shuttleFee: 25
+};
+
+export const DEFAULT_SHUTTLE_COLUMNS = 10;
+
+export const STORAGE_KEY = "badminton-fee-book.session";
+
+export function createPlayer(name: string): Player {
+  const id =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  return {
+    id,
+    name: name.trim(),
+    shuttleCount: 0,
+    paid: false
+  };
+}
+
+export function createInitialSession(): SessionState {
+  return {
+    players: [],
+    pricing: DEFAULT_PRICING,
+    updatedAt: new Date().toISOString()
+  };
+}
+
+export function calculatePlayerTotal(player: Player, pricing: Pricing): number {
+  return pricing.baseFee + player.shuttleCount * pricing.shuttleFee;
+}
+
+export function getVisibleShuttleColumns(players: Player[]): number {
+  const maxUsed = players.reduce((max, player) => Math.max(max, player.shuttleCount), 0);
+  return Math.max(DEFAULT_SHUTTLE_COLUMNS, maxUsed + 1);
+}
+
+export function summarizeSession(players: Player[], pricing: Pricing): SessionSummary {
+  const shuttleCount = players.reduce((sum, player) => sum + player.shuttleCount, 0);
+  const totalAmount = players.reduce(
+    (sum, player) => sum + calculatePlayerTotal(player, pricing),
+    0
+  );
+  const paidAmount = players.reduce(
+    (sum, player) => sum + (player.paid ? calculatePlayerTotal(player, pricing) : 0),
+    0
+  );
+
+  return {
+    playerCount: players.length,
+    shuttleCount,
+    totalAmount,
+    paidAmount,
+    unpaidAmount: totalAmount - paidAmount
+  };
+}
+
+export function groupPaidPlayersByDay(players: Player[], pricing: Pricing): PaidDaySummary[] {
+  const groups = new Map<string, PaidDaySummary>();
+
+  players
+    .filter((player) => player.paid)
+    .forEach((player) => {
+      const dateKey = toDateKey(player.paidAt ?? new Date().toISOString());
+      const amount = calculatePlayerTotal(player, pricing);
+      const current = groups.get(dateKey) ?? {
+        dateKey,
+        totalAmount: 0,
+        players: []
+      };
+
+      current.totalAmount += amount;
+      current.players.push({
+        name: player.name,
+        shuttleCount: player.shuttleCount,
+        amount
+      });
+      groups.set(dateKey, current);
+    });
+
+  return Array.from(groups.values()).sort((first, second) =>
+    second.dateKey.localeCompare(first.dateKey)
+  );
+}
+
+function toDateKey(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return toLocalDateKey(new Date());
+  }
+  return toLocalDateKey(date);
+}
+
+function toLocalDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function normalizeSession(value: unknown): SessionState {
+  if (!value || typeof value !== "object") {
+    return createInitialSession();
+  }
+
+  const candidate = value as Partial<SessionState>;
+  const pricing = {
+    baseFee:
+      typeof candidate.pricing?.baseFee === "number"
+        ? candidate.pricing.baseFee
+        : DEFAULT_PRICING.baseFee,
+    shuttleFee:
+      typeof candidate.pricing?.shuttleFee === "number"
+        ? candidate.pricing.shuttleFee
+        : DEFAULT_PRICING.shuttleFee
+  };
+
+  const players = Array.isArray(candidate.players)
+    ? candidate.players
+        .filter((player): player is Player => {
+          return (
+            typeof player === "object" &&
+            player !== null &&
+            "id" in player &&
+            "name" in player
+          );
+        })
+        .map((player) => ({
+          id: String(player.id),
+          name: String(player.name),
+          shuttleCount: Math.max(0, Number(player.shuttleCount) || 0),
+          paid: Boolean(player.paid),
+          paidAt: typeof player.paidAt === "string" ? player.paidAt : undefined
+        }))
+    : [];
+
+  return {
+    players,
+    pricing,
+    updatedAt:
+      typeof candidate.updatedAt === "string" ? candidate.updatedAt : new Date().toISOString()
+  };
+}
