@@ -2,6 +2,7 @@ export type Player = {
   id: string;
   name: string;
   shuttleCount: number;
+  shuttleMarks?: number[];
   paid: boolean;
   paidAt?: string;
 };
@@ -14,6 +15,7 @@ export type Pricing = {
 export type SessionState = {
   players: Player[];
   pricing: Pricing;
+  currentShuttleNumber: number;
   updatedAt: string;
 };
 
@@ -37,6 +39,11 @@ export type PaidDaySummary = {
   players: PaidPlayerSummary[];
 };
 
+export type MatchSummary = {
+  shuttleNumber: number;
+  playerNames: string[];
+};
+
 export const DEFAULT_PRICING: Pricing = {
   baseFee: 100,
   shuttleFee: 25
@@ -56,6 +63,7 @@ export function createPlayer(name: string): Player {
     id,
     name: name.trim(),
     shuttleCount: 0,
+    shuttleMarks: [],
     paid: false
   };
 }
@@ -64,36 +72,80 @@ export function createInitialSession(): SessionState {
   return {
     players: [],
     pricing: DEFAULT_PRICING,
+    currentShuttleNumber: 1,
     updatedAt: new Date().toISOString()
   };
 }
 
 export function calculatePlayerTotal(player: Player, pricing: Pricing): number {
-  return pricing.baseFee + player.shuttleCount * pricing.shuttleFee;
+  return pricing.baseFee + getPlayerShuttleCount(player) * pricing.shuttleFee;
 }
 
 export function getVisibleShuttleColumns(players: Player[]): number {
-  const maxUsed = players.reduce((max, player) => Math.max(max, player.shuttleCount), 0);
+  const maxUsed = players.reduce(
+    (max, player) => Math.max(max, getPlayerShuttleCount(player), player.shuttleCount),
+    0
+  );
   return Math.max(DEFAULT_SHUTTLE_COLUMNS, maxUsed + 1);
 }
 
-export function summarizeSession(players: Player[], pricing: Pricing): SessionSummary {
-  const shuttleCount = players.reduce((sum, player) => sum + player.shuttleCount, 0);
-  const totalAmount = players.reduce(
-    (sum, player) => sum + calculatePlayerTotal(player, pricing),
-    0
+export function getPlayerShuttleMarks(player: Player): number[] {
+  if (Array.isArray(player.shuttleMarks) && player.shuttleMarks.length > 0) {
+    return player.shuttleMarks
+      .map((mark) => Number(mark))
+      .filter((mark) => Number.isInteger(mark) && mark > 0);
+  }
+
+  return Array.from(
+    { length: Math.max(0, Number(player.shuttleCount) || 0) },
+    (_, index) => index + 1
   );
+}
+
+export function getPlayerShuttleCount(player: Player): number {
+  return getPlayerShuttleMarks(player).length;
+}
+
+export function hasShuttleMark(player: Player, shuttleNumber: number): boolean {
+  return getPlayerShuttleMarks(player).includes(shuttleNumber);
+}
+
+export function setPlayerShuttleMarks(player: Player, shuttleMarks: number[]): Player {
+  const normalizedMarks = shuttleMarks
+    .map((mark) => Number(mark))
+    .filter((mark) => Number.isInteger(mark) && mark > 0);
+
+  return {
+    ...player,
+    shuttleMarks: normalizedMarks,
+    shuttleCount: normalizedMarks.length
+  };
+}
+
+export function getVisibleShuttleColumnsForCurrent(
+  players: Player[],
+  currentShuttleNumber: number
+): number {
+  return Math.max(getVisibleShuttleColumns(players), Math.max(1, currentShuttleNumber));
+}
+
+export function summarizeSession(players: Player[], pricing: Pricing): SessionSummary {
+  const shuttleCount = players.reduce((sum, player) => sum + getPlayerShuttleCount(player), 0);
   const paidAmount = players.reduce(
     (sum, player) => sum + (player.paid ? calculatePlayerTotal(player, pricing) : 0),
+    0
+  );
+  const unpaidAmount = players.reduce(
+    (sum, player) => sum + (!player.paid ? calculatePlayerTotal(player, pricing) : 0),
     0
   );
 
   return {
     playerCount: players.length,
     shuttleCount,
-    totalAmount,
+    totalAmount: unpaidAmount,
     paidAmount,
-    unpaidAmount: totalAmount - paidAmount
+    unpaidAmount
   };
 }
 
@@ -114,7 +166,7 @@ export function groupPaidPlayersByDay(players: Player[], pricing: Pricing): Paid
       current.totalAmount += amount;
       current.players.push({
         name: player.name,
-        shuttleCount: player.shuttleCount,
+        shuttleCount: getPlayerShuttleCount(player),
         amount
       });
       groups.set(dateKey, current);
@@ -123,6 +175,25 @@ export function groupPaidPlayersByDay(players: Player[], pricing: Pricing): Paid
   return Array.from(groups.values()).sort((first, second) =>
     second.dateKey.localeCompare(first.dateKey)
   );
+}
+
+export function groupMatchesByShuttle(players: Player[]): MatchSummary[] {
+  const groups = new Map<number, string[]>();
+
+  players.forEach((player) => {
+    getPlayerShuttleMarks(player).forEach((shuttleNumber) => {
+      const current = groups.get(shuttleNumber) ?? [];
+      current.push(player.name);
+      groups.set(shuttleNumber, current);
+    });
+  });
+
+  return Array.from(groups.entries())
+    .sort(([first], [second]) => first - second)
+    .map(([shuttleNumber, playerNames]) => ({
+      shuttleNumber,
+      playerNames
+    }));
 }
 
 function toDateKey(value: string): string {
@@ -167,18 +238,29 @@ export function normalizeSession(value: unknown): SessionState {
             "name" in player
           );
         })
-        .map((player) => ({
-          id: String(player.id),
-          name: String(player.name),
-          shuttleCount: Math.max(0, Number(player.shuttleCount) || 0),
-          paid: Boolean(player.paid),
-          paidAt: typeof player.paidAt === "string" ? player.paidAt : undefined
-        }))
+        .map((player) =>
+          setPlayerShuttleMarks(
+            {
+              id: String(player.id),
+              name: String(player.name),
+              shuttleCount: Math.max(0, Number(player.shuttleCount) || 0),
+              paid: Boolean(player.paid),
+              paidAt: typeof player.paidAt === "string" ? player.paidAt : undefined
+            },
+            Array.isArray(player.shuttleMarks)
+              ? player.shuttleMarks
+              : Array.from(
+                  { length: Math.max(0, Number(player.shuttleCount) || 0) },
+                  (_, index) => index + 1
+                )
+          )
+        )
     : [];
 
   return {
     players,
     pricing,
+    currentShuttleNumber: Math.max(1, Number(candidate.currentShuttleNumber) || 1),
     updatedAt:
       typeof candidate.updatedAt === "string" ? candidate.updatedAt : new Date().toISOString()
   };

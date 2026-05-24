@@ -1,8 +1,9 @@
 "use client";
 
 import AddIcon from "@mui/icons-material/Add";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import DeleteIcon from "@mui/icons-material/Delete";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import RemoveIcon from "@mui/icons-material/Remove";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import SportsTennisIcon from "@mui/icons-material/SportsTennis";
 import {
@@ -10,6 +11,7 @@ import {
   Button,
   Checkbox,
   Chip,
+  Collapse,
   Container,
   CssBaseline,
   Divider,
@@ -38,9 +40,14 @@ import {
   calculatePlayerTotal,
   createInitialSession,
   createPlayer,
-  getVisibleShuttleColumns,
+  getPlayerShuttleCount,
+  getPlayerShuttleMarks,
+  getVisibleShuttleColumnsForCurrent,
+  groupMatchesByShuttle,
   groupPaidPlayersByDay,
+  hasShuttleMark,
   normalizeSession,
+  setPlayerShuttleMarks,
   summarizeSession
 } from "@/lib/session";
 import {
@@ -115,7 +122,9 @@ export default function HomePage() {
   const [session, setSession] = useState<SessionState>(() => createInitialSession());
   const [playerName, setPlayerName] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [matchSearchTerm, setMatchSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState(0);
+  const [settingsExpanded, setSettingsExpanded] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [roomReady, setRoomReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState(hasSupabaseConfig ? "กำลังเชื่อมต่อ" : "โหมดเครื่องนี้");
@@ -180,6 +189,9 @@ export default function HomePage() {
 
     return subscribeRemoteSession(sessionId, (remoteSession) => {
       const snapshot = serializeSession(remoteSession);
+      if (snapshot === lastRemoteSnapshotRef.current) {
+        return;
+      }
       lastRemoteSnapshotRef.current = snapshot;
       setSession(remoteSession);
       localStorage.setItem(getStorageKey(sessionId), snapshot);
@@ -212,6 +224,12 @@ export default function HomePage() {
         })
         .catch(() => setSyncStatus("ซิงก์ไม่สำเร็จ"));
     }, 250);
+
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+      }
+    };
   }, [hydrated, session, sessionId]);
 
   const summary = useMemo(
@@ -235,6 +253,7 @@ export default function HomePage() {
     () => groupPaidPlayersByDay(session.players, session.pricing),
     [session.players, session.pricing]
   );
+  const matchGroups = useMemo(() => groupMatchesByShuttle(session.players), [session.players]);
   const visiblePaidGroups = useMemo(() => {
     if (!normalizedSearch) {
       return paidGroups;
@@ -255,8 +274,16 @@ export default function HomePage() {
   }, [paidGroups, normalizedSearch]);
   const shuttleColumns = useMemo(
     () =>
-      Array.from({ length: getVisibleShuttleColumns(visibleActivePlayers) }, (_, index) => index),
-    [visibleActivePlayers]
+      Array.from(
+        {
+          length: getVisibleShuttleColumnsForCurrent(
+            visibleActivePlayers,
+            session.currentShuttleNumber
+          )
+        },
+        (_, index) => index
+      ),
+    [session.currentShuttleNumber, visibleActivePlayers]
   );
 
   function updateSession(updater: (current: SessionState) => SessionState) {
@@ -270,6 +297,14 @@ export default function HomePage() {
     event.preventDefault();
     const trimmedName = playerName.trim();
     if (!trimmedName) {
+      return;
+    }
+
+    const duplicatedPlayer = session.players.find(
+      (player) => player.name.trim().toLocaleLowerCase("th-TH") === trimmedName.toLocaleLowerCase("th-TH")
+    );
+    if (duplicatedPlayer) {
+      window.alert(`มีชื่อ ${duplicatedPlayer.name} อยู่แล้ว`);
       return;
     }
 
@@ -289,6 +324,11 @@ export default function HomePage() {
   }
 
   function removePlayer(id: string) {
+    const player = session.players.find((currentPlayer) => currentPlayer.id === id);
+    if (!player || !window.confirm(`ลบ ${player.name} ออกจากรอบนี้ใช่ไหม?`)) {
+      return;
+    }
+
     updateSession((current) => ({
       ...current,
       players: current.players.filter((player) => player.id !== id)
@@ -298,6 +338,23 @@ export default function HomePage() {
   function resetSession() {
     if (window.confirm("ล้างข้อมูลรอบนี้ทั้งหมดใช่ไหม?")) {
       updateSession(() => createInitialSession());
+      setActiveTab(0);
+    }
+  }
+
+  function clearPlayData() {
+    if (window.confirm("ล้างลูกที่ติ๊กและสถานะจ่ายแล้ว แต่เก็บรายชื่อไว้ใช่ไหม?")) {
+      updateSession((current) => ({
+        ...current,
+        currentShuttleNumber: 1,
+        players: current.players.map((player) => ({
+          ...player,
+          shuttleCount: 0,
+          shuttleMarks: [],
+          paid: false,
+          paidAt: undefined
+        }))
+      }));
       setActiveTab(0);
     }
   }
@@ -321,7 +378,85 @@ export default function HomePage() {
     }));
   }
 
+  function updateCurrentShuttleNumber(value: string) {
+    const numericValue = value === "" ? 0 : Math.max(1, Number(value) || 1);
+    updateSession((current) => ({
+      ...current,
+      currentShuttleNumber: numericValue
+    }));
+  }
+
+  function stepCurrentShuttleNumber(step: number) {
+    updateSession((current) => ({
+      ...current,
+      currentShuttleNumber: Math.max(1, current.currentShuttleNumber + step)
+    }));
+  }
+
+  function toggleShuttleMark(playerId: string, column: number) {
+    const player = session.players.find((currentPlayer) => currentPlayer.id === playerId);
+    if (!player) {
+      return;
+    }
+
+    const currentMarks = getPlayerShuttleMarks(player);
+    const removedShuttleNumber = currentMarks[column];
+    const isRemoving = typeof removedShuttleNumber === "number";
+    if (isRemoving && !window.confirm("เอาออกแน่นะอีแก่")) {
+      return;
+    }
+
+    const targetShuttleNumber = isRemoving
+      ? removedShuttleNumber
+      : Math.max(1, session.currentShuttleNumber);
+    const nextPlayers = session.players.map((currentPlayer) =>
+      currentPlayer.id === playerId
+        ? setPlayerShuttleMarks(
+            currentPlayer,
+            isRemoving
+              ? getPlayerShuttleMarks(currentPlayer).filter((_, markIndex) => markIndex !== column)
+              : [...getPlayerShuttleMarks(currentPlayer), targetShuttleNumber]
+          )
+        : currentPlayer
+    );
+
+    const checkedCountForColumn = nextPlayers.reduce(
+      (count, currentPlayer) =>
+        currentPlayer.paid
+          ? count
+          : count +
+            getPlayerShuttleMarks(currentPlayer).filter((mark) => mark === targetShuttleNumber)
+              .length,
+      0
+    );
+    const nextShuttleNumber =
+      !isRemoving &&
+      checkedCountForColumn >= 4 &&
+      targetShuttleNumber >= session.currentShuttleNumber &&
+      window.confirm(`ครบ 4 คนแล้ว ไปที่ลูก ${targetShuttleNumber + 1} ใช่ไหม?`)
+        ? targetShuttleNumber + 1
+        : session.currentShuttleNumber;
+
+    updateSession((current) => ({
+      ...current,
+      players: nextPlayers,
+      currentShuttleNumber: nextShuttleNumber
+    }));
+  }
+
   function setPaid(playerId: string, paid: boolean) {
+    const player = session.players.find((currentPlayer) => currentPlayer.id === playerId);
+    if (!player) {
+      return;
+    }
+
+    const message = paid
+      ? `ยืนยันว่า ${player.name} จ่ายแล้วใช่ไหม?`
+      : `ย้าย ${player.name} กลับไปค้างจ่ายใช่ไหม?`;
+    if (!window.confirm(message)) {
+      return;
+    }
+
     updatePlayer(playerId, (current) => ({
       ...current,
       paid,
@@ -344,49 +479,35 @@ export default function HomePage() {
                   จดลูก คิดเงิน และเช็กจ่ายแล้วในรอบเดียว
                 </Typography>
               </Box>
-              <Button
-                color="secondary"
-                variant="outlined"
-                startIcon={<RestartAltIcon />}
-                onClick={resetSession}
-              >
-                รีเซ็ตรอบ
-              </Button>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                <Button color="secondary" variant="outlined" onClick={clearPlayData}>
+                  ล้างข้อมูลเล่น
+                </Button>
+                <Button
+                  color="secondary"
+                  variant="outlined"
+                  startIcon={<RestartAltIcon />}
+                  onClick={resetSession}
+                >
+                  รีเซ็ตรอบ
+                </Button>
+              </Stack>
             </Box>
 
             <Paper className="controlBand" elevation={0}>
-              <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems="stretch">
-                <Box component="form" onSubmit={switchSession} className="roomForm">
-                  <TextField
-                    label="รหัสรอบ"
-                    value={roomDraft}
-                    onChange={(event) => setRoomDraft(event.target.value)}
-                    autoComplete="off"
-                  />
-                  <Button type="submit" variant="outlined">
-                    เปิดรอบ
-                  </Button>
-                </Box>
-                <TextField
-                  label="ค่าเริ่มต้น"
-                  type="number"
-                  value={session.pricing.baseFee}
-                  onChange={(event) => updatePricing("baseFee", event.target.value)}
-                  inputProps={{ min: 0 }}
-                  InputProps={{
-                    endAdornment: <InputAdornment position="end">บาท</InputAdornment>
-                  }}
-                />
-                <TextField
-                  label="ค่าลูก"
-                  type="number"
-                  value={session.pricing.shuttleFee}
-                  onChange={(event) => updatePricing("shuttleFee", event.target.value)}
-                  inputProps={{ min: 0 }}
-                  InputProps={{
-                    endAdornment: <InputAdornment position="end">บาท</InputAdornment>
-                  }}
-                />
+              <Stack direction={{ xs: "column", md: "row" }} spacing={2} className="quickControls">
+                <Button
+                  variant="outlined"
+                  endIcon={
+                    <ExpandMoreIcon
+                      className={settingsExpanded ? "settingsChevron expanded" : "settingsChevron"}
+                    />
+                  }
+                  onClick={() => setSettingsExpanded((expanded) => !expanded)}
+                  className="settingsToggle"
+                >
+                  รอบและราคา
+                </Button>
                 <Box component="form" onSubmit={addPlayer} className="addPlayerForm">
                   <TextField
                     label="ชื่อผู้เล่น"
@@ -407,6 +528,41 @@ export default function HomePage() {
                   autoComplete="off"
                 />
               </Stack>
+              <Collapse in={settingsExpanded}>
+                <Box className="settingsPanel">
+                  <Box component="form" onSubmit={switchSession} className="roomForm">
+                    <TextField
+                      label="รหัสรอบ"
+                      value={roomDraft}
+                      onChange={(event) => setRoomDraft(event.target.value)}
+                      autoComplete="off"
+                    />
+                    <Button type="submit" variant="outlined">
+                      เปิดรอบ
+                    </Button>
+                  </Box>
+                  <TextField
+                    label="ค่าเริ่มต้น"
+                    type="number"
+                    value={session.pricing.baseFee}
+                    onChange={(event) => updatePricing("baseFee", event.target.value)}
+                    inputProps={{ min: 0 }}
+                    InputProps={{
+                      endAdornment: <InputAdornment position="end">บาท</InputAdornment>
+                    }}
+                  />
+                  <TextField
+                    label="ค่าลูก"
+                    type="number"
+                    value={session.pricing.shuttleFee}
+                    onChange={(event) => updatePricing("shuttleFee", event.target.value)}
+                    inputProps={{ min: 0 }}
+                    InputProps={{
+                      endAdornment: <InputAdornment position="end">บาท</InputAdornment>
+                    }}
+                  />
+                </Box>
+              </Collapse>
               <Stack direction="row" spacing={1} className="syncBar">
                 <Chip label={`รอบ ${sessionId}`} size="small" color="primary" variant="outlined" />
                 <Chip label={syncStatus} size="small" />
@@ -435,20 +591,56 @@ export default function HomePage() {
                 className="sheetTabs"
               >
                 <Tab label={`กำลังตี (${activePlayers.length})`} />
+                <Tab label={`Match (${matchGroups.length})`} />
                 <Tab label={`สรุปจ่ายแล้ว (${formatBaht(summary.paidAmount)} บาท)`} />
               </Tabs>
               <Divider />
 
               {activeTab === 0 ? (
-                <ScoreSheet
-                  activePlayers={visibleActivePlayers}
-                  allPlayerCount={session.players.length}
-                  hasSearch={Boolean(normalizedSearch)}
-                  pricing={session.pricing}
-                  shuttleColumns={shuttleColumns}
-                  onRemovePlayer={removePlayer}
-                  onSetPaid={setPaid}
-                  onUpdatePlayer={updatePlayer}
+                <>
+                  <Box className="sheetToolbar">
+                    <Typography fontWeight={800}>ลูก number</Typography>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <IconButton
+                        aria-label="ลดลูก number"
+                        onClick={() => stepCurrentShuttleNumber(-1)}
+                        disabled={session.currentShuttleNumber <= 1}
+                      >
+                        <RemoveIcon />
+                      </IconButton>
+                      <TextField
+                        label="ลูก number"
+                        type="number"
+                        value={session.currentShuttleNumber}
+                        onChange={(event) => updateCurrentShuttleNumber(event.target.value)}
+                        inputProps={{ min: 1 }}
+                        className="currentShuttleField"
+                      />
+                      <IconButton
+                        aria-label="เพิ่มลูก number"
+                        onClick={() => stepCurrentShuttleNumber(1)}
+                      >
+                        <AddIcon />
+                      </IconButton>
+                    </Stack>
+                  </Box>
+                  <ScoreSheet
+                    activePlayers={visibleActivePlayers}
+                    allPlayerCount={session.players.length}
+                    hasSearch={Boolean(normalizedSearch)}
+                    pricing={session.pricing}
+                    shuttleColumns={shuttleColumns}
+                    onRemovePlayer={removePlayer}
+                    onSetPaid={setPaid}
+                    onToggleShuttleMark={toggleShuttleMark}
+                    onUpdatePlayer={updatePlayer}
+                  />
+                </>
+              ) : activeTab === 1 ? (
+                <MatchSummaryPanel
+                  matchGroups={matchGroups}
+                  searchTerm={matchSearchTerm}
+                  onSearchTermChange={setMatchSearchTerm}
                 />
               ) : (
                 <PaidSummary
@@ -474,6 +666,7 @@ function ScoreSheet({
   shuttleColumns,
   onRemovePlayer,
   onSetPaid,
+  onToggleShuttleMark,
   onUpdatePlayer
 }: {
   activePlayers: Player[];
@@ -483,6 +676,7 @@ function ScoreSheet({
   shuttleColumns: number[];
   onRemovePlayer: (id: string) => void;
   onSetPaid: (id: string, paid: boolean) => void;
+  onToggleShuttleMark: (id: string, column: number) => void;
   onUpdatePlayer: (id: string, updater: (player: Player) => Player) => void;
 }) {
   return (
@@ -532,22 +726,35 @@ function ScoreSheet({
                 </TableCell>
                 {shuttleColumns.map((column) => (
                   <TableCell key={column} align="center" className="shuttleCell">
-                    <Checkbox
-                      inputProps={{ "aria-label": `${player.name} ลูกที่ ${column + 1}` }}
-                      checked={column < player.shuttleCount}
-                      onChange={() =>
-                        onUpdatePlayer(player.id, (current) => ({
-                          ...current,
-                          shuttleCount: column < current.shuttleCount ? column : column + 1
-                        }))
-                      }
-                      icon={<SportsTennisIcon fontSize="small" />}
-                      checkedIcon={<CheckCircleIcon fontSize="small" />}
-                    />
+                    {(() => {
+                      const shuttleMark = getPlayerShuttleMarks(player)[column];
+                      const checked = typeof shuttleMark === "number";
+                      return (
+                        <Checkbox
+                          inputProps={{
+                            "aria-label": checked
+                              ? `${player.name} ช่องที่ ${column + 1} ลูก ${shuttleMark}`
+                              : `${player.name} ช่องที่ ${column + 1}`
+                          }}
+                          checked={checked}
+                          onChange={() => onToggleShuttleMark(player.id, column)}
+                          icon={<SportsTennisIcon fontSize="small" />}
+                          checkedIcon={
+                            <span className="shuttleNumberIcon shuttleNumberIconChecked">
+                              {shuttleMark}
+                            </span>
+                          }
+                        />
+                      );
+                    })()}
                   </TableCell>
                 ))}
-                <TableCell align="center" className="countCell">
-                  {player.shuttleCount}
+                <TableCell
+                  align="center"
+                  className="countCell"
+                  aria-label={`${player.name} จำนวนลูก ${getPlayerShuttleCount(player)}`}
+                >
+                  {getPlayerShuttleCount(player)}
                 </TableCell>
                 <TableCell align="right" className="amountCell">
                   {formatBaht(calculatePlayerTotal(player, pricing))}
@@ -576,6 +783,58 @@ function ScoreSheet({
         </TableBody>
       </Table>
     </TableContainer>
+  );
+}
+
+function MatchSummaryPanel({
+  matchGroups,
+  searchTerm,
+  onSearchTermChange
+}: {
+  matchGroups: ReturnType<typeof groupMatchesByShuttle>;
+  searchTerm: string;
+  onSearchTermChange: (value: string) => void;
+}) {
+  const normalizedSearch = searchTerm.trim().toLocaleLowerCase("th-TH");
+  const visibleMatchGroups = normalizedSearch
+    ? matchGroups.filter((group) =>
+        group.playerNames.some((name) =>
+          name.toLocaleLowerCase("th-TH").includes(normalizedSearch)
+        )
+      )
+    : matchGroups;
+
+  return (
+    <Box className="matchSummaryPanel" role="region" aria-label="รายการ Match">
+      <Box className="matchSummaryHeader">
+        <Typography variant="h5" component="h2">
+          Match
+        </Typography>
+        <TextField
+          label="ค้นหา Match"
+          value={searchTerm}
+          onChange={(event) => onSearchTermChange(event.target.value)}
+          className="matchSearchField"
+          autoComplete="off"
+        />
+      </Box>
+      {visibleMatchGroups.length === 0 ? (
+        <Box className="emptyPaidSummary">
+          {normalizedSearch ? "ไม่พบชื่อใน Match" : "ยังไม่มีรายการ Match"}
+        </Box>
+      ) : (
+        <Stack spacing={1.5}>
+          {visibleMatchGroups.map((group) => (
+            <Paper key={group.shuttleNumber} className="matchItem" elevation={0}>
+              <Typography variant="h6" component="h3">
+                ลูกที่ {group.shuttleNumber}
+              </Typography>
+              <Typography className="matchNames">{group.playerNames.join(" ")}</Typography>
+            </Paper>
+          ))}
+        </Stack>
+      )}
+    </Box>
   );
 }
 

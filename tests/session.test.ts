@@ -5,7 +5,9 @@ import {
   calculatePlayerTotal,
   createPlayer,
   groupPaidPlayersByDay,
+  groupMatchesByShuttle,
   getVisibleShuttleColumns,
+  getVisibleShuttleColumnsForCurrent,
   summarizeSession
 } from "@/lib/session";
 
@@ -17,6 +19,16 @@ describe("badminton session calculations", () => {
     expect(total).toBe(175);
   });
 
+  it("calculates each player from the number of checked shuttle marks", () => {
+    const player = createPlayer("A");
+    const total = calculatePlayerTotal(
+      { ...player, shuttleCount: 2, shuttleMarks: [1, 1] },
+      DEFAULT_PRICING
+    );
+
+    expect(total).toBe(150);
+  });
+
   it("keeps at least the default shuttle columns and expands after the last used slot", () => {
     expect(getVisibleShuttleColumns([{ ...createPlayer("A"), shuttleCount: 0 }])).toBe(
       DEFAULT_SHUTTLE_COLUMNS
@@ -24,7 +36,11 @@ describe("badminton session calculations", () => {
     expect(getVisibleShuttleColumns([{ ...createPlayer("A"), shuttleCount: 10 }])).toBe(11);
   });
 
-  it("summarizes totals, paid amount, and remaining amount", () => {
+  it("keeps columns visible through the current shuttle number", () => {
+    expect(getVisibleShuttleColumnsForCurrent([], 12)).toBe(12);
+  });
+
+  it("summarizes unpaid total, paid amount, and remaining amount", () => {
     const players = [
       { ...createPlayer("A"), shuttleCount: 2, paid: true, paidAt: "2026-05-24T02:00:00.000Z" },
       { ...createPlayer("B"), shuttleCount: 1, paid: false }
@@ -33,7 +49,7 @@ describe("badminton session calculations", () => {
     expect(summarizeSession(players, DEFAULT_PRICING)).toEqual({
       playerCount: 2,
       shuttleCount: 3,
-      totalAmount: 275,
+      totalAmount: 125,
       paidAmount: 150,
       unpaidAmount: 125
     });
@@ -61,6 +77,23 @@ describe("badminton session calculations", () => {
           { name: "B", shuttleCount: 1, amount: 125 }
         ]
       }
+    ]);
+  });
+
+  it("groups matches by shuttle number and keeps duplicate marks", () => {
+    const players = [
+      { ...createPlayer("a"), shuttleMarks: [1, 2, 3] },
+      { ...createPlayer("b"), shuttleMarks: [1, 3, 3] },
+      { ...createPlayer("c"), shuttleMarks: [1, 2, 3] },
+      { ...createPlayer("d"), shuttleMarks: [1] },
+      { ...createPlayer("e"), shuttleMarks: [2] },
+      { ...createPlayer("f"), shuttleMarks: [2] }
+    ];
+
+    expect(groupMatchesByShuttle(players)).toEqual([
+      { shuttleNumber: 1, playerNames: ["a", "b", "c", "d"] },
+      { shuttleNumber: 2, playerNames: ["a", "c", "e", "f"] },
+      { shuttleNumber: 3, playerNames: ["a", "b", "b", "c"] }
     ]);
   });
 });
