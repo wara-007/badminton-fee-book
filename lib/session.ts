@@ -81,6 +81,13 @@ export function calculatePlayerTotal(player: Player, pricing: Pricing): number {
   return pricing.baseFee + getPlayerShuttleCount(player) * pricing.shuttleFee;
 }
 
+export function calculatePlayersTotal(players: Player[], pricing: Pricing): number {
+  const baseTotal = players.length * pricing.baseFee;
+  const shuttleTotal = getBillableShuttleCount(players) * pricing.shuttleFee;
+
+  return baseTotal + shuttleTotal;
+}
+
 export function getVisibleShuttleColumns(players: Player[]): number {
   const maxUsed = players.reduce(
     (max, player) => Math.max(max, getPlayerShuttleCount(player), player.shuttleCount),
@@ -104,6 +111,12 @@ export function getPlayerShuttleMarks(player: Player): number[] {
 
 export function getPlayerShuttleCount(player: Player): number {
   return getPlayerShuttleMarks(player).length;
+}
+
+export function getBillableShuttleCount(players: Player[]): number {
+  const markCount = players.reduce((sum, player) => sum + getPlayerShuttleCount(player), 0);
+
+  return Math.ceil(markCount / 4);
 }
 
 export function hasShuttleMark(player: Player, shuttleNumber: number): boolean {
@@ -130,15 +143,11 @@ export function getVisibleShuttleColumnsForCurrent(
 }
 
 export function summarizeSession(players: Player[], pricing: Pricing): SessionSummary {
-  const shuttleCount = players.reduce((sum, player) => sum + getPlayerShuttleCount(player), 0);
-  const paidAmount = players.reduce(
-    (sum, player) => sum + (player.paid ? calculatePlayerTotal(player, pricing) : 0),
-    0
-  );
-  const unpaidAmount = players.reduce(
-    (sum, player) => sum + (!player.paid ? calculatePlayerTotal(player, pricing) : 0),
-    0
-  );
+  const paidPlayers = players.filter((player) => player.paid);
+  const shuttleCount = getBillableShuttleCount(players);
+  const sessionAmount = calculatePlayersTotal(players, pricing);
+  const paidAmount = calculatePlayersTotal(paidPlayers, pricing);
+  const unpaidAmount = Math.max(0, sessionAmount - paidAmount);
 
   return {
     playerCount: players.length,
@@ -156,19 +165,26 @@ export function groupPaidPlayersByDay(players: Player[], pricing: Pricing): Paid
     .filter((player) => player.paid)
     .forEach((player) => {
       const dateKey = toDateKey(player.paidAt ?? new Date().toISOString());
-      const amount = calculatePlayerTotal(player, pricing);
       const current = groups.get(dateKey) ?? {
         dateKey,
         totalAmount: 0,
         players: []
       };
 
-      current.totalAmount += amount;
       current.players.push({
         name: player.name,
         shuttleCount: getPlayerShuttleCount(player),
-        amount
+        amount: calculatePlayerTotal(player, pricing)
       });
+      current.totalAmount = calculatePlayersTotal(
+        players.filter((paidPlayer) => {
+          return (
+            paidPlayer.paid &&
+            toDateKey(paidPlayer.paidAt ?? new Date().toISOString()) === dateKey
+          );
+        }),
+        pricing
+      );
       groups.set(dateKey, current);
     });
 

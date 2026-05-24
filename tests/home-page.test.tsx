@@ -26,13 +26,13 @@ describe("Badminton fee book page", () => {
 
     expect(within(row).getByLabelText("A จำนวนลูก 2")).toBeInTheDocument();
     expect(within(row).getByText("150")).toBeInTheDocument();
-    expect(screen.getByText("ยอดรวม 150 บาท")).toBeInTheDocument();
-    expect(screen.getByText("ค้างจ่าย 150 บาท")).toBeInTheDocument();
+    expect(screen.getByText("ยอดรวม 125 บาท")).toBeInTheDocument();
+    expect(screen.getByText("ค้างจ่าย 125 บาท")).toBeInTheDocument();
 
     await user.click(within(row).getByRole("checkbox", { name: "A จ่ายแล้ว" }));
 
     expect(screen.getByText("ยอดรวม 0 บาท")).toBeInTheDocument();
-    expect(screen.getByText("จ่ายแล้ว 150 บาท")).toBeInTheDocument();
+    expect(screen.getByText("จ่ายแล้ว 125 บาท")).toBeInTheDocument();
     expect(screen.getByText("ค้างจ่าย 0 บาท")).toBeInTheDocument();
   });
 
@@ -49,6 +49,82 @@ describe("Badminton fee book page", () => {
 
     expect(alertSpy).toHaveBeenCalledWith("มีชื่อ A อยู่แล้ว");
     expect(screen.getAllByRole("row", { name: /A/ })).toHaveLength(1);
+  });
+
+  it("toggles the compact mobile summary group", async () => {
+    const user = userEvent.setup();
+
+    render(<HomePage />);
+
+    expect(screen.getByText("0 ลูก")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /ดูสรุปทั้งหมด/ })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /ดูสรุปทั้งหมด/ }));
+
+    expect(screen.getByRole("button", { name: /ซ่อนสรุป/ })).toBeInTheDocument();
+  });
+
+  it("shows the app version in the footer", () => {
+    render(<HomePage />);
+
+    expect(screen.getByText("v1.2.0")).toBeInTheDocument();
+  });
+
+  it("ticks the next shuttle slot when clicking a player name", async () => {
+    const user = userEvent.setup();
+
+    render(<HomePage />);
+
+    await user.type(screen.getByLabelText("ชื่อผู้เล่น"), "A");
+    await user.click(screen.getByRole("button", { name: "เพิ่มผู้เล่น" }));
+
+    expect(screen.queryByLabelText("แก้ชื่อ A")).not.toBeInTheDocument();
+
+    const row = screen.getByRole("row", { name: /A/ });
+    await user.click(within(row).getByRole("button", { name: "ติ๊กลูกให้ A" }));
+    await user.click(within(row).getByRole("button", { name: "ติ๊กลูกให้ A" }));
+
+    expect(within(row).getByRole("checkbox", { name: "A ช่องที่ 1 ลูก 1" })).toBeChecked();
+    expect(within(row).getByRole("checkbox", { name: "A ช่องที่ 2 ลูก 1" })).toBeChecked();
+    expect(within(row).getByLabelText("A จำนวนลูก 2")).toBeInTheDocument();
+  });
+
+  it("warns when the checked shuttle marks are not complete sets of four", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const user = userEvent.setup();
+
+    render(<HomePage />);
+
+    for (const name of ["A", "B", "C", "D"]) {
+      await user.type(screen.getByLabelText("ชื่อผู้เล่น"), name);
+      await user.click(screen.getByRole("button", { name: "เพิ่มผู้เล่น" }));
+    }
+
+    await user.click(
+      within(screen.getByRole("row", { name: /A/ })).getByRole("checkbox", {
+        name: "A ช่องที่ 1"
+      })
+    );
+    await user.click(
+      within(screen.getByRole("row", { name: /B/ })).getByRole("checkbox", {
+        name: "B ช่องที่ 1"
+      })
+    );
+
+    expect(screen.getByText("ยังไม่ครบ 4 ติ๊ก เหลืออีก 2 ติ๊ก")).toBeInTheDocument();
+
+    await user.click(
+      within(screen.getByRole("row", { name: /C/ })).getByRole("checkbox", {
+        name: "C ช่องที่ 1"
+      })
+    );
+    await user.click(
+      within(screen.getByRole("row", { name: /D/ })).getByRole("checkbox", {
+        name: "D ช่องที่ 1"
+      })
+    );
+
+    expect(screen.queryByText(/ยังไม่ครบ 4 ติ๊ก/)).not.toBeInTheDocument();
   });
 
   it("advances the current shuttle number after four players are checked on the same shuttle", async () => {
@@ -72,7 +148,7 @@ describe("Badminton fee book page", () => {
       );
     }
 
-    expect(confirmSpy).toHaveBeenCalledWith("ครบ 4 คนแล้ว ไปที่ลูก 2 ใช่ไหม?");
+    expect(confirmSpy).toHaveBeenCalledWith("ครบ 4 คนแล้ว: A, B, C, D ไปที่ลูก 2 ใช่ไหม?");
     expect(screen.getByLabelText("ลูก number")).toHaveValue(2);
   });
 
@@ -161,7 +237,7 @@ describe("Badminton fee book page", () => {
       })
     );
 
-    expect(confirmSpy).toHaveBeenCalledWith("ครบ 4 คนแล้ว ไปที่ลูก 4 ใช่ไหม?");
+    expect(confirmSpy).toHaveBeenCalledWith("ครบ 4 คนแล้ว: A, B, B, C ไปที่ลูก 4 ใช่ไหม?");
     expect(screen.getByLabelText("ลูก number")).toHaveValue(4);
   });
 
@@ -297,7 +373,7 @@ describe("Badminton fee book page", () => {
     const row = screen.getByRole("row", { name: /A/ });
     await user.click(within(row).getByRole("checkbox", { name: "A จ่ายแล้ว" }));
 
-    expect(confirmSpy).toHaveBeenCalledWith("ยืนยันว่า A จ่ายแล้วใช่ไหม?");
+    expect(confirmSpy).toHaveBeenCalledWith("ยืนยันว่า A จ่ายแล้ว 100 บาท ใช่ไหม?");
     expect(within(row).getByRole("checkbox", { name: "A จ่ายแล้ว" })).not.toBeChecked();
   });
 
@@ -327,6 +403,7 @@ describe("Badminton fee book page", () => {
     await user.click(within(row).getByRole("checkbox", { name: "A ช่องที่ 1" }));
     await user.click(within(row).getByRole("checkbox", { name: "A จ่ายแล้ว" }));
 
+    await user.click(screen.getByRole("tab", { name: /สรุปจ่ายแล้ว/ }));
     await user.click(screen.getByRole("button", { name: "ล้างข้อมูลเล่น" }));
 
     expect(confirmSpy).toHaveBeenCalledWith("ล้างลูกที่ติ๊กและสถานะจ่ายแล้ว แต่เก็บรายชื่อไว้ใช่ไหม?");
@@ -364,7 +441,8 @@ describe("Badminton fee book page", () => {
     expect(screen.getByRole("heading", { name: "สรุปจ่ายแล้ว" })).toBeInTheDocument();
     expect(within(paidSummary).getByText("A")).toBeInTheDocument();
     expect(within(paidSummary).getByText("2 ลูก")).toBeInTheDocument();
-    expect(within(paidSummary).getAllByText("150 บาท")).toHaveLength(2);
+    expect(within(paidSummary).getByText("125 บาท")).toBeInTheDocument();
+    expect(within(paidSummary).getByText("150 บาท")).toBeInTheDocument();
   });
 
   it("persists session data to localStorage and restores it", async () => {
@@ -431,9 +509,11 @@ describe("Badminton fee book page", () => {
 
     await user.type(screen.getByLabelText("ชื่อผู้เล่น"), "C");
     await user.click(screen.getByRole("button", { name: "เพิ่มผู้เล่น" }));
+    await user.click(screen.getByRole("tab", { name: /สรุปจ่ายแล้ว/ }));
     await user.click(screen.getByRole("button", { name: "รีเซ็ตรอบ" }));
 
     expect(confirmSpy).toHaveBeenCalled();
+    await user.click(screen.getByRole("tab", { name: /กำลังตี/ }));
     expect(screen.getByRole("row", { name: /C/ })).toBeInTheDocument();
   });
 });

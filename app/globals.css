@@ -86,7 +86,7 @@ body {
 }
 
 .searchField {
-  min-width: 180px;
+  min-width: 220px;
 }
 
 .currentShuttleField {
@@ -96,7 +96,7 @@ body {
 .sheetToolbar {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 12px;
   padding: 12px 16px;
   border-bottom: 1px solid #e7e2d8;
@@ -121,6 +121,18 @@ body {
   gap: 12px;
 }
 
+.summarySecondary {
+  display: contents;
+}
+
+.mobileSummaryToggle {
+  display: none !important;
+}
+
+.expandIconOpen {
+  transform: rotate(180deg);
+}
+
 .summaryStat {
   display: flex;
   min-height: 88px;
@@ -134,6 +146,27 @@ body {
 .summaryStat .MuiTypography-root {
   font-size: 1rem;
   font-weight: 800;
+  line-height: 1.25;
+}
+
+.summaryStatDanger {
+  border: 1px solid #fca5a5;
+  background: #fff7f7;
+}
+
+.summaryStatDanger .MuiChip-root {
+  color: #991b1b;
+  border-color: #fecaca;
+  background: #fee2e2;
+}
+
+.summaryStatDanger .MuiTypography-root {
+  color: #991b1b;
+}
+
+.summaryStat .summaryNote {
+  font-size: 0.78rem;
+  font-weight: 700;
   line-height: 1.25;
 }
 
@@ -202,8 +235,22 @@ thead .stickyName {
 }
 
 .playerCell {
-  padding-top: 10px;
-  padding-bottom: 10px;
+  padding: 6px 8px;
+}
+
+.playerNameButton {
+  min-height: 38px;
+  justify-content: flex-start;
+  border: 1px solid transparent;
+  color: #1f2933;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: left;
+}
+
+.playerNameButton:hover {
+  border-color: #99c7c2;
+  background: #ecf7f5;
 }
 
 .countCell {
@@ -226,6 +273,17 @@ thead .stickyName {
   display: grid;
   gap: 16px;
   padding: 18px;
+}
+
+.paidSummaryHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.paidSummaryActions {
+  flex-shrink: 0;
 }
 
 .matchSummaryPanel {
@@ -297,6 +355,13 @@ thead .stickyName {
   padding: 12px 0;
 }
 
+.appFooter {
+  color: #8a949e;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: center;
+}
+
 @media (max-width: 900px) {
   .appHeader {
     align-items: stretch;
@@ -304,7 +369,23 @@ thead .stickyName {
   }
 
   .summaryGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
+  }
+
+  .summarySecondary {
+    display: none;
+  }
+
+  .summarySecondaryOpen {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .mobileSummaryToggle {
+    display: inline-flex !important;
+    width: 100%;
+    justify-content: center;
   }
 
   .paidPlayerItem {

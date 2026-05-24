@@ -56,8 +56,10 @@ import {
   saveRemoteSession,
   subscribeRemoteSession
 } from "@/lib/supabase-session";
+import packageInfo from "@/package.json";
 
 const bahtFormatter = new Intl.NumberFormat("th-TH");
+const appVersion = packageInfo.version;
 const dateFormatter = new Intl.DateTimeFormat("th-TH", {
   day: "numeric",
   month: "short",
@@ -125,6 +127,7 @@ export default function HomePage() {
   const [matchSearchTerm, setMatchSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState(0);
   const [settingsExpanded, setSettingsExpanded] = useState(false);
+  const [mobileSummaryExpanded, setMobileSummaryExpanded] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [roomReady, setRoomReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState(hasSupabaseConfig ? "กำลังเชื่อมต่อ" : "โหมดเครื่องนี้");
@@ -236,6 +239,12 @@ export default function HomePage() {
     () => summarizeSession(session.players, session.pricing),
     [session.players, session.pricing]
   );
+  const shuttleMarkCount = useMemo(
+    () => session.players.reduce((sum, player) => sum + getPlayerShuttleCount(player), 0),
+    [session.players]
+  );
+  const incompleteShuttleMarks = shuttleMarkCount % 4;
+  const missingShuttleMarks = incompleteShuttleMarks === 0 ? 0 : 4 - incompleteShuttleMarks;
   const activePlayers = useMemo(
     () => session.players.filter((player) => !player.paid),
     [session.players]
@@ -429,11 +438,21 @@ export default function HomePage() {
               .length,
       0
     );
+    const checkedNamesForColumn = nextPlayers.flatMap((currentPlayer) =>
+      currentPlayer.paid
+        ? []
+        : getPlayerShuttleMarks(currentPlayer)
+            .filter((mark) => mark === targetShuttleNumber)
+            .map(() => currentPlayer.name)
+    );
+    const completedPlayerNames = checkedNamesForColumn.slice(-4).join(", ");
     const nextShuttleNumber =
       !isRemoving &&
       checkedCountForColumn >= 4 &&
       targetShuttleNumber >= session.currentShuttleNumber &&
-      window.confirm(`ครบ 4 คนแล้ว ไปที่ลูก ${targetShuttleNumber + 1} ใช่ไหม?`)
+      window.confirm(
+        `ครบ 4 คนแล้ว: ${completedPlayerNames} ไปที่ลูก ${targetShuttleNumber + 1} ใช่ไหม?`
+      )
         ? targetShuttleNumber + 1
         : session.currentShuttleNumber;
 
@@ -451,7 +470,9 @@ export default function HomePage() {
     }
 
     const message = paid
-      ? `ยืนยันว่า ${player.name} จ่ายแล้วใช่ไหม?`
+      ? `ยืนยันว่า ${player.name} จ่ายแล้ว ${formatBaht(
+          calculatePlayerTotal(player, session.pricing)
+        )} บาท ใช่ไหม?`
       : `ย้าย ${player.name} กลับไปค้างจ่ายใช่ไหม?`;
     if (!window.confirm(message)) {
       return;
@@ -479,19 +500,6 @@ export default function HomePage() {
                   จดลูก คิดเงิน และเช็กจ่ายแล้วในรอบเดียว
                 </Typography>
               </Box>
-              <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-                <Button color="secondary" variant="outlined" onClick={clearPlayData}>
-                  ล้างข้อมูลเล่น
-                </Button>
-                <Button
-                  color="secondary"
-                  variant="outlined"
-                  startIcon={<RestartAltIcon />}
-                  onClick={resetSession}
-                >
-                  รีเซ็ตรอบ
-                </Button>
-              </Stack>
             </Box>
 
             <Paper className="controlBand" elevation={0}>
@@ -520,13 +528,6 @@ export default function HomePage() {
                     เพิ่มผู้เล่น
                   </Button>
                 </Box>
-                <TextField
-                  label="ค้นหาชื่อ"
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
-                  className="searchField"
-                  autoComplete="off"
-                />
               </Stack>
               <Collapse in={settingsExpanded}>
                 <Box className="settingsPanel">
@@ -570,17 +571,45 @@ export default function HomePage() {
             </Paper>
 
             <Box className="summaryGrid">
-              <SummaryStat label="ผู้เล่น" value={`${summary.playerCount} คน`} />
-              <SummaryStat label="ลูกทั้งหมด" value={`${summary.shuttleCount} ลูก`} />
-              <SummaryStat label="รวม" value={`ยอดรวม ${formatBaht(summary.totalAmount)} บาท`} />
               <SummaryStat
-                label="จ่ายแล้ว"
-                value={`จ่ายแล้ว ${formatBaht(summary.paidAmount)} บาท`}
+                label="ลูกทั้งหมด"
+                value={`${summary.shuttleCount} ลูก`}
+                tone={incompleteShuttleMarks > 0 ? "danger" : undefined}
+                note={
+                  incompleteShuttleMarks > 0
+                    ? `ยังไม่ครบ 4 ติ๊ก เหลืออีก ${missingShuttleMarks} ติ๊ก`
+                    : undefined
+                }
               />
-              <SummaryStat
-                label="ค้างจ่าย"
-                value={`ค้างจ่าย ${formatBaht(summary.unpaidAmount)} บาท`}
-              />
+              <Button
+                className="mobileSummaryToggle"
+                variant="outlined"
+                onClick={() => setMobileSummaryExpanded((expanded) => !expanded)}
+                endIcon={
+                  <ExpandMoreIcon
+                    className={mobileSummaryExpanded ? "expandIconOpen" : undefined}
+                  />
+                }
+              >
+                {mobileSummaryExpanded ? "ซ่อนสรุป" : "ดูสรุปทั้งหมด"}
+              </Button>
+              <Box
+                className={`summarySecondary${mobileSummaryExpanded ? " summarySecondaryOpen" : ""}`}
+              >
+                <SummaryStat label="ผู้เล่น" value={`${summary.playerCount} คน`} />
+                <SummaryStat
+                  label="รวม"
+                  value={`ยอดรวม ${formatBaht(summary.totalAmount)} บาท`}
+                />
+                <SummaryStat
+                  label="จ่ายแล้ว"
+                  value={`จ่ายแล้ว ${formatBaht(summary.paidAmount)} บาท`}
+                />
+                <SummaryStat
+                  label="ค้างจ่าย"
+                  value={`ค้างจ่าย ${formatBaht(summary.unpaidAmount)} บาท`}
+                />
+              </Box>
             </Box>
 
             <Paper className="tablePanel" elevation={0}>
@@ -599,8 +628,15 @@ export default function HomePage() {
               {activeTab === 0 ? (
                 <>
                   <Box className="sheetToolbar">
-                    <Typography fontWeight={800}>ลูก number</Typography>
+                    <TextField
+                      label="ค้นหาชื่อ"
+                      value={searchTerm}
+                      onChange={(event) => setSearchTerm(event.target.value)}
+                      className="searchField"
+                      autoComplete="off"
+                    />
                     <Stack direction="row" spacing={1} alignItems="center">
+                      <Typography fontWeight={800}>ลูก number</Typography>
                       <IconButton
                         aria-label="ลดลูก number"
                         onClick={() => stepCurrentShuttleNumber(-1)}
@@ -633,7 +669,6 @@ export default function HomePage() {
                     onRemovePlayer={removePlayer}
                     onSetPaid={setPaid}
                     onToggleShuttleMark={toggleShuttleMark}
-                    onUpdatePlayer={updatePlayer}
                   />
                 </>
               ) : activeTab === 1 ? (
@@ -648,9 +683,14 @@ export default function HomePage() {
                   paidGroups={visiblePaidGroups}
                   hasSearch={Boolean(normalizedSearch)}
                   onSetPaid={setPaid}
+                  onClearPlayData={clearPlayData}
+                  onResetSession={resetSession}
                 />
               )}
             </Paper>
+            <Typography className="appFooter" component="footer">
+              v{appVersion}
+            </Typography>
           </Stack>
         </Container>
       </Box>
@@ -666,8 +706,7 @@ function ScoreSheet({
   shuttleColumns,
   onRemovePlayer,
   onSetPaid,
-  onToggleShuttleMark,
-  onUpdatePlayer
+  onToggleShuttleMark
 }: {
   activePlayers: Player[];
   allPlayerCount: number;
@@ -677,7 +716,6 @@ function ScoreSheet({
   onRemovePlayer: (id: string) => void;
   onSetPaid: (id: string, paid: boolean) => void;
   onToggleShuttleMark: (id: string, column: number) => void;
-  onUpdatePlayer: (id: string, updater: (player: Player) => Player) => void;
 }) {
   return (
     <TableContainer className="scoreTableWrap">
@@ -711,18 +749,14 @@ function ScoreSheet({
             activePlayers.map((player) => (
               <TableRow key={player.id} hover aria-label={player.name}>
                 <TableCell className="stickyName playerCell">
-                  <TextField
-                    aria-label={`แก้ชื่อ ${player.name}`}
-                    value={player.name}
-                    onChange={(event) =>
-                      onUpdatePlayer(player.id, (current) => ({
-                        ...current,
-                        name: event.target.value
-                      }))
-                    }
-                    variant="standard"
+                  <Button
+                    className="playerNameButton"
+                    aria-label={`ติ๊กลูกให้ ${player.name}`}
+                    onClick={() => onToggleShuttleMark(player.id, getPlayerShuttleCount(player))}
                     fullWidth
-                  />
+                  >
+                    {player.name}
+                  </Button>
                 </TableCell>
                 {shuttleColumns.map((column) => (
                   <TableCell key={column} align="center" className="shuttleCell">
@@ -842,18 +876,37 @@ function PaidSummary({
   players,
   paidGroups,
   hasSearch,
-  onSetPaid
+  onSetPaid,
+  onClearPlayData,
+  onResetSession
 }: {
   players: Player[];
   paidGroups: ReturnType<typeof groupPaidPlayersByDay>;
   hasSearch: boolean;
   onSetPaid: (id: string, paid: boolean) => void;
+  onClearPlayData: () => void;
+  onResetSession: () => void;
 }) {
   return (
     <Box className="paidSummaryPanel" role="region" aria-label="รายการจ่ายแล้ว">
-      <Typography variant="h5" component="h2">
-        สรุปจ่ายแล้ว
-      </Typography>
+      <Box className="paidSummaryHeader">
+        <Typography variant="h5" component="h2">
+          สรุปจ่ายแล้ว
+        </Typography>
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={1} className="paidSummaryActions">
+          <Button color="secondary" variant="outlined" onClick={onClearPlayData}>
+            ล้างข้อมูลเล่น
+          </Button>
+          <Button
+            color="secondary"
+            variant="outlined"
+            startIcon={<RestartAltIcon />}
+            onClick={onResetSession}
+          >
+            รีเซ็ตรอบ
+          </Button>
+        </Stack>
+      </Box>
       {paidGroups.length === 0 ? (
         <Box className="emptyPaidSummary">
           {hasSearch ? "ไม่พบชื่อที่ค้นหา" : "ยังไม่มีคนจ่ายเงินในรอบนี้"}
@@ -907,13 +960,28 @@ function PaidSummary({
   );
 }
 
-function SummaryStat({ label, value }: { label: string; value: string }) {
+function SummaryStat({
+  label,
+  value,
+  note,
+  tone
+}: {
+  label: string;
+  value: string;
+  note?: string;
+  tone?: "danger";
+}) {
   return (
-    <Paper className="summaryStat" elevation={0}>
+    <Paper className={`summaryStat${tone === "danger" ? " summaryStatDanger" : ""}`} elevation={0}>
       <Chip label={label} size="small" />
       <Typography variant="h6" component="p">
         {value}
       </Typography>
+      {note ? (
+        <Typography className="summaryNote" component="p">
+          {note}
+        </Typography>
+      ) : null}
     </Paper>
   );
 }

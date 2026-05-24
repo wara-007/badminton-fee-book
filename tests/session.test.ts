@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_PRICING,
   DEFAULT_SHUTTLE_COLUMNS,
+  calculatePlayersTotal,
   calculatePlayerTotal,
   createPlayer,
+  getBillableShuttleCount,
   groupPaidPlayersByDay,
   groupMatchesByShuttle,
   getVisibleShuttleColumns,
@@ -12,11 +14,24 @@ import {
 } from "@/lib/session";
 
 describe("badminton session calculations", () => {
-  it("calculates each player from base fee plus shuttle count", () => {
+  it("calculates each player from base fee plus checked marks", () => {
     const player = createPlayer("A");
     const total = calculatePlayerTotal({ ...player, shuttleCount: 3 }, DEFAULT_PRICING);
 
     expect(total).toBe(175);
+  });
+
+  it("calculates a group total with four checked marks as one shuttle", () => {
+    const players = [
+      { ...createPlayer("A"), shuttleMarks: [1] },
+      { ...createPlayer("B"), shuttleMarks: [1] },
+      { ...createPlayer("C"), shuttleMarks: [1] },
+      { ...createPlayer("D"), shuttleMarks: [1] },
+      { ...createPlayer("E"), shuttleMarks: [2] }
+    ];
+
+    expect(getBillableShuttleCount(players)).toBe(2);
+    expect(calculatePlayersTotal(players, DEFAULT_PRICING)).toBe(550);
   });
 
   it("calculates each player from the number of checked shuttle marks", () => {
@@ -48,10 +63,27 @@ describe("badminton session calculations", () => {
 
     expect(summarizeSession(players, DEFAULT_PRICING)).toEqual({
       playerCount: 2,
-      shuttleCount: 3,
-      totalAmount: 125,
-      paidAmount: 150,
-      unpaidAmount: 125
+      shuttleCount: 1,
+      totalAmount: 100,
+      paidAmount: 125,
+      unpaidAmount: 100
+    });
+  });
+
+  it("keeps paid players' shuttle marks in the remaining session calculation", () => {
+    const players = [
+      { ...createPlayer("A"), shuttleMarks: [1], paid: true, paidAt: "2026-05-24T02:00:00.000Z" },
+      { ...createPlayer("B"), shuttleMarks: [1], paid: false },
+      { ...createPlayer("C"), shuttleMarks: [1], paid: false },
+      { ...createPlayer("D"), shuttleMarks: [1], paid: false }
+    ];
+
+    expect(summarizeSession(players, DEFAULT_PRICING)).toEqual({
+      playerCount: 4,
+      shuttleCount: 1,
+      totalAmount: 300,
+      paidAmount: 125,
+      unpaidAmount: 300
     });
   });
 
@@ -66,12 +98,12 @@ describe("badminton session calculations", () => {
     expect(groupPaidPlayersByDay(players, DEFAULT_PRICING)).toEqual([
       {
         dateKey: "2026-05-25",
-        totalAmount: 200,
+        totalAmount: 125,
         players: [{ name: "C", shuttleCount: 4, amount: 200 }]
       },
       {
         dateKey: "2026-05-24",
-        totalAmount: 275,
+        totalAmount: 225,
         players: [
           { name: "A", shuttleCount: 2, amount: 150 },
           { name: "B", shuttleCount: 1, amount: 125 }
