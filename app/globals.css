@@ -312,13 +312,37 @@ thead .stickyName {
 }
 
 .playerNameButton {
+  position: relative;
   min-height: 38px;
-  justify-content: flex-start;
+  justify-content: center;
   border: 1px solid transparent;
   color: #1f2933;
   font-weight: 800;
   line-height: 1.2;
-  text-align: left;
+  text-align: center;
+  padding-inline: 36px;
+}
+
+.playerOrder {
+  position: absolute;
+  left: 8px;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1px solid #c7d8d5;
+  border-radius: 999px;
+  color: #0f766e;
+  background: #f0fdfa;
+  font-size: 0.78rem;
+  font-weight: 900;
+  flex-shrink: 0;
+}
+
+.playerNameText {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .playerNameButton:hover {

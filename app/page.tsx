@@ -64,6 +64,7 @@ import {
 } from "@/lib/session";
 import {
   hasSupabaseConfig,
+  loadRemoteNow,
   loadRemoteSession,
   saveRemoteSession,
   subscribeRemoteSession
@@ -163,6 +164,7 @@ export default function HomePage() {
   const [mobileSummaryExpanded, setMobileSummaryExpanded] = useState(false);
   const [editingShuttleNumber, setEditingShuttleNumber] = useState<number | null>(null);
   const [now, setNow] = useState(() => new Date().toISOString());
+  const [clockOffsetMs, setClockOffsetMs] = useState(0);
   const [hydrated, setHydrated] = useState(false);
   const [roomReady, setRoomReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState(hasSupabaseConfig ? "กำลังเชื่อมต่อ" : "โหมดเครื่องนี้");
@@ -174,6 +176,7 @@ export default function HomePage() {
   });
   const lastRemoteSnapshotRef = useRef("");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clockOffsetRef = useRef(0);
 
   useEffect(() => {
     const initialSessionId = getInitialSessionId();
@@ -183,7 +186,39 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(new Date().toISOString()), 60000);
+    let cancelled = false;
+
+    async function refreshClock() {
+      const localNow = new Date();
+      if (!hasSupabaseConfig) {
+        clockOffsetRef.current = 0;
+        setClockOffsetMs(0);
+        setNow(localNow.toISOString());
+        return;
+      }
+
+      const remoteNow = await loadRemoteNow();
+      if (cancelled) {
+        return;
+      }
+      const remoteTime = new Date(remoteNow).getTime();
+      if (Number.isNaN(remoteTime)) {
+        clockOffsetRef.current = 0;
+        setClockOffsetMs(0);
+        setNow(localNow.toISOString());
+        return;
+      }
+      clockOffsetRef.current = remoteTime - Date.now();
+      setClockOffsetMs(clockOffsetRef.current);
+      setNow(remoteNow);
+    }
+
+    void refreshClock();
+    const timer = window.setInterval(() => {
+      const trustedNow = new Date(Date.now() + clockOffsetRef.current).toISOString();
+      setNow(trustedNow);
+      void refreshClock();
+    }, 60000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -369,8 +404,12 @@ export default function HomePage() {
   function updateSession(updater: (current: SessionState) => SessionState) {
     setSession((current) => ({
       ...updater(current),
-      updatedAt: new Date().toISOString()
+      updatedAt: getTrustedNowIso()
     }));
+  }
+
+  function getTrustedNowIso(): string {
+    return new Date(Date.now() + clockOffsetMs).toISOString();
   }
 
   function showDialog(options: AppDialogOptions, mode: "alert" | "confirm") {
@@ -424,9 +463,16 @@ export default function HomePage() {
       return;
     }
 
+    const createdAt = getTrustedNowIso();
     updateSession((current) => ({
       ...current,
-      players: [...current.players, createPlayer(trimmedName)]
+      players: [
+        ...current.players,
+        {
+          ...createPlayer(trimmedName),
+          waitingSince: createdAt
+        }
+      ]
     }));
     setPlayerName("");
     setActiveTab(0);
@@ -462,7 +508,7 @@ export default function HomePage() {
           ...current,
           players: current.players.filter((player) => player.id !== id)
         },
-        createActivity("player-removed", `ลบ ${player.name} ออกจากรอบ`)
+        createActivity("player-removed", `ลบ ${player.name} ออกจากรอบ`, getTrustedNowIso())
       )
     );
   }
@@ -645,7 +691,8 @@ export default function HomePage() {
     const nextShuttleNumber = shouldAdvanceAfterConfirm && confirmedComplete
       ? targetShuttleNumber + 1
       : session.currentShuttleNumber;
-    const restUntil = new Date(Date.now() + REST_MINUTES * 60000).toISOString();
+    const confirmedAt = getTrustedNowIso();
+    const restUntil = addMinutes(confirmedAt, REST_MINUTES);
     const restedPlayers = shouldAdvanceAfterConfirm && confirmedComplete
       ? nextPlayers.map((currentPlayer) =>
         getPlayerShuttleMarks(currentPlayer).includes(targetShuttleNumber)
@@ -674,13 +721,18 @@ export default function HomePage() {
           isRemoving ? "mark-removed" : "mark-added",
           isRemoving
             ? `เอา ${actionPlayerName} ออกจากลูก ${targetShuttleNumber}`
-            : `ติ๊ก ${actionPlayerName} ลงลูก ${targetShuttleNumber}`
+            : `ติ๊ก ${actionPlayerName} ลงลูก ${targetShuttleNumber}`,
+          getTrustedNowIso()
         )
       );
       if (confirmedComplete) {
         nextSession = appendActivity(
           nextSession,
-          createActivity("match-confirmed", `ยืนยันลูก ${targetShuttleNumber}: ${completedPlayerNames}`)
+          createActivity(
+            "match-confirmed",
+            `ยืนยันลูก ${targetShuttleNumber}: ${completedPlayerNames}`,
+            confirmedAt
+          )
         );
       }
       return nextSession;
@@ -718,10 +770,10 @@ export default function HomePage() {
           players: current.players.map((currentPlayer) =>
             currentPlayer.id === playerId
               ? {
-                ...currentPlayer,
-                paid,
-                paidAt: paid ? new Date().toISOString() : undefined
-              }
+                  ...currentPlayer,
+                  paid,
+                  paidAt: paid ? getTrustedNowIso() : undefined
+                }
               : currentPlayer
           )
         },
@@ -729,14 +781,15 @@ export default function HomePage() {
           paid ? "paid" : "unpaid",
           paid
             ? `${player.name} จ่ายแล้ว ${formatBaht(calculatePlayerTotal(player, session.pricing))} บาท`
-            : `ย้าย ${player.name} กลับไปค้างจ่าย`
+            : `ย้าย ${player.name} กลับไปค้างจ่าย`,
+          getTrustedNowIso()
         )
       )
     );
   }
 
   async function copySummary() {
-    const text = exportSessionSummary(session, sessionId, now);
+    const text = exportSessionSummary(session, sessionId, getTrustedNowIso());
     try {
       await window.navigator.clipboard.writeText(text);
       await showAlert({
@@ -1090,7 +1143,7 @@ function ScoreSheet({
               </TableCell>
             </TableRow>
           ) : (
-            activePlayers.map((player) => (
+            activePlayers.map((player, playerIndex) => (
               <TableRow
                 key={player.id}
                 hover
@@ -1104,7 +1157,8 @@ function ScoreSheet({
                     onClick={() => onToggleShuttleMark(player.id, getPlayerShuttleCount(player))}
                     fullWidth
                   >
-                    {player.name}
+                    <span className="playerOrder">{playerIndex + 1}</span>
+                    <span className="playerNameText">{player.name}</span>
                   </Button>
                 </TableCell>
                 {shuttleColumns.map((column) => (
@@ -1473,6 +1527,14 @@ function formatRelativeTime(createdAt: string, nowValue: string): string {
   }
   const diffHours = Math.floor(diffMinutes / 60);
   return `${diffHours} ชั่วโมงที่แล้ว`;
+}
+
+function addMinutes(value: string, minutes: number): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return new Date(Date.now() + minutes * 60000).toISOString();
+  }
+  return new Date(date.getTime() + minutes * 60000).toISOString();
 }
 
 function getInitialSessionId(): string {

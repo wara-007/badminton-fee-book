@@ -56,6 +56,19 @@ export async function saveRemoteSession(sessionId: string, session: SessionState
   }
 }
 
+export async function loadRemoteNow(): Promise<string> {
+  if (!supabase) {
+    return new Date().toISOString();
+  }
+
+  const { data, error } = await supabase.rpc("current_server_time");
+  if (error || typeof data !== "string") {
+    return new Date().toISOString();
+  }
+
+  return data;
+}
+
 export function subscribeRemoteSession(
   sessionId: string,
   onSession: (session: SessionState) => void

@@ -4,6 +4,16 @@ create table if not exists public.badminton_sessions (
   updated_at timestamptz not null default now()
 );
 
+create or replace function public.current_server_time()
+returns timestamptz
+language sql
+stable
+as $$
+  select now();
+$$;
+
+grant execute on function public.current_server_time() to anon;
+
 alter table public.badminton_sessions enable row level security;
 
 drop policy if exists "Public read badminton sessions" on public.badminton_sessions;
