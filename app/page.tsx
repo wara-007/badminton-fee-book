@@ -42,10 +42,10 @@ import {
   createPlayer,
   getPlayerShuttleCount,
   getPlayerShuttleMarks,
-  getVisibleShuttleColumnsForCurrent,
+  getShuttleMarkSummary,
+  getVisibleShuttleColumns,
   groupMatchesByShuttle,
   groupPaidPlayersByDay,
-  hasShuttleMark,
   normalizeSession,
   setPlayerShuttleMarks,
   summarizeSession
@@ -128,6 +128,8 @@ export default function HomePage() {
   const [activeTab, setActiveTab] = useState(0);
   const [settingsExpanded, setSettingsExpanded] = useState(false);
   const [mobileSummaryExpanded, setMobileSummaryExpanded] = useState(false);
+  const [lastTouchedShuttleNumber, setLastTouchedShuttleNumber] = useState<number | null>(null);
+  const [returnShuttleNumber, setReturnShuttleNumber] = useState<number | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [roomReady, setRoomReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState(hasSupabaseConfig ? "กำลังเชื่อมต่อ" : "โหมดเครื่องนี้");
@@ -239,12 +241,22 @@ export default function HomePage() {
     () => summarizeSession(session.players, session.pricing),
     [session.players, session.pricing]
   );
-  const shuttleMarkCount = useMemo(
-    () => session.players.reduce((sum, player) => sum + getPlayerShuttleCount(player), 0),
-    [session.players]
+  const currentShuttleSummary = useMemo(
+    () =>
+      getShuttleMarkSummary(
+        session.players,
+        lastTouchedShuttleNumber ?? session.currentShuttleNumber
+      ),
+    [lastTouchedShuttleNumber, session.currentShuttleNumber, session.players]
   );
-  const incompleteShuttleMarks = shuttleMarkCount % 4;
-  const missingShuttleMarks = incompleteShuttleMarks === 0 ? 0 : 4 - incompleteShuttleMarks;
+  const noteShuttleSummary = useMemo(
+    () =>
+      getShuttleMarkSummary(
+        session.players,
+        lastTouchedShuttleNumber ?? session.currentShuttleNumber
+      ),
+    [lastTouchedShuttleNumber, session.currentShuttleNumber, session.players]
+  );
   const activePlayers = useMemo(
     () => session.players.filter((player) => !player.paid),
     [session.players]
@@ -285,14 +297,11 @@ export default function HomePage() {
     () =>
       Array.from(
         {
-          length: getVisibleShuttleColumnsForCurrent(
-            visibleActivePlayers,
-            session.currentShuttleNumber
-          )
+          length: getVisibleShuttleColumns(visibleActivePlayers)
         },
         (_, index) => index
       ),
-    [session.currentShuttleNumber, visibleActivePlayers]
+    [visibleActivePlayers]
   );
 
   function updateSession(updater: (current: SessionState) => SessionState) {
@@ -389,6 +398,8 @@ export default function HomePage() {
 
   function updateCurrentShuttleNumber(value: string) {
     const numericValue = value === "" ? 0 : Math.max(1, Number(value) || 1);
+    setLastTouchedShuttleNumber(null);
+    setReturnShuttleNumber(null);
     updateSession((current) => ({
       ...current,
       currentShuttleNumber: numericValue
@@ -396,6 +407,8 @@ export default function HomePage() {
   }
 
   function stepCurrentShuttleNumber(step: number) {
+    setLastTouchedShuttleNumber(null);
+    setReturnShuttleNumber(null);
     updateSession((current) => ({
       ...current,
       currentShuttleNumber: Math.max(1, current.currentShuttleNumber + step)
@@ -417,7 +430,11 @@ export default function HomePage() {
 
     const targetShuttleNumber = isRemoving
       ? removedShuttleNumber
-      : Math.max(1, session.currentShuttleNumber);
+      : Math.max(1, lastTouchedShuttleNumber ?? session.currentShuttleNumber);
+    const editingReturnShuttleNumber =
+      isRemoving && targetShuttleNumber !== session.currentShuttleNumber
+        ? (returnShuttleNumber ?? session.currentShuttleNumber)
+        : returnShuttleNumber;
     const nextPlayers = session.players.map((currentPlayer) =>
       currentPlayer.id === playerId
         ? setPlayerShuttleMarks(
@@ -429,33 +446,30 @@ export default function HomePage() {
         : currentPlayer
     );
 
-    const checkedCountForColumn = nextPlayers.reduce(
-      (count, currentPlayer) =>
-        currentPlayer.paid
-          ? count
-          : count +
-            getPlayerShuttleMarks(currentPlayer).filter((mark) => mark === targetShuttleNumber)
-              .length,
-      0
-    );
-    const checkedNamesForColumn = nextPlayers.flatMap((currentPlayer) =>
-      currentPlayer.paid
-        ? []
-        : getPlayerShuttleMarks(currentPlayer)
-            .filter((mark) => mark === targetShuttleNumber)
-            .map(() => currentPlayer.name)
-    );
-    const completedPlayerNames = checkedNamesForColumn.slice(-4).join(", ");
+    const targetShuttleSummary = getShuttleMarkSummary(nextPlayers, targetShuttleNumber);
+    const completedPlayerNames = targetShuttleSummary.names.slice(-4).join(", ");
     const nextShuttleNumber =
       !isRemoving &&
-      checkedCountForColumn >= 4 &&
-      targetShuttleNumber >= session.currentShuttleNumber &&
+      targetShuttleSummary.isComplete &&
+      targetShuttleNumber === session.currentShuttleNumber &&
+      editingReturnShuttleNumber === null &&
       window.confirm(
         `ครบ 4 คนแล้ว: ${completedPlayerNames} ไปที่ลูก ${targetShuttleNumber + 1} ใช่ไหม?`
       )
         ? targetShuttleNumber + 1
-        : session.currentShuttleNumber;
+        : targetShuttleSummary.isComplete && editingReturnShuttleNumber !== null
+          ? editingReturnShuttleNumber
+          : isRemoving
+            ? targetShuttleNumber
+            : session.currentShuttleNumber;
 
+    const shouldKeepEditingTouchedShuttle =
+      !targetShuttleSummary.isComplete &&
+      (isRemoving || editingReturnShuttleNumber !== null);
+    setLastTouchedShuttleNumber(
+      shouldKeepEditingTouchedShuttle ? targetShuttleNumber : null
+    );
+    setReturnShuttleNumber(shouldKeepEditingTouchedShuttle ? editingReturnShuttleNumber : null);
     updateSession((current) => ({
       ...current,
       players: nextPlayers,
@@ -574,10 +588,10 @@ export default function HomePage() {
               <SummaryStat
                 label="ลูกทั้งหมด"
                 value={`${summary.shuttleCount} ลูก`}
-                tone={incompleteShuttleMarks > 0 ? "danger" : undefined}
+                tone={noteShuttleSummary.missingCount > 0 ? "danger" : undefined}
                 note={
-                  incompleteShuttleMarks > 0
-                    ? `ยังไม่ครบ 4 ติ๊ก เหลืออีก ${missingShuttleMarks} ติ๊ก`
+                  noteShuttleSummary.missingCount > 0
+                    ? `ลูกที่ ${noteShuttleSummary.shuttleNumber} ยังไม่ครบ 4 ติ๊ก เหลืออีก ${noteShuttleSummary.missingCount} ติ๊ก`
                     : undefined
                 }
               />
@@ -660,6 +674,7 @@ export default function HomePage() {
                       </IconButton>
                     </Stack>
                   </Box>
+                  <CurrentShuttleTracker summary={currentShuttleSummary} />
                   <ScoreSheet
                     activePlayers={visibleActivePlayers}
                     allPlayerCount={session.players.length}
@@ -817,6 +832,35 @@ function ScoreSheet({
         </TableBody>
       </Table>
     </TableContainer>
+  );
+}
+
+function CurrentShuttleTracker({
+  summary
+}: {
+  summary: ReturnType<typeof getShuttleMarkSummary>;
+}) {
+  const statusText =
+    summary.count === 0
+      ? "ยังไม่ได้ติ๊ก"
+      : summary.isComplete
+        ? "ครบ 4 แล้ว"
+        : `เหลืออีก ${summary.missingCount} ติ๊ก`;
+
+  return (
+    <Box className="currentShuttleTracker">
+      <Box>
+        <Typography fontWeight={800}>กำลังเลือกลูก {summary.shuttleNumber}</Typography>
+        <Typography color="text.secondary" className="currentShuttleNames">
+          {summary.names.length > 0 ? summary.names.join(", ") : "ยังไม่มีชื่อที่ติ๊ก"}
+        </Typography>
+      </Box>
+      <Chip
+        label={`${summary.count}/4 ${statusText}`}
+        color={summary.isComplete ? "primary" : "default"}
+        variant={summary.isComplete ? "filled" : "outlined"}
+      />
+    </Box>
   );
 }
 

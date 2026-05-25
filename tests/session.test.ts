@@ -6,6 +6,7 @@ import {
   calculatePlayerTotal,
   createPlayer,
   getBillableShuttleCount,
+  getShuttleMarkSummary,
   groupPaidPlayersByDay,
   groupMatchesByShuttle,
   getVisibleShuttleColumns,
@@ -51,8 +52,32 @@ describe("badminton session calculations", () => {
     expect(getVisibleShuttleColumns([{ ...createPlayer("A"), shuttleCount: 10 }])).toBe(11);
   });
 
-  it("keeps columns visible through the current shuttle number", () => {
-    expect(getVisibleShuttleColumnsForCurrent([], 12)).toBe(12);
+  it("does not expand visible columns from the current shuttle number alone", () => {
+    expect(getVisibleShuttleColumnsForCurrent([], 24)).toBe(DEFAULT_SHUTTLE_COLUMNS);
+  });
+
+  it("summarizes marks by shuttle number and keeps duplicate names", () => {
+    const players = [
+      { ...createPlayer("A"), shuttleMarks: [7] },
+      { ...createPlayer("B"), shuttleMarks: [7, 7] },
+      { ...createPlayer("C"), shuttleMarks: [7] },
+      { ...createPlayer("D"), shuttleMarks: [24] }
+    ];
+
+    expect(getShuttleMarkSummary(players, 7)).toEqual({
+      shuttleNumber: 7,
+      count: 4,
+      names: ["A", "B", "B", "C"],
+      isComplete: true,
+      missingCount: 0
+    });
+    expect(getShuttleMarkSummary(players, 24)).toEqual({
+      shuttleNumber: 24,
+      count: 1,
+      names: ["D"],
+      isComplete: false,
+      missingCount: 3
+    });
   });
 
   it("summarizes unpaid total, paid amount, and remaining amount", () => {

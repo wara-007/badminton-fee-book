@@ -110,6 +110,23 @@ body {
   border-radius: 8px;
 }
 
+.currentShuttleTracker {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #e7e2d8;
+  background: #f7fbfa;
+}
+
+.currentShuttleNames {
+  word-break: break-word;
+}
+
 .syncBar {
   margin-top: 12px;
   flex-wrap: wrap;
@@ -437,6 +454,11 @@ thead .stickyName {
   }
 
   .sheetToolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .currentShuttleTracker {
     align-items: stretch;
     flex-direction: column;
   }

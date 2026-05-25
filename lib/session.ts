@@ -44,6 +44,14 @@ export type MatchSummary = {
   playerNames: string[];
 };
 
+export type ShuttleMarkSummary = {
+  shuttleNumber: number;
+  count: number;
+  names: string[];
+  isComplete: boolean;
+  missingCount: number;
+};
+
 export const DEFAULT_PRICING: Pricing = {
   baseFee: 100,
   shuttleFee: 25
@@ -119,6 +127,28 @@ export function getBillableShuttleCount(players: Player[]): number {
   return Math.ceil(markCount / 4);
 }
 
+export function getShuttleMarkSummary(
+  players: Player[],
+  shuttleNumber: number
+): ShuttleMarkSummary {
+  const normalizedShuttleNumber = Math.max(1, Number(shuttleNumber) || 1);
+  const names = players.flatMap((player) =>
+    getPlayerShuttleMarks(player)
+      .filter((mark) => mark === normalizedShuttleNumber)
+      .map(() => player.name)
+  );
+  const count = names.length;
+  const remainder = count % 4;
+
+  return {
+    shuttleNumber: normalizedShuttleNumber,
+    count,
+    names,
+    isComplete: count > 0 && remainder === 0,
+    missingCount: remainder === 0 ? 0 : 4 - remainder
+  };
+}
+
 export function hasShuttleMark(player: Player, shuttleNumber: number): boolean {
   return getPlayerShuttleMarks(player).includes(shuttleNumber);
 }
@@ -139,7 +169,7 @@ export function getVisibleShuttleColumnsForCurrent(
   players: Player[],
   currentShuttleNumber: number
 ): number {
-  return Math.max(getVisibleShuttleColumns(players), Math.max(1, currentShuttleNumber));
+  return getVisibleShuttleColumns(players);
 }
 
 export function summarizeSession(players: Player[], pricing: Pricing): SessionSummary {

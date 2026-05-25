@@ -67,7 +67,7 @@ describe("Badminton fee book page", () => {
   it("shows the app version in the footer", () => {
     render(<HomePage />);
 
-    expect(screen.getByText("v1.2.0")).toBeInTheDocument();
+    expect(screen.getByText("v1.3.0")).toBeInTheDocument();
   });
 
   it("ticks the next shuttle slot when clicking a player name", async () => {
@@ -111,7 +111,7 @@ describe("Badminton fee book page", () => {
       })
     );
 
-    expect(screen.getByText("ยังไม่ครบ 4 ติ๊ก เหลืออีก 2 ติ๊ก")).toBeInTheDocument();
+    expect(screen.getByText("ลูกที่ 1 ยังไม่ครบ 4 ติ๊ก เหลืออีก 2 ติ๊ก")).toBeInTheDocument();
 
     await user.click(
       within(screen.getByRole("row", { name: /C/ })).getByRole("checkbox", {
@@ -125,6 +125,108 @@ describe("Badminton fee book page", () => {
     );
 
     expect(screen.queryByText(/ยังไม่ครบ 4 ติ๊ก/)).not.toBeInTheDocument();
+  });
+
+  it("keeps ten shuttle columns by default and expands after a player fills the last slot", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    const user = userEvent.setup();
+
+    render(<HomePage />);
+
+    await user.type(screen.getByLabelText("ชื่อผู้เล่น"), "A");
+    await user.click(screen.getByRole("button", { name: "เพิ่มผู้เล่น" }));
+
+    expect(screen.getByRole("checkbox", { name: "A ช่องที่ 10" })).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "A ช่องที่ 11" })).not.toBeInTheDocument();
+
+    const row = screen.getByRole("row", { name: /A/ });
+    for (let markIndex = 0; markIndex < 10; markIndex += 1) {
+      await user.click(within(row).getByRole("button", { name: "ติ๊กลูกให้ A" }));
+    }
+
+    expect(screen.getByRole("checkbox", { name: "A ช่องที่ 11" })).toBeInTheDocument();
+  });
+
+  it("does not expand shuttle columns from the current shuttle number alone", async () => {
+    const user = userEvent.setup();
+
+    render(<HomePage />);
+
+    await user.type(screen.getByLabelText("ชื่อผู้เล่น"), "A");
+    await user.click(screen.getByRole("button", { name: "เพิ่มผู้เล่น" }));
+    await user.clear(screen.getByLabelText("ลูก number"));
+    await user.type(screen.getByLabelText("ลูก number"), "24");
+
+    expect(screen.getByLabelText("ลูก number")).toHaveValue(24);
+    expect(screen.getByRole("checkbox", { name: "A ช่องที่ 10" })).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "A ช่องที่ 24" })).not.toBeInTheDocument();
+  });
+
+  it("shows the names already picked for the current shuttle", async () => {
+    const user = userEvent.setup();
+
+    render(<HomePage />);
+
+    for (const name of ["A", "B", "C"]) {
+      await user.type(screen.getByLabelText("ชื่อผู้เล่น"), name);
+      await user.click(screen.getByRole("button", { name: "เพิ่มผู้เล่น" }));
+      await user.click(
+        within(screen.getByRole("row", { name: new RegExp(name) })).getByRole("button", {
+          name: `ติ๊กลูกให้ ${name}`
+        })
+      );
+    }
+
+    expect(screen.getByText("กำลังเลือกลูก 1")).toBeInTheDocument();
+    expect(screen.getByText("A, B, C")).toBeInTheDocument();
+    expect(screen.getByText("3/4 เหลืออีก 1 ติ๊ก")).toBeInTheDocument();
+  });
+
+  it("keeps the current shuttle number when editing an older shuttle mark", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const user = userEvent.setup();
+
+    render(<HomePage />);
+
+    for (const name of ["A", "B", "C", "D"]) {
+      await user.type(screen.getByLabelText("ชื่อผู้เล่น"), name);
+      await user.click(screen.getByRole("button", { name: "เพิ่มผู้เล่น" }));
+    }
+
+    await user.clear(screen.getByLabelText("ลูก number"));
+    await user.type(screen.getByLabelText("ลูก number"), "7");
+
+    for (const name of ["A", "B", "C", "D"]) {
+      await user.click(
+        within(screen.getByRole("row", { name: new RegExp(name) })).getByRole("button", {
+          name: `ติ๊กลูกให้ ${name}`
+        })
+      );
+    }
+
+    await user.clear(screen.getByLabelText("ลูก number"));
+    await user.type(screen.getByLabelText("ลูก number"), "24");
+    await user.click(
+      within(screen.getByRole("row", { name: /A/ })).getByRole("checkbox", {
+        name: "A ช่องที่ 1 ลูก 7"
+      })
+    );
+
+    expect(screen.getByLabelText("ลูก number")).toHaveValue(7);
+    expect(screen.getByText("ลูกที่ 7 ยังไม่ครบ 4 ติ๊ก เหลืออีก 1 ติ๊ก")).toBeInTheDocument();
+    expect(screen.getByText("กำลังเลือกลูก 7")).toBeInTheDocument();
+    expect(screen.getByText("B, C, D")).toBeInTheDocument();
+
+    await user.click(
+      within(screen.getByRole("row", { name: /A/ })).getByRole("button", {
+        name: "ติ๊กลูกให้ A"
+      })
+    );
+
+    expect(screen.getByLabelText("ลูก number")).toHaveValue(24);
+    expect(screen.getByRole("checkbox", { name: "A ช่องที่ 1 ลูก 7" })).toBeChecked();
+    expect(screen.getByText("กำลังเลือกลูก 24")).toBeInTheDocument();
+    expect(screen.getByText("ยังไม่มีชื่อที่ติ๊ก")).toBeInTheDocument();
   });
 
   it("advances the current shuttle number after four players are checked on the same shuttle", async () => {
