@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import HomePage from "@/app/page";
@@ -89,6 +89,139 @@ describe("Badminton fee book page", () => {
     expect(within(row).getByLabelText("A จำนวนลูก 2")).toBeInTheDocument();
   });
 
+  it("colors player rows by waiting time after signup and rest time", async () => {
+    const now = Date.now();
+    localStorage.setItem(
+      "badminton-fee-book.session.main",
+      JSON.stringify({
+        players: [
+          {
+            id: "warning",
+            name: "Warning",
+            shuttleCount: 0,
+            shuttleMarks: [],
+            paid: false,
+            waitingSince: new Date(now - 16 * 60 * 1000).toISOString()
+          },
+          {
+            id: "danger",
+            name: "Danger",
+            shuttleCount: 0,
+            shuttleMarks: [],
+            paid: false,
+            waitingSince: new Date(now - 21 * 60 * 1000).toISOString()
+          },
+          {
+            id: "resting",
+            name: "Resting",
+            shuttleCount: 0,
+            shuttleMarks: [],
+            paid: false,
+            waitingSince: new Date(now - 60 * 60 * 1000).toISOString(),
+            restUntil: new Date(now + 5 * 60 * 1000).toISOString()
+          }
+        ],
+        pricing: { baseFee: 100, shuttleFee: 25 },
+        currentShuttleNumber: 1,
+        updatedAt: new Date(now).toISOString()
+      })
+    );
+
+    render(<HomePage />);
+
+    expect(await screen.findByRole("row", { name: /Warning/ })).toHaveClass("waitingWarningRow");
+    expect(screen.getByRole("row", { name: /Danger/ })).toHaveClass("waitingDangerRow");
+    expect(screen.getByRole("row", { name: /Resting/ })).not.toHaveClass("waitingWarningRow");
+    expect(screen.getByRole("row", { name: /Resting/ })).not.toHaveClass("waitingDangerRow");
+  });
+
+  it("starts a rest period for confirmed players before counting waiting time again", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const user = userEvent.setup();
+
+    render(<HomePage />);
+
+    for (const name of ["A", "B", "C", "D"]) {
+      await user.type(screen.getByLabelText("ชื่อผู้เล่น"), name);
+      await user.click(screen.getByRole("button", { name: "เพิ่มผู้เล่น" }));
+    }
+
+    for (const name of ["A", "B", "C", "D"]) {
+      await user.click(
+        within(screen.getByRole("row", { name: new RegExp(name) })).getByRole("button", {
+          name: `ติ๊กลูกให้ ${name}`
+        })
+      );
+    }
+
+    await waitFor(() => {
+      const stored = JSON.parse(localStorage.getItem("badminton-fee-book.session.main") ?? "{}");
+      expect(stored.players).toHaveLength(4);
+      stored.players.forEach((player: { restUntil?: string; waitingSince?: string }) => {
+        expect(player.restUntil).toEqual(expect.any(String));
+        expect(player.waitingSince).toBe(player.restUntil);
+        expect(new Date(player.restUntil ?? 0).getTime()).toBeGreaterThan(Date.now());
+      });
+    });
+
+    for (const name of ["A", "B", "C", "D"]) {
+      expect(screen.getByRole("row", { name: new RegExp(name) })).not.toHaveClass(
+        "waitingWarningRow"
+      );
+      expect(screen.getByRole("row", { name: new RegExp(name) })).not.toHaveClass(
+        "waitingDangerRow"
+      );
+    }
+  });
+
+  it("shows priority players and recent activity after marking a shuttle", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    const user = userEvent.setup();
+    const now = Date.now();
+    localStorage.setItem(
+      "badminton-fee-book.session.main",
+      JSON.stringify({
+        players: [
+          {
+            id: "a",
+            name: "A",
+            shuttleCount: 0,
+            shuttleMarks: [],
+            paid: false,
+            waitingSince: new Date(now - 21 * 60 * 1000).toISOString()
+          },
+          {
+            id: "b",
+            name: "B",
+            shuttleCount: 0,
+            shuttleMarks: [],
+            paid: false,
+            waitingSince: new Date(now).toISOString()
+          }
+        ],
+        pricing: { baseFee: 100, shuttleFee: 25 },
+        currentShuttleNumber: 1,
+        activityLog: [],
+        updatedAt: new Date(now).toISOString()
+      })
+    );
+
+    render(<HomePage />);
+
+    expect(await screen.findByText("ควรจัดก่อน")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "คนที่ควรได้ลงก่อน" })).toHaveTextContent("A");
+
+    await user.click(
+      within(screen.getByRole("row", { name: /B/ })).getByRole("button", {
+        name: "ติ๊กลูกให้ B"
+      })
+    );
+
+    expect(screen.getByRole("region", { name: "ประวัติการแก้ไขล่าสุด" })).toHaveTextContent(
+      "ติ๊ก B ลงลูก 1"
+    );
+  });
+
   it("warns when the checked shuttle marks are not complete sets of four", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     const user = userEvent.setup();
@@ -128,7 +261,6 @@ describe("Badminton fee book page", () => {
   });
 
   it("keeps ten shuttle columns by default and expands after a player fills the last slot", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(false);
     const user = userEvent.setup();
 
     render(<HomePage />);
@@ -140,7 +272,9 @@ describe("Badminton fee book page", () => {
     expect(screen.queryByRole("checkbox", { name: "A ช่องที่ 11" })).not.toBeInTheDocument();
 
     const row = screen.getByRole("row", { name: /A/ });
-    for (let markIndex = 0; markIndex < 10; markIndex += 1) {
+    for (let markIndex = 1; markIndex <= 10; markIndex += 1) {
+      await user.clear(screen.getByLabelText("ลูก number"));
+      await user.type(screen.getByLabelText("ลูก number"), String(markIndex));
       await user.click(within(row).getByRole("button", { name: "ติ๊กลูกให้ A" }));
     }
 
@@ -212,7 +346,7 @@ describe("Badminton fee book page", () => {
       })
     );
 
-    expect(screen.getByLabelText("ลูก number")).toHaveValue(7);
+    expect(screen.getByLabelText("ลูก number")).toHaveValue(24);
     expect(screen.getByText("ลูกที่ 7 ยังไม่ครบ 4 ติ๊ก เหลืออีก 1 ติ๊ก")).toBeInTheDocument();
     expect(screen.getByText("กำลังเลือกลูก 7")).toBeInTheDocument();
     expect(screen.getByText("B, C, D")).toBeInTheDocument();
@@ -392,6 +526,106 @@ describe("Badminton fee book page", () => {
     expect(within(matchSummary).getByText("a c e f")).toBeInTheDocument();
     expect(within(matchSummary).getByText("ลูกที่ 3")).toBeInTheDocument();
     expect(within(matchSummary).getByText("a b b c")).toBeInTheDocument();
+  });
+
+  it("marks match rows and checked shuttle buttons when a shuttle has more than four names", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(
+      "badminton-fee-book.session.main",
+      JSON.stringify({
+        players: ["a", "b", "c", "d", "e"].map((name, index) => ({
+          id: `${index}`,
+          name,
+          shuttleCount: 1,
+          shuttleMarks: [1],
+          paid: false
+        })),
+        pricing: { baseFee: 100, shuttleFee: 25 },
+        currentShuttleNumber: 1,
+        updatedAt: "2026-05-25T00:00:00.000Z"
+      })
+    );
+
+    render(<HomePage />);
+
+    await screen.findByRole("row", { name: /a/ });
+
+    await user.click(screen.getByRole("tab", { name: /Match/ }));
+
+    const matchSummary = screen.getByRole("region", { name: "รายการ Match" });
+    expect(within(matchSummary).getByText("ลูกที่ 1")).toBeInTheDocument();
+    expect(within(matchSummary).getByText("a b c d e (5/4 เกิน)")).toBeInTheDocument();
+    expect(within(matchSummary).queryByText("ลูกที่ 1 ชุด 2")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: /กำลังตี/ }));
+
+    expect(
+      within(screen.getByRole("row", { name: /a/ }))
+        .getByRole("checkbox", { name: "a ช่องที่ 1 ลูก 1" })
+        .parentElement?.querySelector(".shuttleNumberIcon")
+    ).toHaveClass("shuttleNumberIconDanger");
+  });
+
+  it("marks incomplete match rows and checked shuttle buttons with a warning color", async () => {
+    const user = userEvent.setup();
+
+    render(<HomePage />);
+
+    for (const name of ["a", "b", "c"]) {
+      await user.type(screen.getByLabelText("ชื่อผู้เล่น"), name);
+      await user.click(screen.getByRole("button", { name: "เพิ่มผู้เล่น" }));
+      await user.click(
+        within(screen.getByRole("row", { name: new RegExp(name) })).getByRole("button", {
+          name: `ติ๊กลูกให้ ${name}`
+        })
+      );
+    }
+
+    await user.click(screen.getByRole("tab", { name: /Match/ }));
+
+    const matchSummary = screen.getByRole("region", { name: "รายการ Match" });
+    expect(within(matchSummary).getByText("a b c (3/4 ยังไม่ครบ)")).toBeInTheDocument();
+    expect(within(matchSummary).getByText("ลูกที่ 1").closest(".matchItem")).toHaveClass(
+      "matchItemWarning"
+    );
+
+    await user.click(screen.getByRole("tab", { name: /กำลังตี/ }));
+
+    expect(
+      within(screen.getByRole("row", { name: /a/ }))
+        .getByRole("checkbox", { name: "a ช่องที่ 1 ลูก 1" })
+        .parentElement?.querySelector(".shuttleNumberIcon")
+    ).toHaveClass("shuttleNumberIconWarning");
+  });
+
+  it("prevents adding a fifth mark to the same shuttle number", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => undefined);
+    const user = userEvent.setup();
+
+    render(<HomePage />);
+
+    for (const name of ["a", "b", "c", "d", "e"]) {
+      await user.type(screen.getByLabelText("ชื่อผู้เล่น"), name);
+      await user.click(screen.getByRole("button", { name: "เพิ่มผู้เล่น" }));
+    }
+
+    for (const name of ["a", "b", "c", "d"]) {
+      await user.click(
+        within(screen.getByRole("row", { name: new RegExp(name) })).getByRole("button", {
+          name: `ติ๊กลูกให้ ${name}`
+        })
+      );
+    }
+
+    await user.click(
+      within(screen.getByRole("row", { name: /e/ })).getByRole("button", {
+        name: "ติ๊กลูกให้ e"
+      })
+    );
+
+    expect(alertSpy).toHaveBeenCalledWith("ลูกที่ 1 ครบ 4 ติ๊กแล้ว ถ้าจะเปลี่ยนให้เอาออกก่อน");
+    expect(within(screen.getByRole("row", { name: /e/ })).getByLabelText("e จำนวนลูก 0")).toBeInTheDocument();
   });
 
   it("filters match rows by player name", async () => {

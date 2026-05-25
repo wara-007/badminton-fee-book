@@ -2,10 +2,16 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_PRICING,
   DEFAULT_SHUTTLE_COLUMNS,
+  appendActivity,
   calculatePlayersTotal,
   calculatePlayerTotal,
+  createActivity,
+  createInitialSession,
   createPlayer,
+  exportSessionSummary,
   getBillableShuttleCount,
+  getPriorityPlayers,
+  getPlayerWaitStatus,
   getShuttleMarkSummary,
   groupPaidPlayersByDay,
   groupMatchesByShuttle,
@@ -33,6 +39,77 @@ describe("badminton session calculations", () => {
 
     expect(getBillableShuttleCount(players)).toBe(2);
     expect(calculatePlayersTotal(players, DEFAULT_PRICING)).toBe(550);
+  });
+
+  it("calculates waiting status after signup and after rest time ends", () => {
+    const player = {
+      ...createPlayer("A"),
+      waitingSince: "2026-05-25T10:00:00.000Z"
+    };
+
+    expect(getPlayerWaitStatus(player, "2026-05-25T10:14:59.000Z")).toBe("normal");
+    expect(getPlayerWaitStatus(player, "2026-05-25T10:15:00.000Z")).toBe("warning");
+    expect(getPlayerWaitStatus(player, "2026-05-25T10:20:00.000Z")).toBe("danger");
+
+    const restedPlayer = {
+      ...player,
+      restUntil: "2026-05-25T10:20:00.000Z"
+    };
+
+    expect(getPlayerWaitStatus(restedPlayer, "2026-05-25T10:19:59.000Z")).toBe("normal");
+    expect(getPlayerWaitStatus(restedPlayer, "2026-05-25T10:34:59.000Z")).toBe("normal");
+    expect(getPlayerWaitStatus(restedPlayer, "2026-05-25T10:35:00.000Z")).toBe("warning");
+    expect(getPlayerWaitStatus(restedPlayer, "2026-05-25T10:40:00.000Z")).toBe("danger");
+  });
+
+  it("keeps latest activity entries first and limited", () => {
+    const session = createInitialSession();
+    const withActivities = Array.from({ length: 22 }, (_, index) => index).reduce(
+      (current, index) =>
+        appendActivity(
+          current,
+          createActivity("mark-added", `รายการ ${index}`, `2026-05-25T10:${String(index).padStart(2, "0")}:00.000Z`)
+        ),
+      session
+    );
+
+    expect(withActivities.activityLog).toHaveLength(20);
+    expect(withActivities.activityLog[0].message).toBe("รายการ 21");
+    expect(withActivities.activityLog.at(-1)?.message).toBe("รายการ 2");
+  });
+
+  it("returns priority players with danger before warning", () => {
+    const players = [
+      { ...createPlayer("ปกติ"), waitingSince: "2026-05-25T10:18:00.000Z" },
+      { ...createPlayer("แดง"), waitingSince: "2026-05-25T10:00:00.000Z" },
+      { ...createPlayer("เหลือง"), waitingSince: "2026-05-25T10:04:00.000Z" }
+    ];
+
+    expect(getPriorityPlayers(players, "2026-05-25T10:20:00.000Z").map((player) => player.name)).toEqual([
+      "แดง",
+      "เหลือง"
+    ]);
+  });
+
+  it("exports a LINE-friendly session summary", () => {
+    const players = [
+      { ...createPlayer("A"), id: "a", shuttleMarks: [1], paid: true },
+      { ...createPlayer("B"), id: "b", shuttleMarks: [], paid: false }
+    ];
+
+    expect(
+      exportSessionSummary(
+        {
+          players,
+          pricing: DEFAULT_PRICING,
+          currentShuttleNumber: 1,
+          activityLog: [],
+          updatedAt: "2026-05-25T10:00:00.000Z"
+        },
+        "2026-05-25",
+        "2026-05-25T10:00:00.000Z"
+      )
+    ).toContain("A 125 จ่ายแล้ว\nB 100 ค้าง");
   });
 
   it("calculates each player from the number of checked shuttle marks", () => {
@@ -148,9 +225,35 @@ describe("badminton session calculations", () => {
     ];
 
     expect(groupMatchesByShuttle(players)).toEqual([
-      { shuttleNumber: 1, playerNames: ["a", "b", "c", "d"] },
-      { shuttleNumber: 2, playerNames: ["a", "c", "e", "f"] },
-      { shuttleNumber: 3, playerNames: ["a", "b", "b", "c"] }
+      { shuttleNumber: 1, playerNames: ["a", "b", "c", "d"], isIncomplete: false, isOverLimit: false },
+      { shuttleNumber: 2, playerNames: ["a", "c", "e", "f"], isIncomplete: false, isOverLimit: false },
+      { shuttleNumber: 3, playerNames: ["a", "b", "b", "c"], isIncomplete: false, isOverLimit: false }
+    ]);
+  });
+
+  it("marks match groups with fewer than four marks as incomplete", () => {
+    const players = [
+      { ...createPlayer("a"), shuttleMarks: [1] },
+      { ...createPlayer("b"), shuttleMarks: [1] },
+      { ...createPlayer("c"), shuttleMarks: [1] }
+    ];
+
+    expect(groupMatchesByShuttle(players)).toEqual([
+      { shuttleNumber: 1, playerNames: ["a", "b", "c"], isIncomplete: true, isOverLimit: false }
+    ]);
+  });
+
+  it("marks match groups with more than four players as over limit", () => {
+    const players = [
+      { ...createPlayer("a"), shuttleMarks: [1] },
+      { ...createPlayer("b"), shuttleMarks: [1] },
+      { ...createPlayer("c"), shuttleMarks: [1] },
+      { ...createPlayer("d"), shuttleMarks: [1] },
+      { ...createPlayer("e"), shuttleMarks: [1] }
+    ];
+
+    expect(groupMatchesByShuttle(players)).toEqual([
+      { shuttleNumber: 1, playerNames: ["a", "b", "c", "d", "e"], isIncomplete: false, isOverLimit: true }
     ]);
   });
 });

@@ -127,6 +127,31 @@ body {
   word-break: break-word;
 }
 
+.priorityPanel,
+.activityPanel {
+  display: grid;
+  gap: 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #e7e2d8;
+  background: #ffffff;
+}
+
+.activityPanel {
+  border-top: 1px solid #e7e2d8;
+  border-bottom: 0;
+}
+
+.activityItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #eee7dc;
+  border-radius: 8px;
+  background: #fbfaf7;
+}
+
 .syncBar {
   margin-top: 12px;
   flex-wrap: wrap;
@@ -251,8 +276,36 @@ thead .stickyName {
   background: #0f766e;
 }
 
+.shuttleNumberIconDanger {
+  border-color: #b91c1c;
+  color: #ffffff;
+  background: #dc2626;
+}
+
+.shuttleNumberIconWarning {
+  border-color: #b45309;
+  color: #ffffff;
+  background: #f59e0b;
+}
+
 .playerCell {
   padding: 6px 8px;
+}
+
+.waitingWarningRow {
+  background: #fffbeb;
+}
+
+.waitingWarningRow:hover {
+  background: #fef3c7;
+}
+
+.waitingDangerRow {
+  background: #fff1f2;
+}
+
+.waitingDangerRow:hover {
+  background: #ffe4e6;
 }
 
 .playerNameButton {
@@ -329,6 +382,24 @@ thead .stickyName {
   padding: 14px 16px;
   border: 1px solid #e7e2d8;
   border-radius: 8px;
+}
+
+.matchItemDanger {
+  border-color: #fca5a5;
+  background: #fff7f7;
+}
+
+.matchItemDanger .MuiTypography-root {
+  color: #991b1b;
+}
+
+.matchItemWarning {
+  border-color: #fbbf24;
+  background: #fffbeb;
+}
+
+.matchItemWarning .MuiTypography-root {
+  color: #92400e;
 }
 
 .matchNames {

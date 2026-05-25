@@ -36,12 +36,18 @@ import {
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   Player,
+  REST_MINUTES,
   SessionState,
+  appendActivity,
   calculatePlayerTotal,
+  createActivity,
   createInitialSession,
   createPlayer,
+  exportSessionSummary,
   getPlayerShuttleCount,
   getPlayerShuttleMarks,
+  getPlayerWaitStatus,
+  getPriorityPlayers,
   getShuttleMarkSummary,
   getVisibleShuttleColumns,
   groupMatchesByShuttle,
@@ -128,8 +134,8 @@ export default function HomePage() {
   const [activeTab, setActiveTab] = useState(0);
   const [settingsExpanded, setSettingsExpanded] = useState(false);
   const [mobileSummaryExpanded, setMobileSummaryExpanded] = useState(false);
-  const [lastTouchedShuttleNumber, setLastTouchedShuttleNumber] = useState<number | null>(null);
-  const [returnShuttleNumber, setReturnShuttleNumber] = useState<number | null>(null);
+  const [editingShuttleNumber, setEditingShuttleNumber] = useState<number | null>(null);
+  const [now, setNow] = useState(() => new Date().toISOString());
   const [hydrated, setHydrated] = useState(false);
   const [roomReady, setRoomReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState(hasSupabaseConfig ? "กำลังเชื่อมต่อ" : "โหมดเครื่องนี้");
@@ -141,6 +147,11 @@ export default function HomePage() {
     setSessionId(initialSessionId);
     setRoomDraft(initialSessionId);
     setRoomReady(true);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date().toISOString()), 60000);
+    return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -245,17 +256,17 @@ export default function HomePage() {
     () =>
       getShuttleMarkSummary(
         session.players,
-        lastTouchedShuttleNumber ?? session.currentShuttleNumber
+        editingShuttleNumber ?? session.currentShuttleNumber
       ),
-    [lastTouchedShuttleNumber, session.currentShuttleNumber, session.players]
+    [editingShuttleNumber, session.currentShuttleNumber, session.players]
   );
   const noteShuttleSummary = useMemo(
     () =>
       getShuttleMarkSummary(
         session.players,
-        lastTouchedShuttleNumber ?? session.currentShuttleNumber
+        editingShuttleNumber ?? session.currentShuttleNumber
       ),
-    [lastTouchedShuttleNumber, session.currentShuttleNumber, session.players]
+    [editingShuttleNumber, session.currentShuttleNumber, session.players]
   );
   const activePlayers = useMemo(
     () => session.players.filter((player) => !player.paid),
@@ -275,6 +286,20 @@ export default function HomePage() {
     [session.players, session.pricing]
   );
   const matchGroups = useMemo(() => groupMatchesByShuttle(session.players), [session.players]);
+  const overLimitShuttleNumbers = useMemo(
+    () =>
+      new Set(
+        matchGroups.filter((group) => group.isOverLimit).map((group) => group.shuttleNumber)
+      ),
+    [matchGroups]
+  );
+  const incompleteShuttleNumbers = useMemo(
+    () =>
+      new Set(
+        matchGroups.filter((group) => group.isIncomplete).map((group) => group.shuttleNumber)
+      ),
+    [matchGroups]
+  );
   const visiblePaidGroups = useMemo(() => {
     if (!normalizedSearch) {
       return paidGroups;
@@ -293,6 +318,10 @@ export default function HomePage() {
         totalAmount: group.players.reduce((sum, player) => sum + player.amount, 0)
       }));
   }, [paidGroups, normalizedSearch]);
+  const priorityPlayers = useMemo(
+    () => getPriorityPlayers(activePlayers, now),
+    [activePlayers, now]
+  );
   const shuttleColumns = useMemo(
     () =>
       Array.from(
@@ -347,10 +376,15 @@ export default function HomePage() {
       return;
     }
 
-    updateSession((current) => ({
-      ...current,
-      players: current.players.filter((player) => player.id !== id)
-    }));
+    updateSession((current) =>
+      appendActivity(
+        {
+          ...current,
+          players: current.players.filter((player) => player.id !== id)
+        },
+        createActivity("player-removed", `ลบ ${player.name} ออกจากรอบ`)
+      )
+    );
   }
 
   function resetSession() {
@@ -365,6 +399,7 @@ export default function HomePage() {
       updateSession((current) => ({
         ...current,
         currentShuttleNumber: 1,
+        activityLog: [],
         players: current.players.map((player) => ({
           ...player,
           shuttleCount: 0,
@@ -398,8 +433,7 @@ export default function HomePage() {
 
   function updateCurrentShuttleNumber(value: string) {
     const numericValue = value === "" ? 0 : Math.max(1, Number(value) || 1);
-    setLastTouchedShuttleNumber(null);
-    setReturnShuttleNumber(null);
+    setEditingShuttleNumber(null);
     updateSession((current) => ({
       ...current,
       currentShuttleNumber: numericValue
@@ -407,8 +441,7 @@ export default function HomePage() {
   }
 
   function stepCurrentShuttleNumber(step: number) {
-    setLastTouchedShuttleNumber(null);
-    setReturnShuttleNumber(null);
+    setEditingShuttleNumber(null);
     updateSession((current) => ({
       ...current,
       currentShuttleNumber: Math.max(1, current.currentShuttleNumber + step)
@@ -430,11 +463,12 @@ export default function HomePage() {
 
     const targetShuttleNumber = isRemoving
       ? removedShuttleNumber
-      : Math.max(1, lastTouchedShuttleNumber ?? session.currentShuttleNumber);
-    const editingReturnShuttleNumber =
-      isRemoving && targetShuttleNumber !== session.currentShuttleNumber
-        ? (returnShuttleNumber ?? session.currentShuttleNumber)
-        : returnShuttleNumber;
+      : Math.max(1, editingShuttleNumber ?? session.currentShuttleNumber);
+    if (!isRemoving && getShuttleMarkSummary(session.players, targetShuttleNumber).count >= 4) {
+      window.alert(`ลูกที่ ${targetShuttleNumber} ครบ 4 ติ๊กแล้ว ถ้าจะเปลี่ยนให้เอาออกก่อน`);
+      return;
+    }
+
     const nextPlayers = session.players.map((currentPlayer) =>
       currentPlayer.id === playerId
         ? setPlayerShuttleMarks(
@@ -448,33 +482,59 @@ export default function HomePage() {
 
     const targetShuttleSummary = getShuttleMarkSummary(nextPlayers, targetShuttleNumber);
     const completedPlayerNames = targetShuttleSummary.names.slice(-4).join(", ");
-    const nextShuttleNumber =
+    const shouldAskToAdvance =
       !isRemoving &&
       targetShuttleSummary.isComplete &&
       targetShuttleNumber === session.currentShuttleNumber &&
-      editingReturnShuttleNumber === null &&
+      editingShuttleNumber === null;
+    const confirmedAdvance =
+      shouldAskToAdvance &&
       window.confirm(
         `ครบ 4 คนแล้ว: ${completedPlayerNames} ไปที่ลูก ${targetShuttleNumber + 1} ใช่ไหม?`
-      )
-        ? targetShuttleNumber + 1
-        : targetShuttleSummary.isComplete && editingReturnShuttleNumber !== null
-          ? editingReturnShuttleNumber
-          : isRemoving
-            ? targetShuttleNumber
-            : session.currentShuttleNumber;
+      );
+    const nextShuttleNumber = confirmedAdvance
+      ? targetShuttleNumber + 1
+      : session.currentShuttleNumber;
+    const restUntil = new Date(Date.now() + REST_MINUTES * 60000).toISOString();
+    const restedPlayers = confirmedAdvance
+      ? nextPlayers.map((currentPlayer) =>
+          getPlayerShuttleMarks(currentPlayer).includes(targetShuttleNumber)
+            ? {
+                ...currentPlayer,
+                restUntil,
+                waitingSince: restUntil
+              }
+            : currentPlayer
+        )
+      : nextPlayers;
 
-    const shouldKeepEditingTouchedShuttle =
-      !targetShuttleSummary.isComplete &&
-      (isRemoving || editingReturnShuttleNumber !== null);
-    setLastTouchedShuttleNumber(
-      shouldKeepEditingTouchedShuttle ? targetShuttleNumber : null
-    );
-    setReturnShuttleNumber(shouldKeepEditingTouchedShuttle ? editingReturnShuttleNumber : null);
-    updateSession((current) => ({
-      ...current,
-      players: nextPlayers,
-      currentShuttleNumber: nextShuttleNumber
-    }));
+    const shouldKeepEditingShuttle =
+      !targetShuttleSummary.isComplete && (isRemoving || editingShuttleNumber !== null);
+    setEditingShuttleNumber(shouldKeepEditingShuttle ? targetShuttleNumber : null);
+    updateSession((current) => {
+      let nextSession: SessionState = {
+        ...current,
+        players: restedPlayers,
+        currentShuttleNumber: nextShuttleNumber
+      };
+      const actionPlayerName = player.name;
+      nextSession = appendActivity(
+        nextSession,
+        createActivity(
+          isRemoving ? "mark-removed" : "mark-added",
+          isRemoving
+            ? `เอา ${actionPlayerName} ออกจากลูก ${targetShuttleNumber}`
+            : `ติ๊ก ${actionPlayerName} ลงลูก ${targetShuttleNumber}`
+        )
+      );
+      if (confirmedAdvance) {
+        nextSession = appendActivity(
+          nextSession,
+          createActivity("match-confirmed", `ยืนยันลูก ${targetShuttleNumber}: ${completedPlayerNames}`)
+        );
+      }
+      return nextSession;
+    });
   }
 
   function setPaid(playerId: string, paid: boolean) {
@@ -492,11 +552,38 @@ export default function HomePage() {
       return;
     }
 
-    updatePlayer(playerId, (current) => ({
-      ...current,
-      paid,
-      paidAt: paid ? new Date().toISOString() : undefined
-    }));
+    updateSession((current) =>
+      appendActivity(
+        {
+          ...current,
+          players: current.players.map((currentPlayer) =>
+            currentPlayer.id === playerId
+              ? {
+                  ...currentPlayer,
+                  paid,
+                  paidAt: paid ? new Date().toISOString() : undefined
+                }
+              : currentPlayer
+          )
+        },
+        createActivity(
+          paid ? "paid" : "unpaid",
+          paid
+            ? `${player.name} จ่ายแล้ว ${formatBaht(calculatePlayerTotal(player, session.pricing))} บาท`
+            : `ย้าย ${player.name} กลับไปค้างจ่าย`
+        )
+      )
+    );
+  }
+
+  async function copySummary() {
+    const text = exportSessionSummary(session, sessionId, now);
+    try {
+      await window.navigator.clipboard.writeText(text);
+      window.alert("คัดลอกสรุปแล้ว");
+    } catch {
+      window.alert(text);
+    }
   }
 
   return (
@@ -556,6 +643,13 @@ export default function HomePage() {
                       เปิดรอบ
                     </Button>
                   </Box>
+                  <TextField
+                    label="เลือกวันที่ย้อนหลัง"
+                    type="date"
+                    value={/^\d{4}-\d{2}-\d{2}$/.test(roomDraft) ? roomDraft : ""}
+                    onChange={(event) => setRoomDraft(event.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                  />
                   <TextField
                     label="ค่าเริ่มต้น"
                     type="number"
@@ -675,16 +769,21 @@ export default function HomePage() {
                     </Stack>
                   </Box>
                   <CurrentShuttleTracker summary={currentShuttleSummary} />
+                  <PriorityPlayers players={priorityPlayers} now={now} />
                   <ScoreSheet
                     activePlayers={visibleActivePlayers}
                     allPlayerCount={session.players.length}
                     hasSearch={Boolean(normalizedSearch)}
+                    incompleteShuttleNumbers={incompleteShuttleNumbers}
+                    overLimitShuttleNumbers={overLimitShuttleNumbers}
+                    now={now}
                     pricing={session.pricing}
                     shuttleColumns={shuttleColumns}
                     onRemovePlayer={removePlayer}
                     onSetPaid={setPaid}
                     onToggleShuttleMark={toggleShuttleMark}
                   />
+                  <RecentActivity activityLog={session.activityLog} now={now} />
                 </>
               ) : activeTab === 1 ? (
                 <MatchSummaryPanel
@@ -700,6 +799,7 @@ export default function HomePage() {
                   onSetPaid={setPaid}
                   onClearPlayData={clearPlayData}
                   onResetSession={resetSession}
+                  onCopySummary={copySummary}
                 />
               )}
             </Paper>
@@ -717,6 +817,9 @@ function ScoreSheet({
   activePlayers,
   allPlayerCount,
   hasSearch,
+  incompleteShuttleNumbers,
+  overLimitShuttleNumbers,
+  now,
   pricing,
   shuttleColumns,
   onRemovePlayer,
@@ -726,6 +829,9 @@ function ScoreSheet({
   activePlayers: Player[];
   allPlayerCount: number;
   hasSearch: boolean;
+  incompleteShuttleNumbers: ReadonlySet<number>;
+  overLimitShuttleNumbers: ReadonlySet<number>;
+  now: string;
   pricing: SessionState["pricing"];
   shuttleColumns: number[];
   onRemovePlayer: (id: string) => void;
@@ -762,7 +868,12 @@ function ScoreSheet({
             </TableRow>
           ) : (
             activePlayers.map((player) => (
-              <TableRow key={player.id} hover aria-label={player.name}>
+              <TableRow
+                key={player.id}
+                hover
+                aria-label={player.name}
+                className={getWaitingRowClass(player, now)}
+              >
                 <TableCell className="stickyName playerCell">
                   <Button
                     className="playerNameButton"
@@ -778,6 +889,12 @@ function ScoreSheet({
                     {(() => {
                       const shuttleMark = getPlayerShuttleMarks(player)[column];
                       const checked = typeof shuttleMark === "number";
+                      const isOverLimit =
+                        typeof shuttleMark === "number" &&
+                        overLimitShuttleNumbers.has(shuttleMark);
+                      const isIncomplete =
+                        typeof shuttleMark === "number" &&
+                        incompleteShuttleNumbers.has(shuttleMark);
                       return (
                         <Checkbox
                           inputProps={{
@@ -789,7 +906,11 @@ function ScoreSheet({
                           onChange={() => onToggleShuttleMark(player.id, column)}
                           icon={<SportsTennisIcon fontSize="small" />}
                           checkedIcon={
-                            <span className="shuttleNumberIcon shuttleNumberIconChecked">
+                            <span
+                              className={`shuttleNumberIcon shuttleNumberIconChecked${
+                                isOverLimit ? " shuttleNumberIconDanger" : ""
+                              }${isIncomplete ? " shuttleNumberIconWarning" : ""}`}
+                            >
                               {shuttleMark}
                             </span>
                           }
@@ -835,6 +956,17 @@ function ScoreSheet({
   );
 }
 
+function getWaitingRowClass(player: Player, now: string): string {
+  const status = getPlayerWaitStatus(player, now);
+  if (status === "danger") {
+    return "waitingDangerRow";
+  }
+  if (status === "warning") {
+    return "waitingWarningRow";
+  }
+  return "";
+}
+
 function CurrentShuttleTracker({
   summary
 }: {
@@ -860,6 +992,58 @@ function CurrentShuttleTracker({
         color={summary.isComplete ? "primary" : "default"}
         variant={summary.isComplete ? "filled" : "outlined"}
       />
+    </Box>
+  );
+}
+
+function PriorityPlayers({ players, now }: { players: Player[]; now: string }) {
+  if (players.length === 0) {
+    return null;
+  }
+
+  return (
+    <Box className="priorityPanel" role="region" aria-label="คนที่ควรได้ลงก่อน">
+      <Typography fontWeight={800}>ควรจัดก่อน</Typography>
+      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+        {players.map((player) => (
+          <Chip
+            key={player.id}
+            label={player.name}
+            color={getPlayerWaitStatus(player, now) === "danger" ? "error" : "warning"}
+            variant="outlined"
+          />
+        ))}
+      </Stack>
+    </Box>
+  );
+}
+
+function RecentActivity({
+  activityLog,
+  now
+}: {
+  activityLog: SessionState["activityLog"];
+  now: string;
+}) {
+  return (
+    <Box className="activityPanel" role="region" aria-label="ประวัติการแก้ไขล่าสุด">
+      <Typography variant="h6" component="h2">
+        ประวัติการแก้ไขล่าสุด
+      </Typography>
+      {activityLog.length === 0 ? (
+        <Typography color="text.secondary">ยังไม่มีประวัติ</Typography>
+      ) : (
+        <Stack spacing={1}>
+          {activityLog.slice(0, 8).map((activity) => (
+            <Box key={activity.id} className="activityItem">
+              <Typography>{activity.message}</Typography>
+              <Typography color="text.secondary" fontSize={13}>
+                {formatRelativeTime(activity.createdAt, now)}
+              </Typography>
+            </Box>
+          ))}
+        </Stack>
+      )}
     </Box>
   );
 }
@@ -903,11 +1087,21 @@ function MatchSummaryPanel({
       ) : (
         <Stack spacing={1.5}>
           {visibleMatchGroups.map((group) => (
-            <Paper key={group.shuttleNumber} className="matchItem" elevation={0}>
+            <Paper
+              key={group.shuttleNumber}
+              className={`matchItem${group.isOverLimit ? " matchItemDanger" : ""}${
+                group.isIncomplete ? " matchItemWarning" : ""
+              }`}
+              elevation={0}
+            >
               <Typography variant="h6" component="h3">
                 ลูกที่ {group.shuttleNumber}
               </Typography>
-              <Typography className="matchNames">{group.playerNames.join(" ")}</Typography>
+              <Typography className="matchNames">
+                {group.playerNames.join(" ")}
+                {group.isOverLimit ? ` (${group.playerNames.length}/4 เกิน)` : ""}
+                {group.isIncomplete ? ` (${group.playerNames.length}/4 ยังไม่ครบ)` : ""}
+              </Typography>
             </Paper>
           ))}
         </Stack>
@@ -922,7 +1116,8 @@ function PaidSummary({
   hasSearch,
   onSetPaid,
   onClearPlayData,
-  onResetSession
+  onResetSession,
+  onCopySummary
 }: {
   players: Player[];
   paidGroups: ReturnType<typeof groupPaidPlayersByDay>;
@@ -930,6 +1125,7 @@ function PaidSummary({
   onSetPaid: (id: string, paid: boolean) => void;
   onClearPlayData: () => void;
   onResetSession: () => void;
+  onCopySummary: () => void;
 }) {
   return (
     <Box className="paidSummaryPanel" role="region" aria-label="รายการจ่ายแล้ว">
@@ -938,6 +1134,9 @@ function PaidSummary({
           สรุปจ่ายแล้ว
         </Typography>
         <Stack direction={{ xs: "column", sm: "row" }} spacing={1} className="paidSummaryActions">
+          <Button variant="contained" onClick={onCopySummary}>
+            Export สรุป
+          </Button>
           <Button color="secondary" variant="outlined" onClick={onClearPlayData}>
             ล้างข้อมูลเล่น
           </Button>
@@ -1036,6 +1235,23 @@ function formatBaht(value: number): string {
 
 function formatDateKey(dateKey: string): string {
   return dateFormatter.format(new Date(`${dateKey}T00:00:00`));
+}
+
+function formatRelativeTime(createdAt: string, nowValue: string): string {
+  const created = new Date(createdAt).getTime();
+  const now = new Date(nowValue).getTime();
+  if (Number.isNaN(created) || Number.isNaN(now)) {
+    return "";
+  }
+  const diffMinutes = Math.max(0, Math.floor((now - created) / 60000));
+  if (diffMinutes <= 0) {
+    return "เมื่อกี้";
+  }
+  if (diffMinutes < 60) {
+    return `${diffMinutes} นาทีที่แล้ว`;
+  }
+  const diffHours = Math.floor(diffMinutes / 60);
+  return `${diffHours} ชั่วโมงที่แล้ว`;
 }
 
 function getInitialSessionId(): string {

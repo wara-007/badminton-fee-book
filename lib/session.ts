@@ -5,6 +5,8 @@ export type Player = {
   shuttleMarks?: number[];
   paid: boolean;
   paidAt?: string;
+  waitingSince?: string;
+  restUntil?: string;
 };
 
 export type Pricing = {
@@ -16,6 +18,7 @@ export type SessionState = {
   players: Player[];
   pricing: Pricing;
   currentShuttleNumber: number;
+  activityLog: ActivityLogEntry[];
   updatedAt: string;
 };
 
@@ -42,6 +45,8 @@ export type PaidDaySummary = {
 export type MatchSummary = {
   shuttleNumber: number;
   playerNames: string[];
+  isIncomplete: boolean;
+  isOverLimit: boolean;
 };
 
 export type ShuttleMarkSummary = {
@@ -52,12 +57,24 @@ export type ShuttleMarkSummary = {
   missingCount: number;
 };
 
+export type PlayerWaitStatus = "normal" | "warning" | "danger";
+
+export type ActivityLogEntry = {
+  id: string;
+  action: "mark-added" | "mark-removed" | "match-confirmed" | "paid" | "unpaid" | "player-removed";
+  message: string;
+  createdAt: string;
+};
+
 export const DEFAULT_PRICING: Pricing = {
   baseFee: 100,
   shuttleFee: 25
 };
 
 export const DEFAULT_SHUTTLE_COLUMNS = 10;
+export const REST_MINUTES = 20;
+export const WAIT_WARNING_MINUTES = 15;
+export const WAIT_DANGER_MINUTES = 20;
 
 export const STORAGE_KEY = "badminton-fee-book.session";
 
@@ -72,7 +89,8 @@ export function createPlayer(name: string): Player {
     name: name.trim(),
     shuttleCount: 0,
     shuttleMarks: [],
-    paid: false
+    paid: false,
+    waitingSince: new Date().toISOString()
   };
 }
 
@@ -81,6 +99,7 @@ export function createInitialSession(): SessionState {
     players: [],
     pricing: DEFAULT_PRICING,
     currentShuttleNumber: 1,
+    activityLog: [],
     updatedAt: new Date().toISOString()
   };
 }
@@ -165,6 +184,99 @@ export function setPlayerShuttleMarks(player: Player, shuttleMarks: number[]): P
   };
 }
 
+export function getPlayerWaitStatus(
+  player: Player,
+  nowValue: string | Date = new Date()
+): PlayerWaitStatus {
+  const now = typeof nowValue === "string" ? new Date(nowValue) : nowValue;
+  if (Number.isNaN(now.getTime())) {
+    return "normal";
+  }
+
+  const restUntil = parseDate(player.restUntil);
+  if (restUntil && now < restUntil) {
+    return "normal";
+  }
+
+  const waitingStart = restUntil ?? parseDate(player.waitingSince);
+  if (!waitingStart) {
+    return "normal";
+  }
+
+  const waitedMinutes = (now.getTime() - waitingStart.getTime()) / 60000;
+  if (waitedMinutes >= WAIT_DANGER_MINUTES) {
+    return "danger";
+  }
+  if (waitedMinutes >= WAIT_WARNING_MINUTES) {
+    return "warning";
+  }
+  return "normal";
+}
+
+export function createActivity(
+  action: ActivityLogEntry["action"],
+  message: string,
+  createdAt = new Date().toISOString()
+): ActivityLogEntry {
+  return {
+    id: `${createdAt}-${Math.random().toString(36).slice(2)}`,
+    action,
+    message,
+    createdAt
+  };
+}
+
+export function appendActivity(
+  session: SessionState,
+  activity: ActivityLogEntry,
+  limit = 20
+): SessionState {
+  return {
+    ...session,
+    activityLog: [activity, ...(session.activityLog ?? [])].slice(0, limit)
+  };
+}
+
+export function getPriorityPlayers(
+  players: Player[],
+  nowValue: string | Date = new Date()
+): Player[] {
+  const rank = { danger: 0, warning: 1, normal: 2 } as const;
+  return players
+    .filter((player) => !player.paid)
+    .map((player) => ({
+      player,
+      status: getPlayerWaitStatus(player, nowValue)
+    }))
+    .filter(({ status }) => status !== "normal")
+    .sort((first, second) => rank[first.status] - rank[second.status])
+    .map(({ player }) => player);
+}
+
+export function exportSessionSummary(
+  session: SessionState,
+  sessionId: string,
+  nowValue: string | Date = new Date()
+): string {
+  const summary = summarizeSession(session.players, session.pricing);
+  const paidNames = new Set(session.players.filter((player) => player.paid).map((player) => player.id));
+  const lines = [
+    `สรุปรอบ ${sessionId}`,
+    `วันที่ ${toDateKey(typeof nowValue === "string" ? nowValue : nowValue.toISOString())}`,
+    `ลูกทั้งหมด ${summary.shuttleCount} ลูก`,
+    `รวม ${summary.totalAmount + summary.paidAmount} บาท`,
+    `จ่ายแล้ว ${summary.paidAmount} บาท`,
+    `ค้าง ${summary.unpaidAmount} บาท`,
+    "",
+    ...session.players.map((player) => {
+      const amount = calculatePlayerTotal(player, session.pricing);
+      return `${player.name} ${amount} ${paidNames.has(player.id) ? "จ่ายแล้ว" : "ค้าง"}`;
+    })
+  ];
+
+  return lines.join("\n");
+}
+
 export function getVisibleShuttleColumnsForCurrent(
   players: Player[],
   currentShuttleNumber: number
@@ -238,7 +350,9 @@ export function groupMatchesByShuttle(players: Player[]): MatchSummary[] {
     .sort(([first], [second]) => first - second)
     .map(([shuttleNumber, playerNames]) => ({
       shuttleNumber,
-      playerNames
+      playerNames,
+      isIncomplete: playerNames.length > 0 && playerNames.length < 4,
+      isOverLimit: playerNames.length > 4
     }));
 }
 
@@ -291,7 +405,12 @@ export function normalizeSession(value: unknown): SessionState {
               name: String(player.name),
               shuttleCount: Math.max(0, Number(player.shuttleCount) || 0),
               paid: Boolean(player.paid),
-              paidAt: typeof player.paidAt === "string" ? player.paidAt : undefined
+              paidAt: typeof player.paidAt === "string" ? player.paidAt : undefined,
+              waitingSince:
+                typeof player.waitingSince === "string"
+                  ? player.waitingSince
+                  : new Date().toISOString(),
+              restUntil: typeof player.restUntil === "string" ? player.restUntil : undefined
             },
             Array.isArray(player.shuttleMarks)
               ? player.shuttleMarks
@@ -307,7 +426,37 @@ export function normalizeSession(value: unknown): SessionState {
     players,
     pricing,
     currentShuttleNumber: Math.max(1, Number(candidate.currentShuttleNumber) || 1),
+    activityLog: Array.isArray(candidate.activityLog)
+      ? candidate.activityLog
+          .filter((activity): activity is ActivityLogEntry => {
+            return (
+              typeof activity === "object" &&
+              activity !== null &&
+              "message" in activity &&
+              "createdAt" in activity
+            );
+          })
+          .map((activity) => ({
+            id: typeof activity.id === "string" ? activity.id : createActivity("mark-added", String(activity.message)).id,
+            action:
+              typeof activity.action === "string"
+                ? (activity.action as ActivityLogEntry["action"])
+                : "mark-added",
+            message: String(activity.message),
+            createdAt:
+              typeof activity.createdAt === "string" ? activity.createdAt : new Date().toISOString()
+          }))
+          .slice(0, 20)
+      : [],
     updatedAt:
       typeof candidate.updatedAt === "string" ? candidate.updatedAt : new Date().toISOString()
   };
+}
+
+function parseDate(value: string | undefined): Date | null {
+  if (!value) {
+    return null;
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
