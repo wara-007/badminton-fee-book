@@ -6,7 +6,68 @@ import HomePage from "@/app/page";
 describe("Badminton fee book page", () => {
   beforeEach(() => {
     localStorage.clear();
+    localStorage.setItem("badminton-fee-book.auth", JSON.stringify({ role: "admin" }));
     vi.restoreAllMocks();
+  });
+
+  it("requires login and limits admin2 to paid actions", async () => {
+    const user = userEvent.setup();
+    localStorage.clear();
+    localStorage.setItem(
+      "badminton-fee-book.session.main",
+      JSON.stringify({
+        players: [
+          {
+            id: "player-a",
+            name: "A",
+            shuttleCount: 1,
+            shuttleMarks: [1],
+            paid: false,
+            waitingSince: new Date().toISOString()
+          }
+        ],
+        pricing: { baseFee: 100, shuttleFee: 25 },
+        currentShuttleNumber: 1,
+        activityLog: [],
+        updatedAt: new Date().toISOString()
+      })
+    );
+
+    render(<HomePage />);
+
+    expect(screen.getByRole("button", { name: "เข้าสู่ระบบ" })).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("ชื่อผู้ใช้"), "admin2");
+    await user.type(screen.getByLabelText("รหัสผ่าน"), "admin2");
+    await user.click(screen.getByRole("button", { name: "เข้าสู่ระบบ" }));
+
+    const row = await screen.findByRole("row", { name: /A/ });
+    expect(screen.getByRole("button", { name: "เพิ่มผู้เล่น" })).toBeDisabled();
+    expect(within(row).getByRole("button", { name: "ติ๊กลูกให้ A" })).toBeDisabled();
+    expect(within(row).getByRole("checkbox", { name: "A ช่องที่ 1 ลูก 1" })).toBeDisabled();
+    expect(within(row).getByRole("button", { name: "ลบ A" })).toBeDisabled();
+    expect(within(row).getByRole("checkbox", { name: "A จ่ายแล้ว" })).not.toBeDisabled();
+
+    await user.click(within(row).getByRole("checkbox", { name: "A จ่ายแล้ว" }));
+    await waitFor(() => expect(screen.getByText("ยืนยันการจ่ายเงิน")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "จ่ายแล้ว" }));
+
+    expect(screen.getByText("จ่ายแล้ว 125 บาท")).toBeInTheDocument();
+  });
+
+  it("logs in as admin and keeps the current room from the URL", async () => {
+    const user = userEvent.setup();
+    localStorage.clear();
+    window.history.pushState(null, "", "/?room=2026-05-25");
+
+    render(<HomePage />);
+
+    await user.type(screen.getByLabelText("ชื่อผู้ใช้"), "admin");
+    await user.type(screen.getByLabelText("รหัสผ่าน"), "admin");
+    await user.click(screen.getByRole("button", { name: "เข้าสู่ระบบ" }));
+
+    expect(await screen.findByText("รอบ 2026-05-25")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "เพิ่มผู้เล่น" })).not.toBeDisabled();
   });
 
   it("adds a player, ticks shuttle cells, recalculates totals, and marks paid", async () => {

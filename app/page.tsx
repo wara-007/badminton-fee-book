@@ -73,6 +73,11 @@ import packageInfo from "@/package.json";
 
 const bahtFormatter = new Intl.NumberFormat("th-TH");
 const appVersion = packageInfo.version;
+const AUTH_STORAGE_KEY = "badminton-fee-book.auth";
+type UserRole = "admin" | "admin2";
+type AuthSession = {
+  role: UserRole;
+};
 const dateFormatter = new Intl.DateTimeFormat("th-TH", {
   day: "numeric",
   month: "short",
@@ -98,6 +103,17 @@ type AppDialogState = AppDialogOptions & {
   open: boolean;
   mode: "alert" | "confirm";
   resolve?: (value: boolean) => void;
+};
+
+const loginUsers: Record<UserRole, { label: string; password: string }> = {
+  admin: {
+    label: "admin",
+    password: process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "admin"
+  },
+  admin2: {
+    label: "admin2",
+    password: process.env.NEXT_PUBLIC_ADMIN2_PASSWORD || "admin2"
+  }
 };
 
 const theme = createTheme({
@@ -153,6 +169,10 @@ const theme = createTheme({
 });
 
 export default function HomePage() {
+  const [authSession, setAuthSession] = useState<AuthSession | null>(() => loadAuthSession());
+  const [loginName, setLoginName] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
   const [sessionId, setSessionId] = useState("main");
   const [roomDraft, setRoomDraft] = useState("main");
   const [session, setSession] = useState<SessionState>(() => createInitialSession());
@@ -337,6 +357,9 @@ export default function HomePage() {
       ),
     [activeShuttleNumber, session.players]
   );
+  const userRole = authSession?.role ?? null;
+  const canManageSession = userRole === "admin";
+  const canSetPaid = userRole === "admin" || userRole === "admin2";
   const isEditingLocked = editingShuttleNumber !== null && !currentShuttleSummary.isComplete;
   const activePlayers = useMemo(
     () => session.players.filter((player) => !player.paid),
@@ -443,9 +466,36 @@ export default function HomePage() {
     resolver?.(result);
   }
 
+  function login(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const normalizedName = loginName.trim().toLocaleLowerCase("th-TH") as UserRole;
+    const normalizedPassword = loginPassword.trim();
+    const userConfig = loginUsers[normalizedName];
+    if (!userConfig || normalizedPassword !== userConfig.password.trim()) {
+      setLoginError("ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
+      return;
+    }
+
+    const nextAuthSession = { role: normalizedName };
+    const activeSessionId = getInitialSessionId();
+    setSessionId(activeSessionId);
+    setRoomDraft(activeSessionId);
+    persistSessionId(activeSessionId);
+    setAuthSession(nextAuthSession);
+    setLoginName("");
+    setLoginPassword("");
+    setLoginError("");
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(nextAuthSession));
+  }
+
+  function logout() {
+    setAuthSession(null);
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+  }
+
   async function addPlayer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (isEditingLocked) {
+    if (isEditingLocked || !canManageSession) {
       return;
     }
 
@@ -492,7 +542,7 @@ export default function HomePage() {
   }
 
   async function removePlayer(id: string) {
-    if (isEditingLocked) {
+    if (isEditingLocked || !canManageSession) {
       return;
     }
 
@@ -524,7 +574,7 @@ export default function HomePage() {
   }
 
   async function resetSession() {
-    if (isEditingLocked) {
+    if (isEditingLocked || !canManageSession) {
       return;
     }
 
@@ -542,7 +592,7 @@ export default function HomePage() {
   }
 
   async function clearPlayData() {
-    if (isEditingLocked) {
+    if (isEditingLocked || !canManageSession) {
       return;
     }
 
@@ -572,7 +622,7 @@ export default function HomePage() {
 
   function switchSession(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (isEditingLocked) {
+    if (isEditingLocked || !canManageSession) {
       return;
     }
 
@@ -583,7 +633,7 @@ export default function HomePage() {
   }
 
   function updatePricing(key: "baseFee" | "shuttleFee", value: string) {
-    if (isEditingLocked) {
+    if (isEditingLocked || !canManageSession) {
       return;
     }
 
@@ -598,7 +648,7 @@ export default function HomePage() {
   }
 
   function updateCurrentShuttleNumber(value: string) {
-    if (isEditingLocked) {
+    if (isEditingLocked || !canManageSession) {
       return;
     }
 
@@ -611,7 +661,7 @@ export default function HomePage() {
   }
 
   function stepCurrentShuttleNumber(step: number) {
-    if (isEditingLocked) {
+    if (isEditingLocked || !canManageSession) {
       return;
     }
 
@@ -628,6 +678,10 @@ export default function HomePage() {
   }
 
   async function toggleShuttleMark(playerId: string, column: number) {
+    if (!canManageSession) {
+      return;
+    }
+
     const player = session.players.find((currentPlayer) => currentPlayer.id === playerId);
     if (!player) {
       return;
@@ -779,7 +833,7 @@ export default function HomePage() {
   }
 
   async function setPaid(playerId: string, paid: boolean) {
-    if (isEditingLocked) {
+    if (isEditingLocked || !canSetPaid) {
       return;
     }
 
@@ -832,6 +886,10 @@ export default function HomePage() {
   }
 
   async function copySummary() {
+    if (!canManageSession) {
+      return;
+    }
+
     const text = exportSessionSummary(session, sessionId, getTrustedNowIso());
     try {
       await window.navigator.clipboard.writeText(text);
@@ -853,6 +911,22 @@ export default function HomePage() {
     }
   }
 
+  if (!authSession) {
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <LoginScreen
+          loginName={loginName}
+          loginPassword={loginPassword}
+          loginError={loginError}
+          onLoginNameChange={setLoginName}
+          onLoginPasswordChange={setLoginPassword}
+          onSubmit={login}
+        />
+      </ThemeProvider>
+    );
+  }
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -868,6 +942,16 @@ export default function HomePage() {
                   จดลูก คิดเงิน และเช็กจ่ายแล้วในรอบเดียว
                 </Typography>
               </Box>
+              <Stack direction="row" spacing={1} alignItems="center" className="authStatus">
+                <Chip
+                  label={userRole === "admin" ? "admin: ทำได้ทุกอย่าง" : "admin2: จ่ายเงินเท่านั้น"}
+                  color={userRole === "admin" ? "primary" : "secondary"}
+                  variant="outlined"
+                />
+                <Button variant="outlined" onClick={logout}>
+                  ออกจากระบบ
+                </Button>
+              </Stack>
             </Box>
 
             <Paper className="controlBand" elevation={0}>
@@ -889,7 +973,7 @@ export default function HomePage() {
                     label="ชื่อผู้เล่น"
                     value={playerName}
                     onChange={(event) => setPlayerName(event.target.value)}
-                    disabled={isEditingLocked}
+                    disabled={isEditingLocked || !canManageSession}
                     fullWidth
                     autoComplete="off"
                   />
@@ -897,7 +981,7 @@ export default function HomePage() {
                     type="submit"
                     variant="contained"
                     startIcon={<AddIcon />}
-                    disabled={isEditingLocked}
+                    disabled={isEditingLocked || !canManageSession}
                   >
                     เพิ่มผู้เล่น
                   </Button>
@@ -910,10 +994,10 @@ export default function HomePage() {
                       label="รหัสรอบ"
                       value={roomDraft}
                       onChange={(event) => setRoomDraft(event.target.value)}
-                      disabled={isEditingLocked}
+                      disabled={isEditingLocked || !canManageSession}
                       autoComplete="off"
                     />
-                    <Button type="submit" variant="outlined" disabled={isEditingLocked}>
+                    <Button type="submit" variant="outlined" disabled={isEditingLocked || !canManageSession}>
                       เปิดรอบ
                     </Button>
                   </Box>
@@ -922,7 +1006,7 @@ export default function HomePage() {
                     type="date"
                     value={/^\d{4}-\d{2}-\d{2}$/.test(roomDraft) ? roomDraft : ""}
                     onChange={(event) => setRoomDraft(event.target.value)}
-                    disabled={isEditingLocked}
+                    disabled={isEditingLocked || !canManageSession}
                     InputLabelProps={{ shrink: true }}
                   />
                   <TextField
@@ -930,7 +1014,7 @@ export default function HomePage() {
                     type="number"
                     value={session.pricing.baseFee}
                     onChange={(event) => updatePricing("baseFee", event.target.value)}
-                    disabled={isEditingLocked}
+                    disabled={isEditingLocked || !canManageSession}
                     inputProps={{ min: 0 }}
                     InputProps={{
                       endAdornment: <InputAdornment position="end">บาท</InputAdornment>
@@ -941,7 +1025,7 @@ export default function HomePage() {
                     type="number"
                     value={session.pricing.shuttleFee}
                     onChange={(event) => updatePricing("shuttleFee", event.target.value)}
-                    disabled={isEditingLocked}
+                    disabled={isEditingLocked || !canManageSession}
                     inputProps={{ min: 0 }}
                     InputProps={{
                       endAdornment: <InputAdornment position="end">บาท</InputAdornment>
@@ -1032,7 +1116,7 @@ export default function HomePage() {
                       <IconButton
                         aria-label="ลดลูก number"
                         onClick={() => stepCurrentShuttleNumber(-1)}
-                        disabled={isEditingLocked || activeShuttleNumber <= 1}
+                        disabled={isEditingLocked || !canManageSession || activeShuttleNumber <= 1}
                       >
                         <RemoveIcon />
                       </IconButton>
@@ -1041,14 +1125,14 @@ export default function HomePage() {
                         type="number"
                         value={activeShuttleNumber}
                         onChange={(event) => updateCurrentShuttleNumber(event.target.value)}
-                        disabled={isEditingLocked}
+                        disabled={isEditingLocked || !canManageSession}
                         inputProps={{ min: 1 }}
                         className="currentShuttleField"
                       />
                       <IconButton
                         aria-label="เพิ่มลูก number"
                         onClick={() => stepCurrentShuttleNumber(1)}
-                        disabled={isEditingLocked}
+                        disabled={isEditingLocked || !canManageSession}
                       >
                         <AddIcon />
                       </IconButton>
@@ -1070,6 +1154,8 @@ export default function HomePage() {
                     shuttleColumns={shuttleColumns}
                     editingShuttleNumber={editingShuttleNumber}
                     isEditingLocked={isEditingLocked}
+                    canManageSession={canManageSession}
+                    canSetPaid={canSetPaid}
                     onRemovePlayer={removePlayer}
                     onSetPaid={setPaid}
                     onToggleShuttleMark={toggleShuttleMark}
@@ -1091,6 +1177,8 @@ export default function HomePage() {
                   onClearPlayData={clearPlayData}
                   onResetSession={resetSession}
                   onCopySummary={copySummary}
+                  canManageSession={canManageSession}
+                  canSetPaid={canSetPaid}
                 />
               )}
             </Paper>
@@ -1156,6 +1244,63 @@ export default function HomePage() {
   );
 }
 
+function LoginScreen({
+  loginName,
+  loginPassword,
+  loginError,
+  onLoginNameChange,
+  onLoginPasswordChange,
+  onSubmit
+}: {
+  loginName: string;
+  loginPassword: string;
+  loginError: string;
+  onLoginNameChange: (value: string) => void;
+  onLoginPasswordChange: (value: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <Box component="main" className="loginShell">
+      <Paper className="loginPanel" elevation={0}>
+        <Box>
+          <Typography variant="h4" component="h1" className="appTitle">
+            สมุดค่าตีแบด
+          </Typography>
+          <Typography color="text.secondary">
+            เข้าสู่ระบบเพื่อจัดการรอบตีแบด
+          </Typography>
+        </Box>
+        <Box component="form" className="loginForm" onSubmit={onSubmit}>
+          <TextField
+            label="ชื่อผู้ใช้"
+            value={loginName}
+            onChange={(event) => onLoginNameChange(event.target.value)}
+            autoComplete="username"
+            autoFocus
+            fullWidth
+          />
+          <TextField
+            label="รหัสผ่าน"
+            type="password"
+            value={loginPassword}
+            onChange={(event) => onLoginPasswordChange(event.target.value)}
+            autoComplete="current-password"
+            fullWidth
+          />
+          {loginError ? (
+            <Typography color="error" fontWeight={700}>
+              {loginError}
+            </Typography>
+          ) : null}
+          <Button type="submit" variant="contained" fullWidth>
+            เข้าสู่ระบบ
+          </Button>
+        </Box>
+      </Paper>
+    </Box>
+  );
+}
+
 function ScoreSheet({
   activePlayers,
   allPlayerCount,
@@ -1167,6 +1312,8 @@ function ScoreSheet({
   shuttleColumns,
   editingShuttleNumber,
   isEditingLocked,
+  canManageSession,
+  canSetPaid,
   onRemovePlayer,
   onSetPaid,
   onToggleShuttleMark
@@ -1181,6 +1328,8 @@ function ScoreSheet({
   shuttleColumns: number[];
   editingShuttleNumber: number | null;
   isEditingLocked: boolean;
+  canManageSession: boolean;
+  canSetPaid: boolean;
   onRemovePlayer: (id: string) => void;
   onSetPaid: (id: string, paid: boolean) => void;
   onToggleShuttleMark: (id: string, column: number) => void;
@@ -1226,6 +1375,7 @@ function ScoreSheet({
                     className="playerNameButton"
                     aria-label={`ติ๊กลูกให้ ${player.name}`}
                     onClick={() => onToggleShuttleMark(player.id, getPlayerShuttleCount(player))}
+                    disabled={!canManageSession}
                     fullWidth
                   >
                     <span className="playerOrder">{playerIndex + 1}</span>
@@ -1247,6 +1397,7 @@ function ScoreSheet({
                         isEditingLocked &&
                         typeof shuttleMark === "number" &&
                         shuttleMark !== editingShuttleNumber;
+                      const isDisabled = !canManageSession || isLockedOtherShuttle;
                       return (
                         <Checkbox
                           inputProps={{
@@ -1255,7 +1406,7 @@ function ScoreSheet({
                               : `${player.name} ช่องที่ ${column + 1}`
                           }}
                           checked={checked}
-                          disabled={isLockedOtherShuttle}
+                          disabled={isDisabled}
                           onChange={() => onToggleShuttleMark(player.id, column)}
                           icon={<SportsTennisIcon fontSize="small" />}
                           checkedIcon={
@@ -1285,20 +1436,22 @@ function ScoreSheet({
                   <Checkbox
                     inputProps={{ "aria-label": `${player.name} จ่ายแล้ว` }}
                     checked={player.paid}
-                    disabled={isEditingLocked}
+                    disabled={isEditingLocked || !canSetPaid}
                     onChange={(event) => onSetPaid(player.id, event.target.checked)}
                   />
                 </TableCell>
                 <TableCell align="center">
                   <Tooltip title={`ลบ ${player.name}`}>
-                    <IconButton
-                      aria-label={`ลบ ${player.name}`}
-                      color="error"
-                      disabled={isEditingLocked}
-                      onClick={() => onRemovePlayer(player.id)}
-                    >
-                      <DeleteIcon />
-                    </IconButton>
+                    <span>
+                      <IconButton
+                        aria-label={`ลบ ${player.name}`}
+                        color="error"
+                        disabled={isEditingLocked || !canManageSession}
+                        onClick={() => onRemovePlayer(player.id)}
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </span>
                   </Tooltip>
                 </TableCell>
               </TableRow>
@@ -1477,7 +1630,9 @@ function PaidSummary({
   onSetPaid,
   onClearPlayData,
   onResetSession,
-  onCopySummary
+  onCopySummary,
+  canManageSession,
+  canSetPaid
 }: {
   players: Player[];
   paidGroups: ReturnType<typeof groupPaidPlayersByDay>;
@@ -1486,6 +1641,8 @@ function PaidSummary({
   onClearPlayData: () => void;
   onResetSession: () => void;
   onCopySummary: () => void;
+  canManageSession: boolean;
+  canSetPaid: boolean;
 }) {
   return (
     <Box className="paidSummaryPanel" role="region" aria-label="รายการจ่ายแล้ว">
@@ -1494,10 +1651,10 @@ function PaidSummary({
           สรุปจ่ายแล้ว
         </Typography>
         <Stack direction={{ xs: "column", sm: "row" }} spacing={1} className="paidSummaryActions">
-          <Button variant="contained" onClick={onCopySummary}>
+          <Button variant="contained" onClick={onCopySummary} disabled={!canManageSession}>
             Export สรุป
           </Button>
-          <Button color="secondary" variant="outlined" onClick={onClearPlayData}>
+          <Button color="secondary" variant="outlined" onClick={onClearPlayData} disabled={!canManageSession}>
             ล้างข้อมูลเล่น
           </Button>
           <Button
@@ -1505,6 +1662,7 @@ function PaidSummary({
             variant="outlined"
             startIcon={<RestartAltIcon />}
             onClick={onResetSession}
+            disabled={!canManageSession}
           >
             รีเซ็ตรอบ
           </Button>
@@ -1546,6 +1704,7 @@ function PaidSummary({
                             size="small"
                             variant="outlined"
                             onClick={() => onSetPaid(sourcePlayer.id, false)}
+                            disabled={!canSetPaid}
                           >
                             ย้ายกลับ
                           </Button>
@@ -1650,6 +1809,25 @@ function getStorageKey(sessionId: string): string {
 
 function serializeSession(session: SessionState): string {
   return JSON.stringify(session);
+}
+
+function loadAuthSession(): AuthSession | null {
+  if (typeof localStorage === "undefined") {
+    return null;
+  }
+
+  try {
+    const storedAuth = localStorage.getItem(AUTH_STORAGE_KEY);
+    if (!storedAuth) {
+      return null;
+    }
+    const parsedAuth = JSON.parse(storedAuth) as Partial<AuthSession>;
+    return parsedAuth.role === "admin" || parsedAuth.role === "admin2"
+      ? { role: parsedAuth.role }
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 function loadLocalSession(sessionId: string, setSession: (session: SessionState) => void) {

@@ -1,4 +1,4 @@
-const CACHE_NAME = "badminton-fee-book-v1";
+const CACHE_NAME = "badminton-fee-book-v2";
 const STATIC_ASSETS = [
   "/icon-192.png",
   "/icon-512.png",

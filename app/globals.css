@@ -22,11 +22,36 @@ body {
   width: 100%;
 }
 
+.loginShell {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+}
+
+.loginPanel {
+  display: grid;
+  width: min(420px, 100%);
+  gap: 22px;
+  padding: 24px;
+  border: 1px solid #e7e2d8;
+  border-radius: 8px;
+}
+
+.loginForm {
+  display: grid;
+  gap: 14px;
+}
+
 .appHeader {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
+}
+
+.authStatus {
+  flex-shrink: 0;
 }
 
 .appTitle {
