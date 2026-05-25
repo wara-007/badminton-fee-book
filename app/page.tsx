@@ -337,6 +337,7 @@ export default function HomePage() {
       ),
     [activeShuttleNumber, session.players]
   );
+  const isEditingLocked = editingShuttleNumber !== null && !currentShuttleSummary.isComplete;
   const activePlayers = useMemo(
     () => session.players.filter((player) => !player.paid),
     [session.players]
@@ -444,6 +445,10 @@ export default function HomePage() {
 
   async function addPlayer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isEditingLocked) {
+      return;
+    }
+
     const trimmedName = playerName.trim();
     if (!trimmedName) {
       return;
@@ -487,6 +492,10 @@ export default function HomePage() {
   }
 
   async function removePlayer(id: string) {
+    if (isEditingLocked) {
+      return;
+    }
+
     const player = session.players.find((currentPlayer) => currentPlayer.id === id);
     if (!player) {
       return;
@@ -515,6 +524,10 @@ export default function HomePage() {
   }
 
   async function resetSession() {
+    if (isEditingLocked) {
+      return;
+    }
+
     if (await showConfirm({
       title: "รีเซ็ตรอบ",
       headline: "ล้างข้อมูลรอบนี้ทั้งหมด",
@@ -529,6 +542,10 @@ export default function HomePage() {
   }
 
   async function clearPlayData() {
+    if (isEditingLocked) {
+      return;
+    }
+
     if (await showConfirm({
       title: "ล้างข้อมูลเล่น",
       headline: "ล้างข้อมูลเล่น แต่เก็บรายชื่อไว้",
@@ -555,6 +572,10 @@ export default function HomePage() {
 
   function switchSession(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isEditingLocked) {
+      return;
+    }
+
     const nextSessionId = normalizeSessionId(roomDraft);
     setRoomDraft(nextSessionId);
     setSessionId(nextSessionId);
@@ -562,6 +583,10 @@ export default function HomePage() {
   }
 
   function updatePricing(key: "baseFee" | "shuttleFee", value: string) {
+    if (isEditingLocked) {
+      return;
+    }
+
     const numericValue = Math.max(0, Number(value) || 0);
     updateSession((current) => ({
       ...current,
@@ -573,6 +598,10 @@ export default function HomePage() {
   }
 
   function updateCurrentShuttleNumber(value: string) {
+    if (isEditingLocked) {
+      return;
+    }
+
     const numericValue = value === "" ? 0 : Math.max(1, Number(value) || 1);
     setEditingShuttleNumber(null);
     updateSession((current) => ({
@@ -582,6 +611,10 @@ export default function HomePage() {
   }
 
   function stepCurrentShuttleNumber(step: number) {
+    if (isEditingLocked) {
+      return;
+    }
+
     if (editingShuttleNumber !== null) {
       setEditingShuttleNumber(Math.max(1, editingShuttleNumber + step));
       return;
@@ -746,6 +779,10 @@ export default function HomePage() {
   }
 
   async function setPaid(playerId: string, paid: boolean) {
+    if (isEditingLocked) {
+      return;
+    }
+
     const player = session.players.find((currentPlayer) => currentPlayer.id === playerId);
     if (!player) {
       return;
@@ -852,10 +889,16 @@ export default function HomePage() {
                     label="ชื่อผู้เล่น"
                     value={playerName}
                     onChange={(event) => setPlayerName(event.target.value)}
+                    disabled={isEditingLocked}
                     fullWidth
                     autoComplete="off"
                   />
-                  <Button type="submit" variant="contained" startIcon={<AddIcon />}>
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    disabled={isEditingLocked}
+                  >
                     เพิ่มผู้เล่น
                   </Button>
                 </Box>
@@ -867,9 +910,10 @@ export default function HomePage() {
                       label="รหัสรอบ"
                       value={roomDraft}
                       onChange={(event) => setRoomDraft(event.target.value)}
+                      disabled={isEditingLocked}
                       autoComplete="off"
                     />
-                    <Button type="submit" variant="outlined">
+                    <Button type="submit" variant="outlined" disabled={isEditingLocked}>
                       เปิดรอบ
                     </Button>
                   </Box>
@@ -878,6 +922,7 @@ export default function HomePage() {
                     type="date"
                     value={/^\d{4}-\d{2}-\d{2}$/.test(roomDraft) ? roomDraft : ""}
                     onChange={(event) => setRoomDraft(event.target.value)}
+                    disabled={isEditingLocked}
                     InputLabelProps={{ shrink: true }}
                   />
                   <TextField
@@ -885,6 +930,7 @@ export default function HomePage() {
                     type="number"
                     value={session.pricing.baseFee}
                     onChange={(event) => updatePricing("baseFee", event.target.value)}
+                    disabled={isEditingLocked}
                     inputProps={{ min: 0 }}
                     InputProps={{
                       endAdornment: <InputAdornment position="end">บาท</InputAdornment>
@@ -895,6 +941,7 @@ export default function HomePage() {
                     type="number"
                     value={session.pricing.shuttleFee}
                     onChange={(event) => updatePricing("shuttleFee", event.target.value)}
+                    disabled={isEditingLocked}
                     inputProps={{ min: 0 }}
                     InputProps={{
                       endAdornment: <InputAdornment position="end">บาท</InputAdornment>
@@ -953,13 +1000,20 @@ export default function HomePage() {
             <Paper className="tablePanel" elevation={0}>
               <Tabs
                 value={activeTab}
-                onChange={(_, nextTab: number) => setActiveTab(nextTab)}
+                onChange={(_, nextTab: number) => {
+                  if (!isEditingLocked || nextTab === 0) {
+                    setActiveTab(nextTab);
+                  }
+                }}
                 aria-label="มุมมองสมุดค่าตีแบด"
                 className="sheetTabs"
               >
                 <Tab label={`กำลังตี (${activePlayers.length})`} />
-                <Tab label={`Match (${matchGroups.length})`} />
-                <Tab label={`สรุปจ่ายแล้ว (${formatBaht(summary.paidAmount)} บาท)`} />
+                <Tab label={`Match (${matchGroups.length})`} disabled={isEditingLocked} />
+                <Tab
+                  label={`สรุปจ่ายแล้ว (${formatBaht(summary.paidAmount)} บาท)`}
+                  disabled={isEditingLocked}
+                />
               </Tabs>
               <Divider />
 
@@ -978,7 +1032,7 @@ export default function HomePage() {
                       <IconButton
                         aria-label="ลดลูก number"
                         onClick={() => stepCurrentShuttleNumber(-1)}
-                        disabled={activeShuttleNumber <= 1}
+                        disabled={isEditingLocked || activeShuttleNumber <= 1}
                       >
                         <RemoveIcon />
                       </IconButton>
@@ -987,18 +1041,23 @@ export default function HomePage() {
                         type="number"
                         value={activeShuttleNumber}
                         onChange={(event) => updateCurrentShuttleNumber(event.target.value)}
+                        disabled={isEditingLocked}
                         inputProps={{ min: 1 }}
                         className="currentShuttleField"
                       />
                       <IconButton
                         aria-label="เพิ่มลูก number"
                         onClick={() => stepCurrentShuttleNumber(1)}
+                        disabled={isEditingLocked}
                       >
                         <AddIcon />
                       </IconButton>
                     </Stack>
                   </Box>
-                  <CurrentShuttleTracker summary={currentShuttleSummary} />
+                  <CurrentShuttleTracker
+                    summary={currentShuttleSummary}
+                    isEditingLocked={isEditingLocked}
+                  />
                   <PriorityPlayers players={priorityPlayers} now={now} />
                   <ScoreSheet
                     activePlayers={visibleActivePlayers}
@@ -1009,6 +1068,8 @@ export default function HomePage() {
                     now={now}
                     pricing={session.pricing}
                     shuttleColumns={shuttleColumns}
+                    editingShuttleNumber={editingShuttleNumber}
+                    isEditingLocked={isEditingLocked}
                     onRemovePlayer={removePlayer}
                     onSetPaid={setPaid}
                     onToggleShuttleMark={toggleShuttleMark}
@@ -1104,6 +1165,8 @@ function ScoreSheet({
   now,
   pricing,
   shuttleColumns,
+  editingShuttleNumber,
+  isEditingLocked,
   onRemovePlayer,
   onSetPaid,
   onToggleShuttleMark
@@ -1116,6 +1179,8 @@ function ScoreSheet({
   now: string;
   pricing: SessionState["pricing"];
   shuttleColumns: number[];
+  editingShuttleNumber: number | null;
+  isEditingLocked: boolean;
   onRemovePlayer: (id: string) => void;
   onSetPaid: (id: string, paid: boolean) => void;
   onToggleShuttleMark: (id: string, column: number) => void;
@@ -1178,6 +1243,10 @@ function ScoreSheet({
                       const isIncomplete =
                         typeof shuttleMark === "number" &&
                         incompleteShuttleNumbers.has(shuttleMark);
+                      const isLockedOtherShuttle =
+                        isEditingLocked &&
+                        typeof shuttleMark === "number" &&
+                        shuttleMark !== editingShuttleNumber;
                       return (
                         <Checkbox
                           inputProps={{
@@ -1186,6 +1255,7 @@ function ScoreSheet({
                               : `${player.name} ช่องที่ ${column + 1}`
                           }}
                           checked={checked}
+                          disabled={isLockedOtherShuttle}
                           onChange={() => onToggleShuttleMark(player.id, column)}
                           icon={<SportsTennisIcon fontSize="small" />}
                           checkedIcon={
@@ -1215,6 +1285,7 @@ function ScoreSheet({
                   <Checkbox
                     inputProps={{ "aria-label": `${player.name} จ่ายแล้ว` }}
                     checked={player.paid}
+                    disabled={isEditingLocked}
                     onChange={(event) => onSetPaid(player.id, event.target.checked)}
                   />
                 </TableCell>
@@ -1223,6 +1294,7 @@ function ScoreSheet({
                     <IconButton
                       aria-label={`ลบ ${player.name}`}
                       color="error"
+                      disabled={isEditingLocked}
                       onClick={() => onRemovePlayer(player.id)}
                     >
                       <DeleteIcon />
@@ -1250,9 +1322,11 @@ function getWaitingRowClass(player: Player, now: string): string {
 }
 
 function CurrentShuttleTracker({
-  summary
+  summary,
+  isEditingLocked
 }: {
   summary: ReturnType<typeof getShuttleMarkSummary>;
+  isEditingLocked: boolean;
 }) {
   const statusText =
     summary.count === 0
@@ -1268,6 +1342,11 @@ function CurrentShuttleTracker({
         <Typography color="text.secondary" className="currentShuttleNames">
           {summary.names.length > 0 ? summary.names.join(", ") : "ยังไม่มีชื่อที่ติ๊ก"}
         </Typography>
+        {isEditingLocked ? (
+          <Typography color="warning.main" className="currentShuttleLockNote">
+            กำลังแก้ลูกนี้ให้ครบก่อน จึงทำรายการอื่นได้
+          </Typography>
+        ) : null}
       </Box>
       <Chip
         label={`${summary.count}/4 ${statusText}`}

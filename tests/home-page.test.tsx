@@ -374,6 +374,72 @@ describe("Badminton fee book page", () => {
     expect(screen.getByText("ยังไม่มีชื่อที่ติ๊ก")).toBeInTheDocument();
   });
 
+  it("locks other actions while an older shuttle edit is incomplete", async () => {
+    const user = userEvent.setup();
+
+    render(<HomePage />);
+
+    for (const name of ["A", "B", "C", "D", "E"]) {
+      await user.type(screen.getByLabelText("ชื่อผู้เล่น"), name);
+      await user.click(screen.getByRole("button", { name: "เพิ่มผู้เล่น" }));
+    }
+
+    await user.clear(screen.getByLabelText("ลูก number"));
+    await user.type(screen.getByLabelText("ลูก number"), "7");
+
+    for (const name of ["A", "B", "C", "D"]) {
+      await user.click(
+        within(screen.getByRole("row", { name: new RegExp(name) })).getByRole("button", {
+          name: `ติ๊กลูกให้ ${name}`
+        })
+      );
+    }
+    await waitFor(() => expect(screen.getByText("ยืนยัน Match")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "ยืนยัน" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "ยืนยัน Match" })).not.toBeInTheDocument());
+
+    await user.clear(screen.getByLabelText("ลูก number"));
+    await user.type(screen.getByLabelText("ลูก number"), "24");
+    await user.click(
+      within(screen.getByRole("row", { name: /A/ })).getByRole("checkbox", {
+        name: "A ช่องที่ 1 ลูก 7"
+      })
+    );
+    await waitFor(() => expect(screen.getByText("เอาติ๊กออก")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "เอาออก" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "เอาติ๊กออก" })).not.toBeInTheDocument());
+
+    expect(screen.getByText("กำลังแก้ลูกนี้ให้ครบก่อน จึงทำรายการอื่นได้")).toBeInTheDocument();
+    expect(screen.getByLabelText("ลูก number")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "เพิ่มลูก number" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "เพิ่มผู้เล่น" })).toBeDisabled();
+    expect(screen.getByRole("tab", { name: /Match/ })).toBeDisabled();
+    expect(
+      within(screen.getByRole("row", { name: /A/ })).getByRole("checkbox", {
+        name: "A จ่ายแล้ว"
+      })
+    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "ลบ A" })).toBeDisabled();
+    expect(
+      within(screen.getByRole("row", { name: /E/ })).getByRole("button", {
+        name: "ติ๊กลูกให้ E"
+      })
+    ).not.toBeDisabled();
+
+    await user.click(
+      within(screen.getByRole("row", { name: /E/ })).getByRole("button", {
+        name: "ติ๊กลูกให้ E"
+      })
+    );
+    await waitFor(() => expect(screen.getByText("ยืนยัน Match")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "ยืนยัน" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "ยืนยัน Match" })).not.toBeInTheDocument());
+
+    expect(screen.getByLabelText("ลูก number")).not.toBeDisabled();
+    expect(screen.getByLabelText("ลูก number")).toHaveValue(24);
+    expect(screen.getByRole("tab", { name: /Match/ })).not.toBeDisabled();
+  });
+
   it("advances the current shuttle number after four players are checked on the same shuttle", async () => {
     const user = userEvent.setup();
 

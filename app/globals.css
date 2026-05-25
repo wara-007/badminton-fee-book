@@ -113,6 +113,35 @@ body {
   border-radius: 8px;
 }
 
+.appShell .MuiButton-root.Mui-disabled,
+.appShell .MuiIconButton-root.Mui-disabled,
+.appShell .MuiTab-root.Mui-disabled {
+  border-color: #d1d5db;
+  color: #9ca3af;
+  background: #f3f4f6;
+  opacity: 1;
+  box-shadow: none;
+}
+
+.appShell .MuiInputBase-root.Mui-disabled {
+  color: #9ca3af;
+  background: #f3f4f6;
+}
+
+.appShell .MuiInputLabel-root.Mui-disabled {
+  color: #9ca3af;
+}
+
+.appShell .MuiCheckbox-root.Mui-disabled {
+  color: #c4c9d0;
+}
+
+.appShell .MuiCheckbox-root.Mui-disabled .shuttleNumberIcon {
+  border-color: #c4c9d0;
+  color: #9ca3af;
+  background: #eef0f3;
+}
+
 .currentShuttleTracker {
   position: sticky;
   top: 0;
