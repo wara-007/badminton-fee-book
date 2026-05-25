@@ -320,21 +320,22 @@ export default function HomePage() {
     () => summarizeSession(session.players, session.pricing),
     [session.players, session.pricing]
   );
+  const activeShuttleNumber = editingShuttleNumber ?? session.currentShuttleNumber;
   const currentShuttleSummary = useMemo(
     () =>
       getShuttleMarkSummary(
         session.players,
-        editingShuttleNumber ?? session.currentShuttleNumber
+        activeShuttleNumber
       ),
-    [editingShuttleNumber, session.currentShuttleNumber, session.players]
+    [activeShuttleNumber, session.players]
   );
   const noteShuttleSummary = useMemo(
     () =>
       getShuttleMarkSummary(
         session.players,
-        editingShuttleNumber ?? session.currentShuttleNumber
+        activeShuttleNumber
       ),
-    [editingShuttleNumber, session.currentShuttleNumber, session.players]
+    [activeShuttleNumber, session.players]
   );
   const activePlayers = useMemo(
     () => session.players.filter((player) => !player.paid),
@@ -581,6 +582,11 @@ export default function HomePage() {
   }
 
   function stepCurrentShuttleNumber(step: number) {
+    if (editingShuttleNumber !== null) {
+      setEditingShuttleNumber(Math.max(1, editingShuttleNumber + step));
+      return;
+    }
+
     setEditingShuttleNumber(null);
     updateSession((current) => ({
       ...current,
@@ -972,14 +978,14 @@ export default function HomePage() {
                       <IconButton
                         aria-label="ลดลูก number"
                         onClick={() => stepCurrentShuttleNumber(-1)}
-                        disabled={session.currentShuttleNumber <= 1}
+                        disabled={activeShuttleNumber <= 1}
                       >
                         <RemoveIcon />
                       </IconButton>
                       <TextField
                         label="ลูก number"
                         type="number"
-                        value={session.currentShuttleNumber}
+                        value={activeShuttleNumber}
                         onChange={(event) => updateCurrentShuttleNumber(event.target.value)}
                         inputProps={{ min: 1 }}
                         className="currentShuttleField"

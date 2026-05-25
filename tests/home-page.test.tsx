@@ -339,6 +339,9 @@ describe("Badminton fee book page", () => {
         })
       );
     }
+    await waitFor(() => expect(screen.getByText("ยืนยัน Match")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "ยืนยัน" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "ยืนยัน Match" })).not.toBeInTheDocument());
 
     await user.clear(screen.getByLabelText("ลูก number"));
     await user.type(screen.getByLabelText("ลูก number"), "24");
@@ -347,8 +350,11 @@ describe("Badminton fee book page", () => {
         name: "A ช่องที่ 1 ลูก 7"
       })
     );
+    await waitFor(() => expect(screen.getByText("เอาติ๊กออก")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "เอาออก" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "เอาติ๊กออก" })).not.toBeInTheDocument());
 
-    expect(screen.getByLabelText("ลูก number")).toHaveValue(24);
+    expect(screen.getByLabelText("ลูก number")).toHaveValue(7);
     expect(screen.getByText("ลูกที่ 7 ยังไม่ครบ 4 ติ๊ก เหลืออีก 1 ติ๊ก")).toBeInTheDocument();
     expect(screen.getByText("กำลังเลือกลูก 7")).toBeInTheDocument();
     expect(screen.getByText("B, C, D")).toBeInTheDocument();
@@ -361,6 +367,7 @@ describe("Badminton fee book page", () => {
 
     await waitFor(() => expect(screen.getByText("ยืนยัน Match")).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: "ยืนยัน" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "ยืนยัน Match" })).not.toBeInTheDocument());
     expect(screen.getByLabelText("ลูก number")).toHaveValue(24);
     expect(screen.getByRole("checkbox", { name: "A ช่องที่ 1 ลูก 7" })).toBeChecked();
     expect(screen.getByText("กำลังเลือกลูก 24")).toBeInTheDocument();
