@@ -62,7 +62,10 @@ body {
 
 .settingsPanel {
   display: grid;
-  grid-template-columns: minmax(260px, 1.1fr) minmax(160px, 0.8fr) minmax(160px, 0.8fr);
+  grid-template-columns: minmax(260px, 1.1fr) minmax(160px, 0.8fr) minmax(
+      160px,
+      0.8fr
+    );
   gap: 12px;
   margin-top: 16px;
   padding-top: 16px;
@@ -549,4 +552,128 @@ thead .stickyName {
   .stickyName {
     min-width: 148px;
   }
+}
+
+.appDialogPaper {
+  border-radius: 16px;
+  padding: 4px;
+  overflow: hidden;
+}
+
+.appDialogTitle {
+  font-weight: 800;
+  font-size: 1.18rem;
+  padding: 18px 22px 10px;
+  border-bottom: 1px solid #eee7dc;
+}
+
+.appDialogTitle-primary {
+  color: #0f766e;
+}
+
+.appDialogTitle-error {
+  color: #dc2626;
+}
+
+.appDialogTitle-warning {
+  color: #d97706;
+}
+
+.appDialogTitle-secondary {
+  color: #b45309;
+}
+
+.appDialogContent {
+  display: grid;
+  gap: 12px;
+  padding: 16px 22px 8px;
+}
+
+.appDialogHeadline {
+  color: #111827;
+  font-size: 1.08rem;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.appDialogMessage {
+  white-space: pre-wrap;
+  color: #4b5563;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.appDialogDetails {
+  display: grid;
+  gap: 8px;
+}
+
+.appDialogDetail {
+  display: grid;
+  grid-template-columns: minmax(86px, 0.4fr) 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #e7e2d8;
+  border-radius: 10px;
+  background: #fbfaf7;
+}
+
+.appDialogDetailLabel {
+  color: #6b7280;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.appDialogDetailValue {
+  color: #1f2937;
+  font-size: 0.98rem;
+  font-weight: 900;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.appDialogDetail-primary {
+  border-color: #99c7c2;
+  background: #f0fdfa;
+}
+
+.appDialogDetail-warning {
+  border-color: #facc15;
+  background: #fffbeb;
+}
+
+.appDialogDetail-error {
+  border-color: #fca5a5;
+  background: #fff1f2;
+}
+
+.appDialogNote {
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.appDialogNote-primary {
+  color: #0f766e;
+  background: #f0fdfa;
+}
+
+.appDialogNote-warning,
+.appDialogNote-secondary {
+  color: #92400e;
+  background: #fffbeb;
+}
+
+.appDialogNote-error {
+  color: #991b1b;
+  background: #fff1f2;
+}
+
+.appDialogActions {
+  padding: 12px 22px 18px;
+  gap: 8px;
 }

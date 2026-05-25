@@ -14,6 +14,11 @@ import {
   Collapse,
   Container,
   CssBaseline,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   Divider,
   IconButton,
   InputAdornment,
@@ -44,6 +49,7 @@ import {
   createInitialSession,
   createPlayer,
   exportSessionSummary,
+  findMatchOverlapWarning,
   getPlayerShuttleCount,
   getPlayerShuttleMarks,
   getPlayerWaitStatus,
@@ -71,6 +77,27 @@ const dateFormatter = new Intl.DateTimeFormat("th-TH", {
   month: "short",
   year: "numeric"
 });
+
+type AppDialogOptions = {
+  title: string;
+  message: string;
+  headline?: string;
+  details?: Array<{
+    label: string;
+    value: string;
+    tone?: "primary" | "warning" | "error";
+  }>;
+  note?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  color?: "primary" | "error" | "warning" | "secondary";
+};
+
+type AppDialogState = AppDialogOptions & {
+  open: boolean;
+  mode: "alert" | "confirm";
+  resolve?: (value: boolean) => void;
+};
 
 const theme = createTheme({
   palette: {
@@ -139,6 +166,12 @@ export default function HomePage() {
   const [hydrated, setHydrated] = useState(false);
   const [roomReady, setRoomReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState(hasSupabaseConfig ? "กำลังเชื่อมต่อ" : "โหมดเครื่องนี้");
+  const [dialog, setDialog] = useState<AppDialogState>({
+    open: false,
+    mode: "alert",
+    title: "",
+    message: ""
+  });
   const lastRemoteSnapshotRef = useRef("");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -340,7 +373,36 @@ export default function HomePage() {
     }));
   }
 
-  function addPlayer(event: FormEvent<HTMLFormElement>) {
+  function showDialog(options: AppDialogOptions, mode: "alert" | "confirm") {
+    return new Promise<boolean>((resolve) => {
+      setDialog({
+        ...options,
+        open: true,
+        mode,
+        resolve
+      });
+    });
+  }
+
+  function showAlert(options: AppDialogOptions) {
+    return showDialog(options, "alert");
+  }
+
+  function showConfirm(options: AppDialogOptions) {
+    return showDialog(options, "confirm");
+  }
+
+  function closeDialog(result: boolean) {
+    const resolver = dialog.resolve;
+    setDialog((current) => ({
+      ...current,
+      open: false,
+      resolve: undefined
+    }));
+    resolver?.(result);
+  }
+
+  async function addPlayer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmedName = playerName.trim();
     if (!trimmedName) {
@@ -351,7 +413,14 @@ export default function HomePage() {
       (player) => player.name.trim().toLocaleLowerCase("th-TH") === trimmedName.toLocaleLowerCase("th-TH")
     );
     if (duplicatedPlayer) {
-      window.alert(`มีชื่อ ${duplicatedPlayer.name} อยู่แล้ว`);
+      await showAlert({
+        title: "ชื่อซ้ำ",
+        headline: `มีชื่อ ${duplicatedPlayer.name} อยู่แล้ว`,
+        message: "เพิ่มชื่อซ้ำไม่ได้ เพื่อกันการคิดเงินผิดคน",
+        details: [{ label: "ชื่อที่ซ้ำ", value: duplicatedPlayer.name, tone: "warning" }],
+        confirmLabel: "รับทราบ",
+        color: "warning"
+      });
       return;
     }
 
@@ -370,9 +439,20 @@ export default function HomePage() {
     }));
   }
 
-  function removePlayer(id: string) {
+  async function removePlayer(id: string) {
     const player = session.players.find((currentPlayer) => currentPlayer.id === id);
-    if (!player || !window.confirm(`ลบ ${player.name} ออกจากรอบนี้ใช่ไหม?`)) {
+    if (!player) {
+      return;
+    }
+    const confirmed = await showConfirm({
+      title: "ลบผู้เล่น",
+      headline: `ลบ ${player.name} ใช่ไหม?`,
+      message: "ข้อมูลลูกและสถานะจ่ายของคนนี้จะถูกเอาออกจากรอบนี้",
+      details: [{ label: "ผู้เล่น", value: player.name, tone: "error" }],
+      confirmLabel: "ลบ",
+      color: "error"
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -387,15 +467,29 @@ export default function HomePage() {
     );
   }
 
-  function resetSession() {
-    if (window.confirm("ล้างข้อมูลรอบนี้ทั้งหมดใช่ไหม?")) {
+  async function resetSession() {
+    if (await showConfirm({
+      title: "รีเซ็ตรอบ",
+      headline: "ล้างข้อมูลรอบนี้ทั้งหมด",
+      message: "รายชื่อ ลูกที่ติ๊ก สถานะจ่าย และประวัติในรอบนี้จะถูกล้าง",
+      note: "เหมาะสำหรับเริ่มรอบใหม่เท่านั้น",
+      confirmLabel: "รีเซ็ต",
+      color: "error"
+    })) {
       updateSession(() => createInitialSession());
       setActiveTab(0);
     }
   }
 
-  function clearPlayData() {
-    if (window.confirm("ล้างลูกที่ติ๊กและสถานะจ่ายแล้ว แต่เก็บรายชื่อไว้ใช่ไหม?")) {
+  async function clearPlayData() {
+    if (await showConfirm({
+      title: "ล้างข้อมูลเล่น",
+      headline: "ล้างข้อมูลเล่น แต่เก็บรายชื่อไว้",
+      message: "ลูกที่ติ๊ก สถานะจ่าย และประวัติล่าสุดจะถูกล้าง แต่รายชื่อผู้เล่นยังอยู่",
+      note: "ใช้ตอนอยากทดสอบใหม่โดยไม่ต้องพิมพ์ชื่อซ้ำ",
+      confirmLabel: "ล้างข้อมูล",
+      color: "warning"
+    })) {
       updateSession((current) => ({
         ...current,
         currentShuttleNumber: 1,
@@ -448,7 +542,7 @@ export default function HomePage() {
     }));
   }
 
-  function toggleShuttleMark(playerId: string, column: number) {
+  async function toggleShuttleMark(playerId: string, column: number) {
     const player = session.players.find((currentPlayer) => currentPlayer.id === playerId);
     if (!player) {
       return;
@@ -457,7 +551,18 @@ export default function HomePage() {
     const currentMarks = getPlayerShuttleMarks(player);
     const removedShuttleNumber = currentMarks[column];
     const isRemoving = typeof removedShuttleNumber === "number";
-    if (isRemoving && !window.confirm("เอาออกแน่นะอีแก่")) {
+    if (isRemoving && !(await showConfirm({
+      title: "เอาติ๊กออก",
+      headline: "เอาติ๊กลูกออกใช่ไหม?",
+      message: "การเอาออกจะกระทบยอดลูกและ Match ของลูกนี้",
+      details: [
+        { label: "ผู้เล่น", value: player.name, tone: "warning" },
+        { label: "ลูกที่", value: String(removedShuttleNumber), tone: "warning" }
+      ],
+      note: "เอาออกแน่นะอีแก่",
+      confirmLabel: "เอาออก",
+      color: "warning"
+    }))) {
       return;
     }
 
@@ -465,47 +570,92 @@ export default function HomePage() {
       ? removedShuttleNumber
       : Math.max(1, editingShuttleNumber ?? session.currentShuttleNumber);
     if (!isRemoving && getShuttleMarkSummary(session.players, targetShuttleNumber).count >= 4) {
-      window.alert(`ลูกที่ ${targetShuttleNumber} ครบ 4 ติ๊กแล้ว ถ้าจะเปลี่ยนให้เอาออกก่อน`);
+      await showAlert({
+        title: "ลูกนี้ครบแล้ว",
+        headline: `ลูกที่ ${targetShuttleNumber} ครบ 4 ติ๊กแล้ว`,
+        message: "ถ้าจะเปลี่ยนคน ให้เอาติ๊กเดิมออกก่อน แล้วค่อยเลือกใหม่",
+        details: [{ label: "ลูกที่", value: String(targetShuttleNumber), tone: "warning" }],
+        confirmLabel: "รับทราบ",
+        color: "warning"
+      });
       return;
     }
 
     const nextPlayers = session.players.map((currentPlayer) =>
       currentPlayer.id === playerId
         ? setPlayerShuttleMarks(
-            currentPlayer,
-            isRemoving
-              ? getPlayerShuttleMarks(currentPlayer).filter((_, markIndex) => markIndex !== column)
-              : [...getPlayerShuttleMarks(currentPlayer), targetShuttleNumber]
-          )
+          currentPlayer,
+          isRemoving
+            ? getPlayerShuttleMarks(currentPlayer).filter((_, markIndex) => markIndex !== column)
+            : [...getPlayerShuttleMarks(currentPlayer), targetShuttleNumber]
+        )
         : currentPlayer
     );
 
     const targetShuttleSummary = getShuttleMarkSummary(nextPlayers, targetShuttleNumber);
     const completedPlayerNames = targetShuttleSummary.names.slice(-4).join(", ");
-    const shouldAskToAdvance =
+    const overlapWarning = !isRemoving && targetShuttleSummary.isComplete
+      ? findMatchOverlapWarning(nextPlayers, targetShuttleNumber)
+      : null;
+    const shouldAdvanceAfterConfirm =
       !isRemoving &&
       targetShuttleSummary.isComplete &&
       targetShuttleNumber === session.currentShuttleNumber &&
       editingShuttleNumber === null;
-    const confirmedAdvance =
-      shouldAskToAdvance &&
-      window.confirm(
-        `ครบ 4 คนแล้ว: ${completedPlayerNames} ไปที่ลูก ${targetShuttleNumber + 1} ใช่ไหม?`
-      );
-    const nextShuttleNumber = confirmedAdvance
+    const shouldAskToConfirmComplete =
+      !isRemoving &&
+      targetShuttleSummary.isComplete &&
+      (shouldAdvanceAfterConfirm || editingShuttleNumber !== null);
+    const confirmedComplete =
+      shouldAskToConfirmComplete &&
+      await showConfirm({
+        title: "ยืนยัน Match",
+        headline: "ครบ 4 คนแล้ว",
+        message: shouldAdvanceAfterConfirm
+          ? "ยืนยัน Match นี้แล้วระบบจะเลื่อนไปลูกถัดไป"
+          : "ยืนยัน Match นี้เพื่อจบการแก้ลูกเก่า",
+        details: [
+          { label: "ลูกที่", value: String(targetShuttleNumber), tone: "primary" },
+          { label: "ผู้เล่น", value: completedPlayerNames, tone: "primary" },
+          ...(shouldAdvanceAfterConfirm
+            ? [{ label: "ลูกถัดไป", value: String(targetShuttleNumber + 1), tone: "primary" as const }]
+            : []),
+          ...(overlapWarning
+            ? [
+                {
+                  label: "เตือนซ้ำ",
+                  value: `ซ้ำกับลูกที่ ${overlapWarning.shuttleNumber} ${overlapWarning.overlapCount} คน`,
+                  tone: "warning" as const
+                },
+                {
+                  label: "รายชื่อซ้ำ",
+                  value: overlapWarning.overlapNames.join(", "),
+                  tone: "warning" as const
+                }
+              ]
+            : [])
+        ],
+        note: overlapWarning ? "ตรวจรายชื่อซ้ำก่อนยืนยัน เพื่อกันจัดคู่เดิมติดกันเกินไป" : undefined,
+        confirmLabel: "ยืนยัน",
+        color: overlapWarning ? "warning" : "primary"
+      });
+    if (shouldAskToConfirmComplete && !confirmedComplete) {
+      return;
+    }
+    const nextShuttleNumber = shouldAdvanceAfterConfirm && confirmedComplete
       ? targetShuttleNumber + 1
       : session.currentShuttleNumber;
     const restUntil = new Date(Date.now() + REST_MINUTES * 60000).toISOString();
-    const restedPlayers = confirmedAdvance
+    const restedPlayers = shouldAdvanceAfterConfirm && confirmedComplete
       ? nextPlayers.map((currentPlayer) =>
-          getPlayerShuttleMarks(currentPlayer).includes(targetShuttleNumber)
-            ? {
-                ...currentPlayer,
-                restUntil,
-                waitingSince: restUntil
-              }
-            : currentPlayer
-        )
+        getPlayerShuttleMarks(currentPlayer).includes(targetShuttleNumber)
+          ? {
+            ...currentPlayer,
+            restUntil,
+            waitingSince: restUntil
+          }
+          : currentPlayer
+      )
       : nextPlayers;
 
     const shouldKeepEditingShuttle =
@@ -527,7 +677,7 @@ export default function HomePage() {
             : `ติ๊ก ${actionPlayerName} ลงลูก ${targetShuttleNumber}`
         )
       );
-      if (confirmedAdvance) {
+      if (confirmedComplete) {
         nextSession = appendActivity(
           nextSession,
           createActivity("match-confirmed", `ยืนยันลูก ${targetShuttleNumber}: ${completedPlayerNames}`)
@@ -537,18 +687,27 @@ export default function HomePage() {
     });
   }
 
-  function setPaid(playerId: string, paid: boolean) {
+  async function setPaid(playerId: string, paid: boolean) {
     const player = session.players.find((currentPlayer) => currentPlayer.id === playerId);
     if (!player) {
       return;
     }
 
-    const message = paid
-      ? `ยืนยันว่า ${player.name} จ่ายแล้ว ${formatBaht(
-          calculatePlayerTotal(player, session.pricing)
-        )} บาท ใช่ไหม?`
-      : `ย้าย ${player.name} กลับไปค้างจ่ายใช่ไหม?`;
-    if (!window.confirm(message)) {
+    if (!(await showConfirm({
+      title: paid ? "ยืนยันการจ่ายเงิน" : "ย้ายกลับค้างจ่าย",
+      headline: paid ? `${player.name} จ่ายแล้วใช่ไหม?` : `ย้าย ${player.name} กลับไปค้างจ่ายใช่ไหม?`,
+      message: paid ? "หลังยืนยัน คนนี้จะถูกย้ายไป tab สรุปจ่ายแล้ว" : "คนนี้จะกลับไปอยู่ในรายชื่อค้างจ่าย",
+      details: [
+        { label: "ผู้เล่น", value: player.name, tone: paid ? "primary" : "warning" },
+        {
+          label: "ยอดเงิน",
+          value: `${formatBaht(calculatePlayerTotal(player, session.pricing))} บาท`,
+          tone: paid ? "primary" : "warning"
+        }
+      ],
+      confirmLabel: paid ? "จ่ายแล้ว" : "ย้ายกลับ",
+      color: paid ? "primary" : "warning"
+    }))) {
       return;
     }
 
@@ -559,10 +718,10 @@ export default function HomePage() {
           players: current.players.map((currentPlayer) =>
             currentPlayer.id === playerId
               ? {
-                  ...currentPlayer,
-                  paid,
-                  paidAt: paid ? new Date().toISOString() : undefined
-                }
+                ...currentPlayer,
+                paid,
+                paidAt: paid ? new Date().toISOString() : undefined
+              }
               : currentPlayer
           )
         },
@@ -580,9 +739,21 @@ export default function HomePage() {
     const text = exportSessionSummary(session, sessionId, now);
     try {
       await window.navigator.clipboard.writeText(text);
-      window.alert("คัดลอกสรุปแล้ว");
+      await showAlert({
+        title: "คัดลอกสำเร็จ",
+        headline: "คัดลอกสรุปแล้ว",
+        message: "นำไปวางใน LINE ได้เลย",
+        confirmLabel: "รับทราบ",
+        color: "primary"
+      });
     } catch {
-      window.alert(text);
+      await showAlert({
+        title: "สรุปรอบ",
+        headline: `สรุปรอบ ${sessionId}`,
+        message: text,
+        confirmLabel: "ปิด",
+        color: "primary"
+      });
     }
   }
 
@@ -809,6 +980,58 @@ export default function HomePage() {
           </Stack>
         </Container>
       </Box>
+      <Dialog
+        open={dialog.open}
+        onClose={() => closeDialog(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ className: "appDialogPaper" }}
+      >
+        <DialogTitle className={`appDialogTitle appDialogTitle-${dialog.color ?? "primary"}`}>
+          {dialog.title}
+        </DialogTitle>
+        <DialogContent className="appDialogContent">
+          {dialog.headline ? (
+            <Typography className="appDialogHeadline" component="p">
+              {dialog.headline}
+            </Typography>
+          ) : null}
+          <DialogContentText className="appDialogMessage">{dialog.message}</DialogContentText>
+          {dialog.details && dialog.details.length > 0 ? (
+            <Box className="appDialogDetails">
+              {dialog.details.map((detail) => (
+                <Box
+                  key={`${detail.label}-${detail.value}`}
+                  className={`appDialogDetail appDialogDetail-${detail.tone ?? dialog.color ?? "primary"}`}
+                >
+                  <Typography className="appDialogDetailLabel">{detail.label}</Typography>
+                  <Typography className="appDialogDetailValue">{detail.value}</Typography>
+                </Box>
+              ))}
+            </Box>
+          ) : null}
+          {dialog.note ? (
+            <Typography className={`appDialogNote appDialogNote-${dialog.color ?? "primary"}`}>
+              {dialog.note}
+            </Typography>
+          ) : null}
+        </DialogContent>
+        <DialogActions className="appDialogActions">
+          {dialog.mode === "confirm" ? (
+            <Button variant="outlined" onClick={() => closeDialog(false)}>
+              {dialog.cancelLabel ?? "ยกเลิก"}
+            </Button>
+          ) : null}
+          <Button
+            variant="contained"
+            color={dialog.color ?? "primary"}
+            onClick={() => closeDialog(true)}
+            autoFocus
+          >
+            {dialog.confirmLabel ?? "ตกลง"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </ThemeProvider>
   );
 }
@@ -907,9 +1130,8 @@ function ScoreSheet({
                           icon={<SportsTennisIcon fontSize="small" />}
                           checkedIcon={
                             <span
-                              className={`shuttleNumberIcon shuttleNumberIconChecked${
-                                isOverLimit ? " shuttleNumberIconDanger" : ""
-                              }${isIncomplete ? " shuttleNumberIconWarning" : ""}`}
+                              className={`shuttleNumberIcon shuttleNumberIconChecked${isOverLimit ? " shuttleNumberIconDanger" : ""
+                                }${isIncomplete ? " shuttleNumberIconWarning" : ""}`}
                             >
                               {shuttleMark}
                             </span>
@@ -1060,10 +1282,10 @@ function MatchSummaryPanel({
   const normalizedSearch = searchTerm.trim().toLocaleLowerCase("th-TH");
   const visibleMatchGroups = normalizedSearch
     ? matchGroups.filter((group) =>
-        group.playerNames.some((name) =>
-          name.toLocaleLowerCase("th-TH").includes(normalizedSearch)
-        )
+      group.playerNames.some((name) =>
+        name.toLocaleLowerCase("th-TH").includes(normalizedSearch)
       )
+    )
     : matchGroups;
 
   return (
@@ -1089,9 +1311,8 @@ function MatchSummaryPanel({
           {visibleMatchGroups.map((group) => (
             <Paper
               key={group.shuttleNumber}
-              className={`matchItem${group.isOverLimit ? " matchItemDanger" : ""}${
-                group.isIncomplete ? " matchItemWarning" : ""
-              }`}
+              className={`matchItem${group.isOverLimit ? " matchItemDanger" : ""}${group.isIncomplete ? " matchItemWarning" : ""
+                }`}
               elevation={0}
             >
               <Typography variant="h6" component="h3">

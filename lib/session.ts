@@ -49,6 +49,12 @@ export type MatchSummary = {
   isOverLimit: boolean;
 };
 
+export type MatchOverlapWarning = {
+  shuttleNumber: number;
+  overlapNames: string[];
+  overlapCount: number;
+};
+
 export type ShuttleMarkSummary = {
   shuttleNumber: number;
   count: number;
@@ -57,18 +63,24 @@ export type ShuttleMarkSummary = {
   missingCount: number;
 };
 
-export type PlayerWaitStatus = "normal" | "warning" | "danger";
+export type PlayerWaitStatus = 'normal' | 'warning' | 'danger';
 
 export type ActivityLogEntry = {
   id: string;
-  action: "mark-added" | "mark-removed" | "match-confirmed" | "paid" | "unpaid" | "player-removed";
+  action:
+    | 'mark-added'
+    | 'mark-removed'
+    | 'match-confirmed'
+    | 'paid'
+    | 'unpaid'
+    | 'player-removed';
   message: string;
   createdAt: string;
 };
 
 export const DEFAULT_PRICING: Pricing = {
   baseFee: 100,
-  shuttleFee: 25
+  shuttleFee: 25,
 };
 
 export const DEFAULT_SHUTTLE_COLUMNS = 10;
@@ -76,11 +88,11 @@ export const REST_MINUTES = 20;
 export const WAIT_WARNING_MINUTES = 15;
 export const WAIT_DANGER_MINUTES = 20;
 
-export const STORAGE_KEY = "badminton-fee-book.session";
+export const STORAGE_KEY = 'badminton-fee-book.session';
 
 export function createPlayer(name: string): Player {
   const id =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
@@ -90,7 +102,7 @@ export function createPlayer(name: string): Player {
     shuttleCount: 0,
     shuttleMarks: [],
     paid: false,
-    waitingSince: new Date().toISOString()
+    waitingSince: new Date().toISOString(),
   };
 }
 
@@ -100,7 +112,7 @@ export function createInitialSession(): SessionState {
     pricing: DEFAULT_PRICING,
     currentShuttleNumber: 1,
     activityLog: [],
-    updatedAt: new Date().toISOString()
+    updatedAt: new Date().toISOString(),
   };
 }
 
@@ -108,7 +120,10 @@ export function calculatePlayerTotal(player: Player, pricing: Pricing): number {
   return pricing.baseFee + getPlayerShuttleCount(player) * pricing.shuttleFee;
 }
 
-export function calculatePlayersTotal(players: Player[], pricing: Pricing): number {
+export function calculatePlayersTotal(
+  players: Player[],
+  pricing: Pricing,
+): number {
   const baseTotal = players.length * pricing.baseFee;
   const shuttleTotal = getBillableShuttleCount(players) * pricing.shuttleFee;
 
@@ -117,8 +132,9 @@ export function calculatePlayersTotal(players: Player[], pricing: Pricing): numb
 
 export function getVisibleShuttleColumns(players: Player[]): number {
   const maxUsed = players.reduce(
-    (max, player) => Math.max(max, getPlayerShuttleCount(player), player.shuttleCount),
-    0
+    (max, player) =>
+      Math.max(max, getPlayerShuttleCount(player), player.shuttleCount),
+    0,
   );
   return Math.max(DEFAULT_SHUTTLE_COLUMNS, maxUsed + 1);
 }
@@ -132,7 +148,7 @@ export function getPlayerShuttleMarks(player: Player): number[] {
 
   return Array.from(
     { length: Math.max(0, Number(player.shuttleCount) || 0) },
-    (_, index) => index + 1
+    (_, index) => index + 1,
   );
 }
 
@@ -141,20 +157,23 @@ export function getPlayerShuttleCount(player: Player): number {
 }
 
 export function getBillableShuttleCount(players: Player[]): number {
-  const markCount = players.reduce((sum, player) => sum + getPlayerShuttleCount(player), 0);
+  const markCount = players.reduce(
+    (sum, player) => sum + getPlayerShuttleCount(player),
+    0,
+  );
 
   return Math.ceil(markCount / 4);
 }
 
 export function getShuttleMarkSummary(
   players: Player[],
-  shuttleNumber: number
+  shuttleNumber: number,
 ): ShuttleMarkSummary {
   const normalizedShuttleNumber = Math.max(1, Number(shuttleNumber) || 1);
   const names = players.flatMap((player) =>
     getPlayerShuttleMarks(player)
       .filter((mark) => mark === normalizedShuttleNumber)
-      .map(() => player.name)
+      .map(() => player.name),
   );
   const count = names.length;
   const remainder = count % 4;
@@ -164,7 +183,7 @@ export function getShuttleMarkSummary(
     count,
     names,
     isComplete: count > 0 && remainder === 0,
-    missingCount: remainder === 0 ? 0 : 4 - remainder
+    missingCount: remainder === 0 ? 0 : 4 - remainder,
   };
 }
 
@@ -172,7 +191,10 @@ export function hasShuttleMark(player: Player, shuttleNumber: number): boolean {
   return getPlayerShuttleMarks(player).includes(shuttleNumber);
 }
 
-export function setPlayerShuttleMarks(player: Player, shuttleMarks: number[]): Player {
+export function setPlayerShuttleMarks(
+  player: Player,
+  shuttleMarks: number[],
+): Player {
   const normalizedMarks = shuttleMarks
     .map((mark) => Number(mark))
     .filter((mark) => Number.isInteger(mark) && mark > 0);
@@ -180,75 +202,75 @@ export function setPlayerShuttleMarks(player: Player, shuttleMarks: number[]): P
   return {
     ...player,
     shuttleMarks: normalizedMarks,
-    shuttleCount: normalizedMarks.length
+    shuttleCount: normalizedMarks.length,
   };
 }
 
 export function getPlayerWaitStatus(
   player: Player,
-  nowValue: string | Date = new Date()
+  nowValue: string | Date = new Date(),
 ): PlayerWaitStatus {
-  const now = typeof nowValue === "string" ? new Date(nowValue) : nowValue;
+  const now = typeof nowValue === 'string' ? new Date(nowValue) : nowValue;
   if (Number.isNaN(now.getTime())) {
-    return "normal";
+    return 'normal';
   }
 
   const restUntil = parseDate(player.restUntil);
   if (restUntil && now < restUntil) {
-    return "normal";
+    return 'normal';
   }
 
   const waitingStart = restUntil ?? parseDate(player.waitingSince);
   if (!waitingStart) {
-    return "normal";
+    return 'normal';
   }
 
   const waitedMinutes = (now.getTime() - waitingStart.getTime()) / 60000;
   if (waitedMinutes >= WAIT_DANGER_MINUTES) {
-    return "danger";
+    return 'danger';
   }
   if (waitedMinutes >= WAIT_WARNING_MINUTES) {
-    return "warning";
+    return 'warning';
   }
-  return "normal";
+  return 'normal';
 }
 
 export function createActivity(
-  action: ActivityLogEntry["action"],
+  action: ActivityLogEntry['action'],
   message: string,
-  createdAt = new Date().toISOString()
+  createdAt = new Date().toISOString(),
 ): ActivityLogEntry {
   return {
     id: `${createdAt}-${Math.random().toString(36).slice(2)}`,
     action,
     message,
-    createdAt
+    createdAt,
   };
 }
 
 export function appendActivity(
   session: SessionState,
   activity: ActivityLogEntry,
-  limit = 20
+  limit = 20,
 ): SessionState {
   return {
     ...session,
-    activityLog: [activity, ...(session.activityLog ?? [])].slice(0, limit)
+    activityLog: [activity, ...(session.activityLog ?? [])].slice(0, limit),
   };
 }
 
 export function getPriorityPlayers(
   players: Player[],
-  nowValue: string | Date = new Date()
+  nowValue: string | Date = new Date(),
 ): Player[] {
   const rank = { danger: 0, warning: 1, normal: 2 } as const;
   return players
     .filter((player) => !player.paid)
     .map((player) => ({
       player,
-      status: getPlayerWaitStatus(player, nowValue)
+      status: getPlayerWaitStatus(player, nowValue),
     }))
-    .filter(({ status }) => status !== "normal")
+    .filter(({ status }) => status !== 'normal')
     .sort((first, second) => rank[first.status] - rank[second.status])
     .map(({ player }) => player);
 }
@@ -256,35 +278,40 @@ export function getPriorityPlayers(
 export function exportSessionSummary(
   session: SessionState,
   sessionId: string,
-  nowValue: string | Date = new Date()
+  nowValue: string | Date = new Date(),
 ): string {
   const summary = summarizeSession(session.players, session.pricing);
-  const paidNames = new Set(session.players.filter((player) => player.paid).map((player) => player.id));
+  const paidNames = new Set(
+    session.players.filter((player) => player.paid).map((player) => player.id),
+  );
   const lines = [
     `สรุปรอบ ${sessionId}`,
-    `วันที่ ${toDateKey(typeof nowValue === "string" ? nowValue : nowValue.toISOString())}`,
+    `วันที่ ${toDateKey(typeof nowValue === 'string' ? nowValue : nowValue.toISOString())}`,
     `ลูกทั้งหมด ${summary.shuttleCount} ลูก`,
     `รวม ${summary.totalAmount + summary.paidAmount} บาท`,
     `จ่ายแล้ว ${summary.paidAmount} บาท`,
     `ค้าง ${summary.unpaidAmount} บาท`,
-    "",
+    '',
     ...session.players.map((player) => {
       const amount = calculatePlayerTotal(player, session.pricing);
-      return `${player.name} ${amount} ${paidNames.has(player.id) ? "จ่ายแล้ว" : "ค้าง"}`;
-    })
+      return `${player.name} ${amount} ${paidNames.has(player.id) ? 'จ่ายแล้ว' : 'ค้าง'}`;
+    }),
   ];
 
-  return lines.join("\n");
+  return lines.join('\n');
 }
 
 export function getVisibleShuttleColumnsForCurrent(
   players: Player[],
-  currentShuttleNumber: number
+  currentShuttleNumber: number,
 ): number {
   return getVisibleShuttleColumns(players);
 }
 
-export function summarizeSession(players: Player[], pricing: Pricing): SessionSummary {
+export function summarizeSession(
+  players: Player[],
+  pricing: Pricing,
+): SessionSummary {
   const paidPlayers = players.filter((player) => player.paid);
   const shuttleCount = getBillableShuttleCount(players);
   const sessionAmount = calculatePlayersTotal(players, pricing);
@@ -296,11 +323,14 @@ export function summarizeSession(players: Player[], pricing: Pricing): SessionSu
     shuttleCount,
     totalAmount: unpaidAmount,
     paidAmount,
-    unpaidAmount
+    unpaidAmount,
   };
 }
 
-export function groupPaidPlayersByDay(players: Player[], pricing: Pricing): PaidDaySummary[] {
+export function groupPaidPlayersByDay(
+  players: Player[],
+  pricing: Pricing,
+): PaidDaySummary[] {
   const groups = new Map<string, PaidDaySummary>();
 
   players
@@ -310,13 +340,13 @@ export function groupPaidPlayersByDay(players: Player[], pricing: Pricing): Paid
       const current = groups.get(dateKey) ?? {
         dateKey,
         totalAmount: 0,
-        players: []
+        players: [],
       };
 
       current.players.push({
         name: player.name,
         shuttleCount: getPlayerShuttleCount(player),
-        amount: calculatePlayerTotal(player, pricing)
+        amount: calculatePlayerTotal(player, pricing),
       });
       current.totalAmount = calculatePlayersTotal(
         players.filter((paidPlayer) => {
@@ -325,13 +355,13 @@ export function groupPaidPlayersByDay(players: Player[], pricing: Pricing): Paid
             toDateKey(paidPlayer.paidAt ?? new Date().toISOString()) === dateKey
           );
         }),
-        pricing
+        pricing,
       );
       groups.set(dateKey, current);
     });
 
   return Array.from(groups.values()).sort((first, second) =>
-    second.dateKey.localeCompare(first.dateKey)
+    second.dateKey.localeCompare(first.dateKey),
   );
 }
 
@@ -352,8 +382,51 @@ export function groupMatchesByShuttle(players: Player[]): MatchSummary[] {
       shuttleNumber,
       playerNames,
       isIncomplete: playerNames.length > 0 && playerNames.length < 4,
-      isOverLimit: playerNames.length > 4
+      isOverLimit: playerNames.length > 4,
     }));
+}
+
+export function findMatchOverlapWarning(
+  players: Player[],
+  targetShuttleNumber: number,
+  minimumOverlap = 3,
+): MatchOverlapWarning | null {
+  const normalizedTargetShuttleNumber = Math.max(
+    1,
+    Number(targetShuttleNumber) || 1,
+  );
+  const matchGroups = groupMatchesByShuttle(players);
+  const targetGroup = matchGroups.find(
+    (group) => group.shuttleNumber === normalizedTargetShuttleNumber,
+  );
+
+  if (!targetGroup) {
+    return null;
+  }
+
+  const targetNames = Array.from(new Set(targetGroup.playerNames));
+  const warnings = matchGroups
+    .filter((group) => group.shuttleNumber !== normalizedTargetShuttleNumber)
+    .map((group) => {
+      const previousNames = new Set(group.playerNames);
+      const overlapNames = targetNames.filter((name) =>
+        previousNames.has(name),
+      );
+
+      return {
+        shuttleNumber: group.shuttleNumber,
+        overlapNames,
+        overlapCount: overlapNames.length,
+      };
+    })
+    .filter((warning) => warning.overlapCount >= minimumOverlap)
+    .sort(
+      (first, second) =>
+        second.overlapCount - first.overlapCount ||
+        first.shuttleNumber - second.shuttleNumber,
+    );
+
+  return warnings[0] ?? null;
 }
 
 function toDateKey(value: string): string {
@@ -366,36 +439,36 @@ function toDateKey(value: string): string {
 
 function toLocalDateKey(date: Date): string {
   const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
 
 export function normalizeSession(value: unknown): SessionState {
-  if (!value || typeof value !== "object") {
+  if (!value || typeof value !== 'object') {
     return createInitialSession();
   }
 
   const candidate = value as Partial<SessionState>;
   const pricing = {
     baseFee:
-      typeof candidate.pricing?.baseFee === "number"
+      typeof candidate.pricing?.baseFee === 'number'
         ? candidate.pricing.baseFee
         : DEFAULT_PRICING.baseFee,
     shuttleFee:
-      typeof candidate.pricing?.shuttleFee === "number"
+      typeof candidate.pricing?.shuttleFee === 'number'
         ? candidate.pricing.shuttleFee
-        : DEFAULT_PRICING.shuttleFee
+        : DEFAULT_PRICING.shuttleFee,
   };
 
   const players = Array.isArray(candidate.players)
     ? candidate.players
         .filter((player): player is Player => {
           return (
-            typeof player === "object" &&
+            typeof player === 'object' &&
             player !== null &&
-            "id" in player &&
-            "name" in player
+            'id' in player &&
+            'name' in player
           );
         })
         .map((player) =>
@@ -405,51 +478,65 @@ export function normalizeSession(value: unknown): SessionState {
               name: String(player.name),
               shuttleCount: Math.max(0, Number(player.shuttleCount) || 0),
               paid: Boolean(player.paid),
-              paidAt: typeof player.paidAt === "string" ? player.paidAt : undefined,
+              paidAt:
+                typeof player.paidAt === 'string' ? player.paidAt : undefined,
               waitingSince:
-                typeof player.waitingSince === "string"
+                typeof player.waitingSince === 'string'
                   ? player.waitingSince
                   : new Date().toISOString(),
-              restUntil: typeof player.restUntil === "string" ? player.restUntil : undefined
+              restUntil:
+                typeof player.restUntil === 'string'
+                  ? player.restUntil
+                  : undefined,
             },
             Array.isArray(player.shuttleMarks)
               ? player.shuttleMarks
               : Array.from(
                   { length: Math.max(0, Number(player.shuttleCount) || 0) },
-                  (_, index) => index + 1
-                )
-          )
+                  (_, index) => index + 1,
+                ),
+          ),
         )
     : [];
 
   return {
     players,
     pricing,
-    currentShuttleNumber: Math.max(1, Number(candidate.currentShuttleNumber) || 1),
+    currentShuttleNumber: Math.max(
+      1,
+      Number(candidate.currentShuttleNumber) || 1,
+    ),
     activityLog: Array.isArray(candidate.activityLog)
       ? candidate.activityLog
           .filter((activity): activity is ActivityLogEntry => {
             return (
-              typeof activity === "object" &&
+              typeof activity === 'object' &&
               activity !== null &&
-              "message" in activity &&
-              "createdAt" in activity
+              'message' in activity &&
+              'createdAt' in activity
             );
           })
           .map((activity) => ({
-            id: typeof activity.id === "string" ? activity.id : createActivity("mark-added", String(activity.message)).id,
+            id:
+              typeof activity.id === 'string'
+                ? activity.id
+                : createActivity('mark-added', String(activity.message)).id,
             action:
-              typeof activity.action === "string"
-                ? (activity.action as ActivityLogEntry["action"])
-                : "mark-added",
+              typeof activity.action === 'string'
+                ? (activity.action as ActivityLogEntry['action'])
+                : 'mark-added',
             message: String(activity.message),
             createdAt:
-              typeof activity.createdAt === "string" ? activity.createdAt : new Date().toISOString()
+              typeof activity.createdAt === 'string'
+                ? activity.createdAt
+                : new Date().toISOString(),
           }))
           .slice(0, 20)
       : [],
     updatedAt:
-      typeof candidate.updatedAt === "string" ? candidate.updatedAt : new Date().toISOString()
+      typeof candidate.updatedAt === 'string'
+        ? candidate.updatedAt
+        : new Date().toISOString(),
   };
 }
 

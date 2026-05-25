@@ -10,7 +10,6 @@ describe("Badminton fee book page", () => {
   });
 
   it("adds a player, ticks shuttle cells, recalculates totals, and marks paid", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     const user = userEvent.setup();
 
     render(<HomePage />);
@@ -30,6 +29,7 @@ describe("Badminton fee book page", () => {
     expect(screen.getByText("ค้างจ่าย 125 บาท")).toBeInTheDocument();
 
     await user.click(within(row).getByRole("checkbox", { name: "A จ่ายแล้ว" }));
+    await user.click(screen.getByRole("button", { name: "จ่ายแล้ว" }));
 
     expect(screen.getByText("ยอดรวม 0 บาท")).toBeInTheDocument();
     expect(screen.getByText("จ่ายแล้ว 125 บาท")).toBeInTheDocument();
@@ -37,7 +37,6 @@ describe("Badminton fee book page", () => {
   });
 
   it("prevents duplicate player names", async () => {
-    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => undefined);
     const user = userEvent.setup();
 
     render(<HomePage />);
@@ -47,7 +46,11 @@ describe("Badminton fee book page", () => {
     await user.type(screen.getByLabelText("ชื่อผู้เล่น"), " a ");
     await user.click(screen.getByRole("button", { name: "เพิ่มผู้เล่น" }));
 
-    expect(alertSpy).toHaveBeenCalledWith("มีชื่อ A อยู่แล้ว");
+    await waitFor(() => expect(screen.getByText("ชื่อซ้ำ")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "รับทราบ" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "ชื่อซ้ำ" })).not.toBeInTheDocument());
+    await user.clear(screen.getByLabelText("ชื่อผู้เล่น"));
+    expect(screen.getByRole("button", { name: "เพิ่มผู้เล่น" })).toBeInTheDocument();
     expect(screen.getAllByRole("row", { name: /A/ })).toHaveLength(1);
   });
 
@@ -67,7 +70,7 @@ describe("Badminton fee book page", () => {
   it("shows the app version in the footer", () => {
     render(<HomePage />);
 
-    expect(screen.getByText("v1.3.0")).toBeInTheDocument();
+    expect(screen.getByText("v1.4.0")).toBeInTheDocument();
   });
 
   it("ticks the next shuttle slot when clicking a player name", async () => {
@@ -317,7 +320,6 @@ describe("Badminton fee book page", () => {
   });
 
   it("keeps the current shuttle number when editing an older shuttle mark", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     const user = userEvent.setup();
 
     render(<HomePage />);
@@ -357,6 +359,8 @@ describe("Badminton fee book page", () => {
       })
     );
 
+    await waitFor(() => expect(screen.getByText("ยืนยัน Match")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "ยืนยัน" }));
     expect(screen.getByLabelText("ลูก number")).toHaveValue(24);
     expect(screen.getByRole("checkbox", { name: "A ช่องที่ 1 ลูก 7" })).toBeChecked();
     expect(screen.getByText("กำลังเลือกลูก 24")).toBeInTheDocument();
@@ -364,7 +368,6 @@ describe("Badminton fee book page", () => {
   });
 
   it("advances the current shuttle number after four players are checked on the same shuttle", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     const user = userEvent.setup();
 
     render(<HomePage />);
@@ -384,12 +387,117 @@ describe("Badminton fee book page", () => {
       );
     }
 
-    expect(confirmSpy).toHaveBeenCalledWith("ครบ 4 คนแล้ว: A, B, C, D ไปที่ลูก 2 ใช่ไหม?");
+    await waitFor(() => expect(screen.getByText("ยืนยัน Match")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "ยืนยัน" }));
     expect(screen.getByLabelText("ลูก number")).toHaveValue(2);
   });
 
+  it("warns in the completion confirmation when at least three players overlap with a previous match", async () => {
+    const user = userEvent.setup();
+
+    render(<HomePage />);
+
+    for (const name of ["A", "B", "C", "D", "E"]) {
+      await user.type(screen.getByLabelText("ชื่อผู้เล่น"), name);
+      await user.click(screen.getByRole("button", { name: "เพิ่มผู้เล่น" }));
+    }
+
+    for (const name of ["A", "B", "C", "D"]) {
+      await user.click(
+        within(screen.getByRole("row", { name: new RegExp(name) })).getByRole("checkbox", {
+          name: `${name} ช่องที่ 1`
+        })
+      );
+    }
+
+    for (const name of ["A", "B", "C", "E"]) {
+      await user.click(
+        within(screen.getByRole("row", { name: new RegExp(name) })).getByRole("checkbox", {
+          name: `${name} ช่องที่ 2`
+        })
+      );
+    }
+
+    await waitFor(() => expect(screen.getByText("ยืนยัน Match")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("เตือน: ซ้ำกับลูกที่ 1 จำนวน 3 คน: A, B, C")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "ยืนยัน" }));
+    expect(screen.getByLabelText("ลูก number")).toHaveValue(3);
+  });
+
+  it("does not save the latest mark when cancelling an overlapping match confirmation", async () => {
+    const user = userEvent.setup();
+
+    render(<HomePage />);
+
+    for (const name of ["A", "B", "C", "D", "E"]) {
+      await user.type(screen.getByLabelText("ชื่อผู้เล่น"), name);
+      await user.click(screen.getByRole("button", { name: "เพิ่มผู้เล่น" }));
+    }
+
+    for (const name of ["A", "B", "C", "D"]) {
+      await user.click(
+        within(screen.getByRole("row", { name: new RegExp(name) })).getByRole("checkbox", {
+          name: `${name} ช่องที่ 1`
+        })
+      );
+    }
+
+    for (const name of ["A", "B", "C", "E"]) {
+      await user.click(
+        within(screen.getByRole("row", { name: new RegExp(name) })).getByRole("checkbox", {
+          name: `${name} ช่องที่ 2`
+        })
+      );
+    }
+
+    await waitFor(() => expect(screen.getByText("ยืนยัน Match")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("เตือน: ซ้ำกับลูกที่ 1 จำนวน 3 คน: A, B, C")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "ยกเลิก" }));
+    expect(within(screen.getByRole("row", { name: /E/ })).getByRole("checkbox", {
+      name: "E ช่องที่ 1"
+    })).not.toBeChecked();
+    expect(screen.getByLabelText("ลูก number")).toHaveValue(2);
+  });
+
+  it("removes a checked shuttle mark after a complete shuttle advances", async () => {
+    const user = userEvent.setup();
+
+    render(<HomePage />);
+
+    for (const name of ["A", "B", "C", "D"]) {
+      await user.type(screen.getByLabelText("ชื่อผู้เล่น"), name);
+      await user.click(screen.getByRole("button", { name: "เพิ่มผู้เล่น" }));
+    }
+
+    for (const name of ["A", "B", "C", "D"]) {
+      await user.click(
+        within(screen.getByRole("row", { name: new RegExp(name) })).getByRole("checkbox", {
+          name: `${name} ช่องที่ 1`
+        })
+      );
+    }
+
+    await waitFor(() => expect(screen.getByText("ยืนยัน Match")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "ยืนยัน" }));
+    expect(screen.getByLabelText("ลูก number")).toHaveValue(2);
+
+    await user.click(
+      within(screen.getByRole("row", { name: /A/ })).getByRole("checkbox", {
+        name: "A ช่องที่ 1 ลูก 1"
+      })
+    );
+
+    await waitFor(() => expect(screen.getByText("เอาติ๊กออก")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "เอาออก" }));
+    expect(
+      within(screen.getByRole("row", { name: /A/ })).getByRole("checkbox", {
+        name: "A ช่องที่ 1"
+      })
+    ).not.toBeChecked();
+    expect(screen.getByText("ลูกที่ 1 ยังไม่ครบ 4 ติ๊ก เหลืออีก 1 ติ๊ก")).toBeInTheDocument();
+  });
+
   it("allows each shuttle number to be marked independently per player", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     const user = userEvent.setup();
 
     render(<HomePage />);
@@ -406,6 +514,9 @@ describe("Badminton fee book page", () => {
         })
       );
     }
+
+    await waitFor(() => expect(screen.getByText("ยืนยัน Match")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "ยืนยัน" }));
 
     for (const name of ["A", "C"]) {
       await user.click(
@@ -431,7 +542,6 @@ describe("Badminton fee book page", () => {
   });
 
   it("advances after four checked marks even when the same player has the same shuttle number twice", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     const user = userEvent.setup();
 
     render(<HomePage />);
@@ -457,8 +567,6 @@ describe("Badminton fee book page", () => {
       );
     }
 
-    confirmSpy.mockClear();
-
     for (const name of ["A", "B", "C"]) {
       await user.click(
         within(screen.getByRole("row", { name: new RegExp(name) })).getByRole("checkbox", {
@@ -473,12 +581,13 @@ describe("Badminton fee book page", () => {
       })
     );
 
-    expect(confirmSpy).toHaveBeenCalledWith("ครบ 4 คนแล้ว: A, B, B, C ไปที่ลูก 4 ใช่ไหม?");
+    expect(screen.getByText("ยืนยัน Match")).toBeInTheDocument();
+    expect(screen.getByText("เตือน: ซ้ำกับลูกที่ 1 จำนวน 3 คน: A, B, C")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "ยืนยัน" }));
     expect(screen.getByLabelText("ลูก number")).toHaveValue(4);
   });
 
   it("shows a match tab grouped by shuttle number", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     const user = userEvent.setup();
 
     render(<HomePage />);
@@ -517,6 +626,9 @@ describe("Badminton fee book page", () => {
         name: "b ช่องที่ 4"
       })
     );
+
+    expect(screen.getByText("ยืนยัน Match")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "ยืนยัน" }));
     await user.click(screen.getByRole("tab", { name: /Match/ }));
 
     const matchSummary = screen.getByRole("region", { name: "รายการ Match" });
@@ -599,7 +711,7 @@ describe("Badminton fee book page", () => {
   });
 
   it("prevents adding a fifth mark to the same shuttle number", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(false);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
     const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => undefined);
     const user = userEvent.setup();
 
@@ -618,6 +730,8 @@ describe("Badminton fee book page", () => {
       );
     }
 
+    await user.clear(screen.getByLabelText("ลูก number"));
+    await user.type(screen.getByLabelText("ลูก number"), "1");
     await user.click(
       within(screen.getByRole("row", { name: /e/ })).getByRole("button", {
         name: "ติ๊กลูกให้ e"
@@ -680,7 +794,6 @@ describe("Badminton fee book page", () => {
   });
 
   it("confirms before removing a checked shuttle mark", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
     const user = userEvent.setup();
 
     render(<HomePage />);
@@ -693,12 +806,12 @@ describe("Badminton fee book page", () => {
     await user.click(shuttleOne);
     await user.click(shuttleOne);
 
-    expect(confirmSpy).toHaveBeenCalledWith("เอาออกแน่นะอีแก่");
+    await waitFor(() => expect(screen.getByText("เอาติ๊กออก")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "ยกเลิก" }));
     expect(shuttleOne).toBeChecked();
   });
 
   it("asks for confirmation before marking a player paid", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
     const user = userEvent.setup();
 
     render(<HomePage />);
@@ -709,12 +822,12 @@ describe("Badminton fee book page", () => {
     const row = screen.getByRole("row", { name: /A/ });
     await user.click(within(row).getByRole("checkbox", { name: "A จ่ายแล้ว" }));
 
-    expect(confirmSpy).toHaveBeenCalledWith("ยืนยันว่า A จ่ายแล้ว 100 บาท ใช่ไหม?");
+    await waitFor(() => expect(screen.getByText("ยืนยันการจ่ายเงิน")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "ยกเลิก" }));
     expect(within(row).getByRole("checkbox", { name: "A จ่ายแล้ว" })).not.toBeChecked();
   });
 
   it("asks for confirmation before deleting a player", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
     const user = userEvent.setup();
 
     render(<HomePage />);
@@ -723,12 +836,12 @@ describe("Badminton fee book page", () => {
     await user.click(screen.getByRole("button", { name: "เพิ่มผู้เล่น" }));
     await user.click(screen.getByRole("button", { name: "ลบ A" }));
 
-    expect(confirmSpy).toHaveBeenCalledWith("ลบ A ออกจากรอบนี้ใช่ไหม?");
+    await waitFor(() => expect(screen.getByText("ลบผู้เล่น")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "ยกเลิก" }));
     expect(screen.getByRole("row", { name: /A/ })).toBeInTheDocument();
   });
 
   it("clears play data while keeping players", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     const user = userEvent.setup();
 
     render(<HomePage />);
@@ -742,7 +855,8 @@ describe("Badminton fee book page", () => {
     await user.click(screen.getByRole("tab", { name: /สรุปจ่ายแล้ว/ }));
     await user.click(screen.getByRole("button", { name: "ล้างข้อมูลเล่น" }));
 
-    expect(confirmSpy).toHaveBeenCalledWith("ล้างลูกที่ติ๊กและสถานะจ่ายแล้ว แต่เก็บรายชื่อไว้ใช่ไหม?");
+    await waitFor(() => expect(screen.getByText("ล้างข้อมูลเล่น")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "ล้างข้อมูล" }));
     expect(screen.getByRole("row", { name: /A/ })).toBeInTheDocument();
     expect(within(screen.getByRole("row", { name: /A/ })).getByRole("checkbox", {
       name: "A ช่องที่ 1"
@@ -753,7 +867,6 @@ describe("Badminton fee book page", () => {
   });
 
   it("moves paid players out of the active sheet and into the paid summary tab", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     const user = userEvent.setup();
 
     render(<HomePage />);
@@ -767,6 +880,8 @@ describe("Badminton fee book page", () => {
     await user.type(screen.getByLabelText("ลูก number"), "2");
     await user.click(within(row).getByRole("checkbox", { name: "A ช่องที่ 2" }));
     await user.click(within(row).getByRole("checkbox", { name: "A จ่ายแล้ว" }));
+    await waitFor(() => expect(screen.getByText("ยืนยันการจ่ายเงิน")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "จ่ายแล้ว" }));
 
     expect(screen.queryByRole("row", { name: /A/ })).not.toBeInTheDocument();
     expect(screen.getByText("ไม่มีผู้เล่นค้างจ่าย")).toBeInTheDocument();
@@ -838,7 +953,6 @@ describe("Badminton fee book page", () => {
   });
 
   it("asks for confirmation before resetting the session", async () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
     const user = userEvent.setup();
 
     render(<HomePage />);
@@ -848,7 +962,8 @@ describe("Badminton fee book page", () => {
     await user.click(screen.getByRole("tab", { name: /สรุปจ่ายแล้ว/ }));
     await user.click(screen.getByRole("button", { name: "รีเซ็ตรอบ" }));
 
-    expect(confirmSpy).toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByText("รีเซ็ตรอบ")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "ยกเลิก" }));
     await user.click(screen.getByRole("tab", { name: /กำลังตี/ }));
     expect(screen.getByRole("row", { name: /C/ })).toBeInTheDocument();
   });
