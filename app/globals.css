@@ -762,6 +762,22 @@ thead .stickyName {
   background: #fff1f2;
 }
 
+.appDialogImageWrap {
+  display: flex;
+  justify-content: center;
+  padding: 6px 0 2px;
+}
+
+.appDialogImage {
+  width: min(260px, 78vw);
+  height: auto;
+  max-height: 320px;
+  border: 1px solid #e7e2d8;
+  border-radius: 10px;
+  object-fit: contain;
+  background: #ffffff;
+}
+
 .appDialogNote {
   padding: 10px 12px;
   border-radius: 10px;

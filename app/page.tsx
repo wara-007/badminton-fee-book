@@ -94,6 +94,10 @@ type AppDialogOptions = {
     tone?: "primary" | "warning" | "error";
   }>;
   note?: string;
+  image?: {
+    src: string;
+    alt: string;
+  };
   confirmLabel?: string;
   cancelLabel?: string;
   color?: "primary" | "error" | "warning" | "secondary";
@@ -890,6 +894,7 @@ export default function HomePage() {
           tone: paid ? "primary" : "warning"
         }
       ],
+      image: paid ? { src: "/my-qr.jpg", alt: "QR code สำหรับจ่ายเงิน" } : undefined,
       confirmLabel: paid ? "จ่ายแล้ว" : "ย้ายกลับ",
       color: paid ? "primary" : "warning"
     }))) {
@@ -1314,6 +1319,16 @@ export default function HomePage() {
                   <Typography className="appDialogDetailValue">{detail.value}</Typography>
                 </Box>
               ))}
+            </Box>
+          ) : null}
+          {dialog.image ? (
+            <Box className="appDialogImageWrap">
+              <Box
+                component="img"
+                src={dialog.image.src}
+                alt={dialog.image.alt}
+                className="appDialogImage"
+              />
             </Box>
           ) : null}
           {dialog.note ? (
