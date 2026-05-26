@@ -463,6 +463,16 @@ thead .stickyName {
   flex-shrink: 0;
 }
 
+.dataManagementPanel {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.dataManagementActions {
+  align-items: flex-start;
+}
+
 .matchSummaryPanel {
   display: grid;
   gap: 16px;

@@ -1210,6 +1210,7 @@ export default function HomePage() {
                   label={`สรุปจ่ายแล้ว (${formatBaht(summary.paidAmount)} บาท)`}
                   disabled={isEditingLocked}
                 />
+                <Tab label="จัดการข้อมูล" disabled={isEditingLocked} />
               </Tabs>
               <Divider />
 
@@ -1280,17 +1281,20 @@ export default function HomePage() {
                   searchTerm={matchSearchTerm}
                   onSearchTermChange={setMatchSearchTerm}
                 />
-              ) : (
+              ) : activeTab === 2 ? (
                 <PaidSummary
                   players={session.players}
                   paidGroups={visiblePaidGroups}
                   hasSearch={Boolean(normalizedSearch)}
                   onSetPaid={setPaid}
+                  canSetPaid={canSetPaid}
+                />
+              ) : (
+                <DataManagementPanel
                   onClearPlayData={clearPlayData}
                   onResetSession={resetSession}
                   onCopySummary={copySummary}
                   canManageSession={canManageSession}
-                  canSetPaid={canSetPaid}
                 />
               )}
             </Paper>
@@ -1799,20 +1803,12 @@ function PaidSummary({
   paidGroups,
   hasSearch,
   onSetPaid,
-  onClearPlayData,
-  onResetSession,
-  onCopySummary,
-  canManageSession,
   canSetPaid
 }: {
   players: Player[];
   paidGroups: ReturnType<typeof groupPaidPlayersByDay>;
   hasSearch: boolean;
   onSetPaid: (id: string, paid: boolean) => void;
-  onClearPlayData: () => void;
-  onResetSession: () => void;
-  onCopySummary: () => void;
-  canManageSession: boolean;
   canSetPaid: boolean;
 }) {
   return (
@@ -1821,23 +1817,6 @@ function PaidSummary({
         <Typography variant="h5" component="h2">
           สรุปจ่ายแล้ว
         </Typography>
-        <Stack direction={{ xs: "column", sm: "row" }} spacing={1} className="paidSummaryActions">
-          <Button variant="contained" onClick={onCopySummary} disabled={!canManageSession}>
-            Export สรุป
-          </Button>
-          <Button color="secondary" variant="outlined" onClick={onClearPlayData} disabled={!canManageSession}>
-            ล้างข้อมูลเล่น
-          </Button>
-          <Button
-            color="secondary"
-            variant="outlined"
-            startIcon={<RestartAltIcon />}
-            onClick={onResetSession}
-            disabled={!canManageSession}
-          >
-            รีเซ็ตรอบ
-          </Button>
-        </Stack>
       </Box>
       {paidGroups.length === 0 ? (
         <Box className="emptyPaidSummary">
@@ -1889,6 +1868,48 @@ function PaidSummary({
           ))}
         </Stack>
       )}
+    </Box>
+  );
+}
+
+function DataManagementPanel({
+  onClearPlayData,
+  onResetSession,
+  onCopySummary,
+  canManageSession
+}: {
+  onClearPlayData: () => void;
+  onResetSession: () => void;
+  onCopySummary: () => void;
+  canManageSession: boolean;
+}) {
+  return (
+    <Box className="dataManagementPanel" role="region" aria-label="จัดการข้อมูล">
+      <Box>
+        <Typography variant="h5" component="h2">
+          จัดการข้อมูล
+        </Typography>
+        <Typography color="text.secondary">
+          รวมเครื่องมือ export และจัดการข้อมูลรอบนี้
+        </Typography>
+      </Box>
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1} className="dataManagementActions">
+        <Button variant="contained" onClick={onCopySummary} disabled={!canManageSession}>
+          Export สรุป
+        </Button>
+        <Button color="secondary" variant="outlined" onClick={onClearPlayData} disabled={!canManageSession}>
+          ล้างข้อมูลเล่น
+        </Button>
+        <Button
+          color="secondary"
+          variant="outlined"
+          startIcon={<RestartAltIcon />}
+          onClick={onResetSession}
+          disabled={!canManageSession}
+        >
+          รีเซ็ตรอบ
+        </Button>
+      </Stack>
     </Box>
   );
 }
