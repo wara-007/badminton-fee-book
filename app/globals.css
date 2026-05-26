@@ -214,6 +214,32 @@ body {
   flex-wrap: wrap;
 }
 
+.emergencySyncPanel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid #f59e0b;
+  border-radius: 8px;
+  background: #fffbeb;
+}
+
+.emergencySyncText {
+  display: grid;
+  gap: 4px;
+}
+
+.emergencySyncNote {
+  color: #92400e;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.emergencySyncActions {
+  flex-shrink: 0;
+}
+
 .summaryGrid {
   display: grid;
   grid-template-columns: repeat(5, minmax(150px, 1fr));
@@ -578,6 +604,15 @@ thead .stickyName {
 
   .scoreTableWrap {
     max-height: none;
+  }
+
+  .emergencySyncPanel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .emergencySyncActions {
+    width: 100%;
   }
 
   .settingsPanel {

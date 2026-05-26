@@ -169,7 +169,7 @@ const theme = createTheme({
 });
 
 export default function HomePage() {
-  const [authSession, setAuthSession] = useState<AuthSession | null>(() => loadAuthSession());
+  const [authSession, setAuthSession] = useState<AuthSession | null>(null);
   const [loginName, setLoginName] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState("");
@@ -188,6 +188,8 @@ export default function HomePage() {
   const [hydrated, setHydrated] = useState(false);
   const [roomReady, setRoomReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState(hasSupabaseConfig ? "กำลังเชื่อมต่อ" : "โหมดเครื่องนี้");
+  const [pendingSyncSnapshot, setPendingSyncSnapshot] = useState<string | null>(null);
+  const [lastLocalSavedAt, setLastLocalSavedAt] = useState<string | null>(null);
   const [dialog, setDialog] = useState<AppDialogState>({
     open: false,
     mode: "alert",
@@ -203,6 +205,10 @@ export default function HomePage() {
     setSessionId(initialSessionId);
     setRoomDraft(initialSessionId);
     setRoomReady(true);
+  }, []);
+
+  useEffect(() => {
+    setAuthSession(loadAuthSession());
   }, []);
 
   useEffect(() => {
@@ -258,20 +264,33 @@ export default function HomePage() {
           if (cancelled) {
             return;
           }
-          const snapshot = serializeSession(remoteSession);
-          lastRemoteSnapshotRef.current = snapshot;
-          setSession(remoteSession);
-          localStorage.setItem(getStorageKey(sessionId), snapshot);
-          setSyncStatus("ซิงก์แล้ว");
+          const normalizedRemoteSession = normalizeSession(remoteSession);
+          const remoteSnapshot = serializeSession(normalizedRemoteSession);
+          const pendingSnapshot = localStorage.getItem(getPendingSyncKey(sessionId));
+          const workingSession = pendingSnapshot
+            ? parseSessionSnapshot(pendingSnapshot, normalizedRemoteSession)
+            : normalizedRemoteSession;
+          const workingSnapshot = serializeSession(workingSession);
+          lastRemoteSnapshotRef.current = remoteSnapshot;
+          setSession(workingSession);
+          localStorage.setItem(getStorageKey(sessionId), workingSnapshot);
+          setLastLocalSavedAt(new Date().toISOString());
+          setPendingSyncSnapshot(pendingSnapshot ? workingSnapshot : null);
+          setSyncStatus(pendingSnapshot ? "รอส่งขึ้นเซิร์ฟเวอร์" : "ซิงก์แล้ว");
         } catch {
           if (cancelled) {
             return;
           }
-          loadLocalSession(sessionId, setSession);
+          const localSession = loadLocalSession(sessionId);
+          setSession(localSession);
+          setPendingSyncSnapshot(localStorage.getItem(getPendingSyncKey(sessionId)));
+          setLastLocalSavedAt(new Date().toISOString());
           setSyncStatus("ใช้ข้อมูลเครื่องนี้");
         }
       } else {
-        loadLocalSession(sessionId, setSession);
+        setSession(loadLocalSession(sessionId));
+        setPendingSyncSnapshot(null);
+        setLastLocalSavedAt(new Date().toISOString());
         setSyncStatus("โหมดเครื่องนี้");
       }
       if (!cancelled) {
@@ -292,13 +311,18 @@ export default function HomePage() {
     }
 
     return subscribeRemoteSession(sessionId, (remoteSession) => {
-      const snapshot = serializeSession(remoteSession);
+      if (localStorage.getItem(getPendingSyncKey(sessionId))) {
+        return;
+      }
+      const normalizedRemoteSession = normalizeSession(remoteSession);
+      const snapshot = serializeSession(normalizedRemoteSession);
       if (snapshot === lastRemoteSnapshotRef.current) {
         return;
       }
       lastRemoteSnapshotRef.current = snapshot;
-      setSession(remoteSession);
+      setSession(normalizedRemoteSession);
       localStorage.setItem(getStorageKey(sessionId), snapshot);
+      setLastLocalSavedAt(new Date().toISOString());
       setSyncStatus("ซิงก์แล้ว");
     });
   }, [hydrated, sessionId]);
@@ -308,8 +332,10 @@ export default function HomePage() {
       return;
     }
 
-    const snapshot = serializeSession(session);
-    localStorage.setItem(getStorageKey(sessionId), snapshot);
+    const normalizedSession = normalizeSession(session);
+    const snapshot = serializeSession(normalizedSession);
+    persistLocalSnapshot(sessionId, snapshot);
+    setLastLocalSavedAt(new Date().toISOString());
 
     if (!hasSupabaseConfig || snapshot === lastRemoteSnapshotRef.current) {
       return;
@@ -321,12 +347,18 @@ export default function HomePage() {
 
     setSyncStatus("กำลังบันทึก");
     saveTimerRef.current = setTimeout(() => {
-      saveRemoteSession(sessionId, session)
+      saveRemoteSession(sessionId, normalizedSession)
         .then(() => {
           lastRemoteSnapshotRef.current = snapshot;
+          localStorage.removeItem(getPendingSyncKey(sessionId));
+          setPendingSyncSnapshot(null);
           setSyncStatus("ซิงก์แล้ว");
         })
-        .catch(() => setSyncStatus("ซิงก์ไม่สำเร็จ"));
+        .catch(() => {
+          localStorage.setItem(getPendingSyncKey(sessionId), snapshot);
+          setPendingSyncSnapshot(snapshot);
+          setSyncStatus("รอส่งขึ้นเซิร์ฟเวอร์");
+        });
     }, 250);
 
     return () => {
@@ -361,6 +393,10 @@ export default function HomePage() {
   const canManageSession = userRole === "admin";
   const canSetPaid = userRole === "admin" || userRole === "admin2";
   const isEditingLocked = editingShuttleNumber !== null && !currentShuttleSummary.isComplete;
+  const isEmergencySyncStatus =
+    syncStatus === "ใช้ข้อมูลเครื่องนี้" ||
+    syncStatus === "รอส่งขึ้นเซิร์ฟเวอร์" ||
+    syncStatus === "ซิงก์ไม่สำเร็จ";
   const activePlayers = useMemo(
     () => session.players.filter((player) => !player.paid),
     [session.players]
@@ -761,17 +797,17 @@ export default function HomePage() {
             : []),
           ...(overlapWarning
             ? [
-                {
-                  label: "เตือนซ้ำ",
-                  value: `ซ้ำกับลูกที่ ${overlapWarning.shuttleNumber} ${overlapWarning.overlapCount} คน`,
-                  tone: "warning" as const
-                },
-                {
-                  label: "รายชื่อซ้ำ",
-                  value: overlapWarning.overlapNames.join(", "),
-                  tone: "warning" as const
-                }
-              ]
+              {
+                label: "เตือนซ้ำ",
+                value: `ซ้ำกับลูกที่ ${overlapWarning.shuttleNumber} ${overlapWarning.overlapCount} คน`,
+                tone: "warning" as const
+              },
+              {
+                label: "รายชื่อซ้ำ",
+                value: overlapWarning.overlapNames.join(", "),
+                tone: "warning" as const
+              }
+            ]
             : [])
         ],
         note: overlapWarning ? "ตรวจรายชื่อซ้ำก่อนยืนยัน เพื่อกันจัดคู่เดิมติดกันเกินไป" : undefined,
@@ -867,10 +903,10 @@ export default function HomePage() {
           players: current.players.map((currentPlayer) =>
             currentPlayer.id === playerId
               ? {
-                  ...currentPlayer,
-                  paid,
-                  paidAt: paid ? getTrustedNowIso() : undefined
-                }
+                ...currentPlayer,
+                paid,
+                paidAt: paid ? getTrustedNowIso() : undefined
+              }
               : currentPlayer
           )
         },
@@ -908,6 +944,56 @@ export default function HomePage() {
         confirmLabel: "ปิด",
         color: "primary"
       });
+    }
+  }
+
+  function exportJsonNow() {
+    if (!canManageSession) {
+      return;
+    }
+
+    const normalizedSession = normalizeSession(session);
+    const exportedAt = getTrustedNowIso();
+    const payload = {
+      app: "badminton-fee-book",
+      type: "emergency-session-backup",
+      version: appVersion,
+      sessionId,
+      exportedAt,
+      state: normalizedSession
+    };
+    downloadTextFile(
+      `badminton-${sessionId}-backup-${formatFileTimestamp(exportedAt)}.json`,
+      `${JSON.stringify(payload, null, 2)}\n`
+    );
+  }
+
+  async function retryPendingSync() {
+    if (!canManageSession || !hasSupabaseConfig) {
+      return;
+    }
+
+    const snapshot =
+      pendingSyncSnapshot ??
+      localStorage.getItem(getPendingSyncKey(sessionId)) ??
+      serializeSession(normalizeSession(session));
+    const normalizedSession = parseSessionSnapshot(snapshot, session);
+
+    const normalizedSnapshot = serializeSession(normalizedSession);
+    persistLocalSnapshot(sessionId, normalizedSnapshot);
+    localStorage.setItem(getPendingSyncKey(sessionId), normalizedSnapshot);
+    setPendingSyncSnapshot(normalizedSnapshot);
+    setLastLocalSavedAt(new Date().toISOString());
+    setSyncStatus("กำลังบันทึก");
+
+    try {
+      await saveRemoteSession(sessionId, normalizedSession);
+      lastRemoteSnapshotRef.current = normalizedSnapshot;
+      localStorage.removeItem(getPendingSyncKey(sessionId));
+      setPendingSyncSnapshot(null);
+      setSyncStatus("ซิงก์แล้ว");
+    } catch {
+      setSyncStatus("รอส่งขึ้นเซิร์ฟเวอร์");
     }
   }
 
@@ -1038,6 +1124,18 @@ export default function HomePage() {
                 <Chip label={syncStatus} size="small" />
               </Stack>
             </Paper>
+
+            {isEmergencySyncStatus ? (
+              <EmergencySyncPanel
+                status={syncStatus}
+                lastLocalSavedAt={lastLocalSavedAt}
+                now={now}
+                canManageSession={canManageSession}
+                canRetry={hasSupabaseConfig}
+                onExportJson={exportJsonNow}
+                onRetrySync={retryPendingSync}
+              />
+            ) : null}
 
             <Box className="summaryGrid">
               <SummaryStat
@@ -1241,6 +1339,55 @@ export default function HomePage() {
         </DialogActions>
       </Dialog>
     </ThemeProvider>
+  );
+}
+
+function EmergencySyncPanel({
+  status,
+  lastLocalSavedAt,
+  now,
+  canManageSession,
+  canRetry,
+  onExportJson,
+  onRetrySync
+}: {
+  status: string;
+  lastLocalSavedAt: string | null;
+  now: string;
+  canManageSession: boolean;
+  canRetry: boolean;
+  onExportJson: () => void;
+  onRetrySync: () => void;
+}) {
+  const detailText = lastLocalSavedAt
+    ? `บันทึกในเครื่องล่าสุด ${formatRelativeTime(lastLocalSavedAt, now)}`
+    : "ระบบจะเก็บข้อมูลในเครื่องนี้ก่อน";
+
+  return (
+    <Paper className="emergencySyncPanel" elevation={0} role="status">
+      <Box className="emergencySyncText">
+        <Typography fontWeight={900}>ระบบกำลังออฟไลน์</Typography>
+        <Typography color="text.secondary">
+          {status === "รอส่งขึ้นเซิร์ฟเวอร์"
+            ? "ข้อมูลล่าสุดอยู่ในเครื่องนี้แล้ว และรอส่งขึ้นเซิร์ฟเวอร์อีกครั้ง"
+            : "ตอนนี้ใช้ข้อมูลจากเครื่องนี้ ถ้าเซิร์ฟเวอร์กลับมาแล้วค่อยลองซิงก์ใหม่"}
+        </Typography>
+        <Typography className="emergencySyncNote">{detailText}</Typography>
+      </Box>
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1} className="emergencySyncActions">
+        <Button variant="contained" color="warning" onClick={onExportJson} disabled={!canManageSession}>
+          Export JSON ตอนนี้
+        </Button>
+        <Button
+          variant="outlined"
+          color="warning"
+          onClick={onRetrySync}
+          disabled={!canManageSession || !canRetry}
+        >
+          ลองซิงก์ใหม่
+        </Button>
+      </Stack>
+    </Paper>
   );
 }
 
@@ -1807,8 +1954,40 @@ function getStorageKey(sessionId: string): string {
   return `badminton-fee-book.session.${sessionId}`;
 }
 
+function getPendingSyncKey(sessionId: string): string {
+  return `badminton-fee-book.pending-sync.${sessionId}`;
+}
+
 function serializeSession(session: SessionState): string {
-  return JSON.stringify(session);
+  return JSON.stringify(normalizeSession(session));
+}
+
+function persistLocalSnapshot(sessionId: string, snapshot: string) {
+  localStorage.setItem(getStorageKey(sessionId), snapshot);
+}
+
+function downloadTextFile(filename: string, text: string) {
+  const blob = new Blob([text], { type: "application/json;charset=utf-8" });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+function formatFileTimestamp(value: string): string {
+  return value.replace(/[:.]/g, "-");
+}
+
+function parseSessionSnapshot(snapshot: string, fallback: SessionState): SessionState {
+  try {
+    return normalizeSession(JSON.parse(snapshot));
+  } catch {
+    return normalizeSession(fallback);
+  }
 }
 
 function loadAuthSession(): AuthSession | null {
@@ -1830,16 +2009,15 @@ function loadAuthSession(): AuthSession | null {
   }
 }
 
-function loadLocalSession(sessionId: string, setSession: (session: SessionState) => void) {
+function loadLocalSession(sessionId: string): SessionState {
   const stored = localStorage.getItem(getStorageKey(sessionId));
   if (!stored) {
-    setSession(createInitialSession());
-    return;
+    return createInitialSession();
   }
 
   try {
-    setSession(normalizeSession(JSON.parse(stored)));
+    return normalizeSession(JSON.parse(stored));
   } catch {
-    setSession(createInitialSession());
+    return createInitialSession();
   }
 }
