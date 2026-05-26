@@ -153,8 +153,8 @@ describe('badminton session calculations', () => {
       getVisibleShuttleColumns([{ ...createPlayer('A'), shuttleCount: 0 }]),
     ).toBe(DEFAULT_SHUTTLE_COLUMNS);
     expect(
-      getVisibleShuttleColumns([{ ...createPlayer('A'), shuttleCount: 10 }]),
-    ).toBe(11);
+      getVisibleShuttleColumns([{ ...createPlayer('A'), shuttleCount: 7 }]),
+    ).toBe(8);
   });
 
   it('does not expand visible columns from the current shuttle number alone', () => {

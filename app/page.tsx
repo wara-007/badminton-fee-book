@@ -884,10 +884,19 @@ export default function HomePage() {
 
     if (!(await showConfirm({
       title: paid ? "ยืนยันการจ่ายเงิน" : "ย้ายกลับค้างจ่าย",
-      headline: paid ? `${player.name} จ่ายแล้วใช่ไหม?` : `ย้าย ${player.name} กลับไปค้างจ่ายใช่ไหม?`,
-      message: paid ? "หลังยืนยัน คนนี้จะถูกย้ายไป tab สรุปจ่ายแล้ว" : "คนนี้จะกลับไปอยู่ในรายชื่อค้างจ่าย",
+      headline: paid ? "" : `ย้าย ${player.name} กลับไปค้างจ่ายใช่ไหม?`,
+      message: paid ? "" : "คนนี้จะกลับไปอยู่ในรายชื่อค้างจ่าย",
       details: [
         { label: "ผู้เล่น", value: player.name, tone: paid ? "primary" : "warning" },
+        ...(paid
+          ? [
+            {
+              label: "จำนวนลูก",
+              value: `${getPlayerShuttleCount(player)} ลูก`,
+              tone: "primary" as const
+            }
+          ]
+          : []),
         {
           label: "ยอดเงิน",
           value: `${formatBaht(calculatePlayerTotal(player, session.pricing))} บาท`,

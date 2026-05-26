@@ -83,7 +83,7 @@ export const DEFAULT_PRICING: Pricing = {
   shuttleFee: 25,
 };
 
-export const DEFAULT_SHUTTLE_COLUMNS = 10;
+export const DEFAULT_SHUTTLE_COLUMNS = 6;
 export const REST_MINUTES = 20;
 export const WAIT_WARNING_MINUTES = 15;
 export const WAIT_DANGER_MINUTES = 20;
