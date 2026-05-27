@@ -62,10 +62,17 @@ export type MatchOverlapWarning = {
   overlapCount: number;
 };
 
+export type ShuttleMarkEntry = {
+  playerId: string;
+  playerName: string;
+  columnIndex: number;
+};
+
 export type ShuttleMarkSummary = {
   shuttleNumber: number;
   count: number;
   names: string[];
+  entries: ShuttleMarkEntry[];
   isComplete: boolean;
   missingCount: number;
 };
@@ -214,11 +221,17 @@ export function getShuttleMarkSummary(
   shuttleNumber: number,
 ): ShuttleMarkSummary {
   const normalizedShuttleNumber = Math.max(1, Number(shuttleNumber) || 1);
-  const names = players.flatMap((player) =>
+  const entries = players.flatMap((player) =>
     getPlayerShuttleMarks(player)
-      .filter((mark) => mark === normalizedShuttleNumber)
-      .map(() => player.name),
+      .map((mark, columnIndex) => ({ mark, columnIndex }))
+      .filter(({ mark }) => mark === normalizedShuttleNumber)
+      .map(({ columnIndex }) => ({
+        playerId: player.id,
+        playerName: player.name,
+        columnIndex,
+      })),
   );
+  const names = entries.map((entry) => entry.playerName);
   const count = names.length;
   const remainder = count % 4;
 
@@ -226,6 +239,7 @@ export function getShuttleMarkSummary(
     shuttleNumber: normalizedShuttleNumber,
     count,
     names,
+    entries,
     isComplete: count > 0 && remainder === 0,
     missingCount: remainder === 0 ? 0 : 4 - remainder,
   };

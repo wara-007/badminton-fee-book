@@ -186,10 +186,21 @@ describe('badminton session calculations', () => {
       { ...createPlayer('D'), shuttleMarks: [24] },
     ];
 
+    const playerA = players[0];
+    const playerB = players[1];
+    const playerC = players[2];
+    const playerD = players[3];
+
     expect(getShuttleMarkSummary(players, 7)).toEqual({
       shuttleNumber: 7,
       count: 4,
       names: ['A', 'B', 'B', 'C'],
+      entries: [
+        { playerId: playerA.id, playerName: 'A', columnIndex: 0 },
+        { playerId: playerB.id, playerName: 'B', columnIndex: 0 },
+        { playerId: playerB.id, playerName: 'B', columnIndex: 1 },
+        { playerId: playerC.id, playerName: 'C', columnIndex: 0 },
+      ],
       isComplete: true,
       missingCount: 0,
     });
@@ -197,6 +208,7 @@ describe('badminton session calculations', () => {
       shuttleNumber: 24,
       count: 1,
       names: ['D'],
+      entries: [{ playerId: playerD.id, playerName: 'D', columnIndex: 0 }],
       isComplete: false,
       missingCount: 3,
     });

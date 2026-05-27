@@ -323,10 +323,12 @@ body {
   padding: 0 12px;
 }
 
+.sheetContent {
+  overflow-y: auto;
+  max-height: calc(100vh - 280px);
+}
+
 .currentShuttlePicker {
-  position: sticky;
-  top: 0;
-  z-index: 8;
   display: grid;
   gap: 14px;
   padding: 16px;
@@ -339,18 +341,30 @@ body {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid #e7e2d8;
 }
 
 .selectedPlayerStrip {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid #e7e2d8;
+}
+
+.selectedPlayerChip {
+  font-size: 1.1rem !important;
+  font-weight: 700 !important;
+  height: 36px !important;
+  background-color: #ff894a !important;
+  color: #ffffff !important;
 }
 
 .playerPickerGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
   padding-right: 4px;
 }
 
@@ -370,13 +384,14 @@ body {
 .playerPickerButton {
   position: relative;
   justify-content: center;
-  min-height: 58px;
-  border-radius: 8px;
+  min-height: 44px;
+  border-radius: 6px;
   border-color: #b9c8c5;
   color: #1f2933;
   background: #ffffff;
-  font-weight: 900;
-  padding-inline: 38px;
+  font-weight: 700;
+  padding-inline: 28px;
+  font-size: 0.85rem;
 }
 
 .playerPickerButton:hover {
@@ -394,14 +409,14 @@ body {
   position: absolute;
   display: grid;
   place-items: center;
-  font-size: 0.78rem;
-  font-weight: 900;
+  font-size: 0.65rem;
+  font-weight: 700;
 }
 
 .playerPickerOrder {
-  left: 10px;
-  width: 24px;
-  height: 24px;
+  left: 8px;
+  width: 20px;
+  height: 20px;
   border: 1px solid #c7d8d5;
   border-radius: 999px;
   color: #0f766e;
@@ -491,20 +506,21 @@ body {
 
 .plannedPlayerGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
 }
 
 .plannedPlayerButton {
   position: relative;
   justify-content: center;
-  min-height: 50px;
-  border-radius: 8px;
+  min-height: 44px;
+  border-radius: 6px;
   border-color: #b9c8c5;
   color: #1f2933;
   background: #ffffff;
-  font-weight: 900;
-  padding-inline: 38px;
+  font-weight: 700;
+  padding-inline: 28px;
+  font-size: 0.85rem;
 }
 
 .plannedPlayerButton:hover {

@@ -785,6 +785,68 @@ export default function HomePage() {
     toggleShuttleMark(playerId, getPlayerShuttleCount(targetPlayer));
   }
 
+  function removeActiveShuttlePlayer(playerId: string) {
+    if (!canManageSession) {
+      return;
+    }
+
+    const player = session.players.find((currentPlayer) => currentPlayer.id === playerId);
+    if (!player) {
+      return;
+    }
+
+    const currentMarks = getPlayerShuttleMarks(player);
+    const activeShuttleNumber = editingShuttleNumber ?? session.currentShuttleNumber;
+    const columnIndex = currentMarks.findIndex((mark) => mark === activeShuttleNumber);
+
+    if (columnIndex === -1) {
+      return;
+    }
+
+    const targetShuttleNumber = activeShuttleNumber;
+    const isEditingFlow = editingShuttleNumber !== null || targetShuttleNumber !== session.currentShuttleNumber;
+    const returnShuttleNumber = editingReturnShuttleNumber ?? session.currentShuttleNumber;
+
+    const nextPlayers = session.players.map((currentPlayer) =>
+      currentPlayer.id === playerId
+        ? setPlayerShuttleMarks(
+          currentPlayer,
+          getPlayerShuttleMarks(currentPlayer).filter((_, markIndex) => markIndex !== columnIndex)
+        )
+        : currentPlayer
+    );
+
+    const targetShuttleSummary = getShuttleMarkSummary(nextPlayers, targetShuttleNumber);
+    const shouldKeepEditingShuttle =
+      targetShuttleSummary.count > 0 &&
+      !targetShuttleSummary.isComplete &&
+      (editingShuttleNumber !== null);
+    setEditingShuttleNumber(shouldKeepEditingShuttle ? targetShuttleNumber : null);
+    setEditingReturnShuttleNumber(shouldKeepEditingShuttle ? returnShuttleNumber : null);
+
+    updateSession((current) => {
+      const nextOpenShuttleNumber = getNextOpenShuttleNumber(nextPlayers);
+      let nextSession: SessionState = {
+        ...current,
+        players: nextPlayers,
+        plannedMatches: current.plannedMatches.map((match) => ({
+          ...match,
+          playerIds: match.playerIds.filter((currentPlayerId) => currentPlayerId !== playerId)
+        })),
+        currentShuttleNumber: Math.min(current.currentShuttleNumber, nextOpenShuttleNumber)
+      };
+      nextSession = appendActivity(
+        nextSession,
+        createActivity(
+          "mark-removed",
+          `เอา ${player.name} ออกจากลูก ${targetShuttleNumber}`,
+          getTrustedNowIso()
+        )
+      );
+      return nextSession;
+    });
+  }
+
   async function addPlayerToPlannedMatch(playerId: string) {
     if (isEditingLocked || !canManageSession) {
       return;
@@ -1511,7 +1573,7 @@ export default function HomePage() {
               <Divider />
 
               {activeTab === 0 ? (
-                <>
+                <Box className="sheetContent">
                   <Box className="sheetToolbar">
                     <TextField
                       label="ค้นหาชื่อ"
@@ -1558,10 +1620,11 @@ export default function HomePage() {
                     isEditingLocked={isEditingLocked}
                     canManageSession={canManageSession}
                     onTogglePlayer={addActiveShuttlePlayer}
+                    onRemovePlayer={removeActiveShuttlePlayer}
                   />
                   <PriorityPlayers players={priorityPlayers} now={now} />
                   <RecentActivity activityLog={session.activityLog} now={now} />
-                </>
+                </Box>
               ) : activeTab === 1 ? (
                 <PlannedMatchPanel
                   plannedMatches={session.plannedMatches}
@@ -2008,7 +2071,8 @@ function CurrentShuttlePicker({
   isEditingMode,
   isEditingLocked,
   canManageSession,
-  onTogglePlayer
+  onTogglePlayer,
+  onRemovePlayer
 }: {
   summary: ReturnType<typeof getShuttleMarkSummary>;
   players: Player[];
@@ -2020,6 +2084,7 @@ function CurrentShuttlePicker({
   isEditingLocked: boolean;
   canManageSession: boolean;
   onTogglePlayer: (id: string) => void;
+  onRemovePlayer: (id: string) => void;
 }) {
   const statusText =
     summary.count === 0
@@ -2036,9 +2101,7 @@ function CurrentShuttlePicker({
           <Typography variant="h6" component="h2" fontWeight={900}>
             {isEditingMode ? "กำลังแก้ลูก" : "เลือกคนลูก"} {activeShuttleNumber}
           </Typography>
-          <Typography color="text.secondary" className="currentShuttleNames">
-            {summary.names.length > 0 ? summary.names.join(", ") : "ยังไม่มีชื่อที่ติ๊ก"}
-          </Typography>
+
           {isEditingMode ? (
             <Typography color="warning.main" className="currentShuttleLockNote">
               {isEditingLocked
@@ -2046,6 +2109,9 @@ function CurrentShuttlePicker({
                 : "ลูกนี้ครบแล้ว กดยืนยัน Match เพื่อกลับไปลูกปัจจุบัน"}
             </Typography>
           ) : null}
+          <Typography color="text.secondary" className="currentShuttleNames">
+            {summary.names.length == 0 && "ยังไม่มีชื่อที่ติ๊ก"}
+          </Typography>
         </Box>
         <Chip
           label={`${summary.count}/4 ${statusText}`}
@@ -2053,10 +2119,15 @@ function CurrentShuttlePicker({
           variant={summary.isComplete ? "filled" : "outlined"}
         />
       </Box>
-      {summary.names.length > 0 ? (
+      {summary.entries.length > 0 ? (
         <Box className="selectedPlayerStrip" aria-label="คนที่เลือกแล้ว">
-          {summary.names.map((name, index) => (
-            <Chip key={`${name}-${index}`} label={`${index + 1}. ${name}`} color="primary" />
+          {summary.entries.map((entry, index) => (
+            <Chip
+              key={`${entry.playerId}-${entry.columnIndex}`}
+              label={`${index + 1}. ${entry.playerName}`}
+              className="selectedPlayerChip"
+              onDelete={canManageSession ? () => onRemovePlayer(entry.playerId) : undefined}
+            />
           ))}
         </Box>
       ) : null}
