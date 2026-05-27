@@ -1,6 +1,7 @@
 "use client";
 
 import AddIcon from "@mui/icons-material/Add";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import DeleteIcon from "@mui/icons-material/Delete";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import RemoveIcon from "@mui/icons-material/Remove";
@@ -41,6 +42,7 @@ import {
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   Player,
+  PlannedMatch,
   REST_MINUTES,
   SessionState,
   appendActivity,
@@ -53,12 +55,14 @@ import {
   getPlayerShuttleCount,
   getPlayerShuttleMarks,
   getPlayerWaitStatus,
+  getNextOpenShuttleNumber,
   getPriorityPlayers,
   getShuttleMarkSummary,
   getVisibleShuttleColumns,
   groupMatchesByShuttle,
   groupPaidPlayersByDay,
   normalizeSession,
+  renumberPlannedMatches,
   setPlayerShuttleMarks,
   summarizeSession
 } from "@/lib/session";
@@ -182,11 +186,15 @@ export default function HomePage() {
   const [session, setSession] = useState<SessionState>(() => createInitialSession());
   const [playerName, setPlayerName] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [ledgerSearchName, setLedgerSearchName] = useState("");
+  const [ledgerSearchShuttle, setLedgerSearchShuttle] = useState("");
   const [matchSearchTerm, setMatchSearchTerm] = useState("");
+  const [selectedPlannedMatchId, setSelectedPlannedMatchId] = useState("");
   const [activeTab, setActiveTab] = useState(0);
   const [settingsExpanded, setSettingsExpanded] = useState(false);
   const [mobileSummaryExpanded, setMobileSummaryExpanded] = useState(false);
   const [editingShuttleNumber, setEditingShuttleNumber] = useState<number | null>(null);
+  const [editingReturnShuttleNumber, setEditingReturnShuttleNumber] = useState<number | null>(null);
   const [now, setNow] = useState(() => new Date().toISOString());
   const [clockOffsetMs, setClockOffsetMs] = useState(0);
   const [hydrated, setHydrated] = useState(false);
@@ -396,7 +404,8 @@ export default function HomePage() {
   const userRole = authSession?.role ?? null;
   const canManageSession = userRole === "admin";
   const canSetPaid = userRole === "admin" || userRole === "admin2";
-  const isEditingLocked = editingShuttleNumber !== null && !currentShuttleSummary.isComplete;
+  const isEditingMode = editingShuttleNumber !== null;
+  const isEditingLocked = isEditingMode && !currentShuttleSummary.isComplete;
   const isEmergencySyncStatus =
     syncStatus === "ใช้ข้อมูลเครื่องนี้" ||
     syncStatus === "รอส่งขึ้นเซิร์ฟเวอร์" ||
@@ -414,6 +423,20 @@ export default function HomePage() {
       player.name.toLocaleLowerCase("th-TH").includes(normalizedSearch)
     );
   }, [activePlayers, normalizedSearch]);
+  const normalizedLedgerSearchName = ledgerSearchName.trim().toLocaleLowerCase("th-TH");
+  const ledgerSearchShuttleNumber = Number(ledgerSearchShuttle);
+  const searchedLedgerShuttleNumber =
+    Number.isInteger(ledgerSearchShuttleNumber) && ledgerSearchShuttleNumber > 0
+      ? ledgerSearchShuttleNumber
+      : null;
+  const visibleLedgerPlayers = useMemo(() => {
+    return activePlayers.filter((player) =>
+      (!normalizedLedgerSearchName ||
+        player.name.toLocaleLowerCase("th-TH").includes(normalizedLedgerSearchName)) &&
+      (searchedLedgerShuttleNumber === null ||
+        getPlayerShuttleMarks(player).includes(searchedLedgerShuttleNumber))
+    );
+  }, [activePlayers, normalizedLedgerSearchName, searchedLedgerShuttleNumber]);
   const paidGroups = useMemo(
     () => groupPaidPlayersByDay(session.players, session.pricing),
     [session.players, session.pricing]
@@ -455,16 +478,37 @@ export default function HomePage() {
     () => getPriorityPlayers(activePlayers, now),
     [activePlayers, now]
   );
-  const shuttleColumns = useMemo(
-    () =>
-      Array.from(
-        {
-          length: getVisibleShuttleColumns(visibleActivePlayers)
-        },
-        (_, index) => index
-      ),
-    [visibleActivePlayers]
+  const selectedPlannedMatch =
+    session.plannedMatches.find((match) => match.id === selectedPlannedMatchId);
+  const plannedPlayerIds = useMemo(
+    () => new Set(session.plannedMatches.flatMap((match) => match.playerIds)),
+    [session.plannedMatches]
   );
+  const availablePlannedPlayers = useMemo(
+    () => activePlayers.filter((player) => !plannedPlayerIds.has(player.id)),
+    [activePlayers, plannedPlayerIds]
+  );
+  const shuttleColumns = useMemo(() => {
+    if (searchedLedgerShuttleNumber !== null) {
+      const matchingColumns = new Set<number>();
+      visibleLedgerPlayers.forEach((player) => {
+        getPlayerShuttleMarks(player).forEach((mark, markIndex) => {
+          if (mark === searchedLedgerShuttleNumber) {
+            matchingColumns.add(markIndex);
+          }
+        });
+      });
+
+      return Array.from(matchingColumns).sort((first, second) => first - second);
+    }
+
+    return Array.from(
+      {
+        length: getVisibleShuttleColumns(activePlayers)
+      },
+      (_, index) => index
+    );
+  }, [activePlayers, searchedLedgerShuttleNumber, visibleLedgerPlayers]);
 
   function updateSession(updater: (current: SessionState) => SessionState) {
     setSession((current) => ({
@@ -606,7 +650,11 @@ export default function HomePage() {
       appendActivity(
         {
           ...current,
-          players: current.players.filter((player) => player.id !== id)
+          players: current.players.filter((player) => player.id !== id),
+          plannedMatches: current.plannedMatches.map((match) => ({
+            ...match,
+            playerIds: match.playerIds.filter((playerId) => playerId !== id)
+          }))
         },
         createActivity("player-removed", `ลบ ${player.name} ออกจากรอบ`, getTrustedNowIso())
       )
@@ -626,6 +674,8 @@ export default function HomePage() {
       confirmLabel: "รีเซ็ต",
       color: "error"
     })) {
+      setEditingShuttleNumber(null);
+      setEditingReturnShuttleNumber(null);
       updateSession(() => createInitialSession());
       setActiveTab(0);
     }
@@ -644,9 +694,15 @@ export default function HomePage() {
       confirmLabel: "ล้างข้อมูล",
       color: "warning"
     })) {
+      setEditingShuttleNumber(null);
+      setEditingReturnShuttleNumber(null);
       updateSession((current) => ({
         ...current,
         currentShuttleNumber: 1,
+        plannedMatches: current.plannedMatches.map((match) => ({
+          ...match,
+          playerIds: []
+        })),
         activityLog: [],
         players: current.players.map((player) => ({
           ...player,
@@ -688,33 +744,227 @@ export default function HomePage() {
   }
 
   function updateCurrentShuttleNumber(value: string) {
-    if (isEditingLocked || !canManageSession) {
+    if (editingShuttleNumber !== null || !canManageSession) {
       return;
     }
 
-    const numericValue = value === "" ? 0 : Math.max(1, Number(value) || 1);
+    const requestedValue = value === "" ? 1 : Math.max(1, Number(value) || 1);
     setEditingShuttleNumber(null);
+    setEditingReturnShuttleNumber(null);
     updateSession((current) => ({
       ...current,
-      currentShuttleNumber: numericValue
+      currentShuttleNumber: Math.min(
+        requestedValue,
+        getNextOpenShuttleNumber(current.players)
+      )
     }));
   }
 
   function stepCurrentShuttleNumber(step: number) {
-    if (isEditingLocked || !canManageSession) {
-      return;
-    }
-
-    if (editingShuttleNumber !== null) {
-      setEditingShuttleNumber(Math.max(1, editingShuttleNumber + step));
+    if (editingShuttleNumber !== null || !canManageSession) {
       return;
     }
 
     setEditingShuttleNumber(null);
+    setEditingReturnShuttleNumber(null);
     updateSession((current) => ({
       ...current,
-      currentShuttleNumber: Math.max(1, current.currentShuttleNumber + step)
+      currentShuttleNumber: Math.min(
+        Math.max(1, current.currentShuttleNumber + step),
+        getNextOpenShuttleNumber(current.players)
+      )
     }));
+  }
+
+  function addActiveShuttlePlayer(playerId: string) {
+    const targetPlayer = session.players.find((player) => player.id === playerId);
+    if (!targetPlayer) {
+      return;
+    }
+
+    toggleShuttleMark(playerId, getPlayerShuttleCount(targetPlayer));
+  }
+
+  async function addPlayerToPlannedMatch(playerId: string) {
+    if (isEditingLocked || !canManageSession) {
+      return;
+    }
+
+    const targetMatch = selectedPlannedMatch;
+    const player = activePlayers.find((currentPlayer) => currentPlayer.id === playerId);
+    if (!targetMatch || !player) {
+      return;
+    }
+
+    if (plannedPlayerIds.has(playerId)) {
+      await showAlert({
+        title: "เลือกซ้ำไม่ได้",
+        headline: `${player.name} อยู่ใน Match ที่จัดไว้แล้ว`,
+        message: "ถ้าจะย้ายไป Match อื่น ให้กดยกเลิกหรือเอาชื่อออกจากช่องเดิมก่อน",
+        confirmLabel: "รับทราบ",
+        color: "warning"
+      });
+      return;
+    }
+
+    if (targetMatch.playerIds.length >= 4) {
+      await showAlert({
+        title: "Match เต็มแล้ว",
+        headline: `${targetMatch.label} มีครบ 4 คนแล้ว`,
+        message: "กดยืนยันหรือเอาชื่อออกก่อนเลือกคนเพิ่ม",
+        confirmLabel: "รับทราบ",
+        color: "warning"
+      });
+      return;
+    }
+
+    updateSession((current) => ({
+      ...current,
+      plannedMatches: current.plannedMatches.map((match) =>
+        match.id === targetMatch.id
+          ? {
+            ...match,
+            playerIds: [...match.playerIds, playerId]
+          }
+          : match
+      )
+    }));
+  }
+
+  function removePlayerFromPlannedMatch(matchId: string, playerId: string) {
+    if (isEditingLocked || !canManageSession) {
+      return;
+    }
+
+    updateSession((current) => ({
+      ...current,
+      plannedMatches: current.plannedMatches.map((match) =>
+        match.id === matchId
+          ? {
+            ...match,
+            playerIds: match.playerIds.filter((currentPlayerId) => currentPlayerId !== playerId)
+          }
+          : match
+      )
+    }));
+  }
+
+  function cancelPlannedMatch(matchId: string) {
+    if (isEditingLocked || !canManageSession) {
+      return;
+    }
+
+    updateSession((current) => ({
+      ...current,
+      plannedMatches: current.plannedMatches.map((match) =>
+        match.id === matchId
+          ? {
+            ...match,
+            playerIds: []
+          }
+          : match
+      )
+    }));
+  }
+
+  async function confirmPlannedMatch(matchId: string) {
+    if (isEditingLocked || !canManageSession) {
+      return;
+    }
+
+    const targetMatch = session.plannedMatches.find((match) => match.id === matchId);
+    if (!targetMatch || targetMatch.playerIds.length !== 4) {
+      return;
+    }
+
+    const targetShuttleNumber = session.currentShuttleNumber;
+    const currentSummary = getShuttleMarkSummary(session.players, targetShuttleNumber);
+    if (currentSummary.count > 0) {
+      await showAlert({
+        title: "ลูกปัจจุบันมีข้อมูลแล้ว",
+        headline: `ลูกที่ ${targetShuttleNumber} มี ${currentSummary.count} ติ๊กอยู่แล้ว`,
+        message: "เคลียร์หรือแก้ลูกนี้ให้เรียบร้อยก่อนยืนยัน Match ล่วงหน้า เพื่อกันข้อมูลปนกัน",
+        details: [
+          { label: "ลูกที่", value: String(targetShuttleNumber), tone: "warning" },
+          { label: "รายชื่อที่มีอยู่", value: currentSummary.names.join(", "), tone: "warning" }
+        ],
+        confirmLabel: "รับทราบ",
+        color: "warning"
+      });
+      return;
+    }
+
+    const selectedPlayers = targetMatch.playerIds
+      .map((playerId) => activePlayers.find((player) => player.id === playerId))
+      .filter((player): player is Player => Boolean(player));
+    if (selectedPlayers.length !== 4) {
+      await showAlert({
+        title: "รายชื่อไม่ครบ",
+        headline: "มีผู้เล่นบางคนไม่อยู่ในรายชื่อกำลังตีแล้ว",
+        message: "ระบบจะล้างชื่อที่ใช้ไม่ได้ออกจาก Match นี้ก่อนจัดใหม่",
+        confirmLabel: "รับทราบ",
+        color: "warning"
+      });
+      updateSession((current) => normalizeSession(current));
+      return;
+    }
+
+    const playerNames = selectedPlayers.map((player) => player.name).join(", ");
+    const confirmed = await showConfirm({
+      title: "ยืนยัน Match ล่วงหน้า",
+      headline: `รัน ${targetMatch.label} เป็นลูกที่ ${targetShuttleNumber}`,
+      message: "ระบบจะติ๊กลูกให้ทั้ง 4 คน และเลื่อนไปลูกถัดไป",
+      details: [
+        { label: "ลูกที่", value: String(targetShuttleNumber), tone: "primary" },
+        { label: "ผู้เล่น", value: playerNames, tone: "primary" },
+        { label: "ลูกถัดไป", value: String(targetShuttleNumber + 1), tone: "primary" }
+      ],
+      confirmLabel: "ยืนยัน",
+      color: "primary"
+    });
+    if (!confirmed) {
+      return;
+    }
+
+    const confirmedAt = getTrustedNowIso();
+    const restUntil = addMinutes(confirmedAt, REST_MINUTES);
+    const selectedPlayerIds = new Set(targetMatch.playerIds);
+    setSelectedPlannedMatchId("");
+    updateSession((current) => {
+      const nextPlayers = current.players.map((player) =>
+        selectedPlayerIds.has(player.id)
+          ? setPlayerShuttleMarks(
+            {
+              ...player,
+              restUntil,
+              waitingSince: restUntil
+            },
+            [...getPlayerShuttleMarks(player), targetShuttleNumber]
+          )
+          : player
+      );
+      const nextSession = appendActivity(
+        {
+          ...current,
+          players: nextPlayers,
+          currentShuttleNumber: targetShuttleNumber + 1,
+          plannedMatches: renumberPlannedMatches([
+            ...current.plannedMatches.filter((match) => match.id !== matchId),
+            {
+              ...targetMatch,
+              playerIds: []
+            }
+          ])
+        },
+        createActivity(
+          "match-confirmed",
+          `ยืนยันลูก ${targetShuttleNumber}: ${playerNames}`,
+          confirmedAt
+        )
+      );
+
+      return nextSession;
+    });
   }
 
   async function toggleShuttleMark(playerId: string, column: number) {
@@ -748,6 +998,12 @@ export default function HomePage() {
     const targetShuttleNumber = isRemoving
       ? removedShuttleNumber
       : Math.max(1, editingShuttleNumber ?? session.currentShuttleNumber);
+    const isEditingFlow =
+      editingShuttleNumber !== null ||
+      isRemoving ||
+      targetShuttleNumber !== session.currentShuttleNumber;
+    const returnShuttleNumber =
+      editingReturnShuttleNumber ?? session.currentShuttleNumber;
     if (!isRemoving && getShuttleMarkSummary(session.players, targetShuttleNumber).count >= 4) {
       await showAlert({
         title: "ลูกนี้ครบแล้ว",
@@ -758,6 +1014,25 @@ export default function HomePage() {
         color: "warning"
       });
       return;
+    }
+    if (
+      !isRemoving &&
+      getPlayerShuttleMarks(player).filter((mark) => mark === targetShuttleNumber).length > 0
+    ) {
+      const confirmedDuplicate = await showConfirm({
+        title: "เพิ่มชื่อซ้ำ",
+        headline: `เพิ่ม ${player.name} ซ้ำในลูกที่ ${targetShuttleNumber} ใช่ไหม?`,
+        message: "ใช้กรณีคนเดิมถูกนับซ้ำในลูกเดียวกัน เช่น A, B, B, C",
+        details: [
+          { label: "ผู้เล่น", value: player.name, tone: "warning" },
+          { label: "ลูกที่", value: String(targetShuttleNumber), tone: "warning" }
+        ],
+        confirmLabel: "เพิ่มซ้ำ",
+        color: "warning"
+      });
+      if (!confirmedDuplicate) {
+        return;
+      }
     }
 
     const nextPlayers = session.players.map((currentPlayer) =>
@@ -773,18 +1048,17 @@ export default function HomePage() {
 
     const targetShuttleSummary = getShuttleMarkSummary(nextPlayers, targetShuttleNumber);
     const completedPlayerNames = targetShuttleSummary.names.slice(-4).join(", ");
-    const overlapWarning = !isRemoving && targetShuttleSummary.isComplete
+    const overlapWarning = targetShuttleSummary.isComplete
       ? findMatchOverlapWarning(nextPlayers, targetShuttleNumber)
       : null;
     const shouldAdvanceAfterConfirm =
       !isRemoving &&
       targetShuttleSummary.isComplete &&
       targetShuttleNumber === session.currentShuttleNumber &&
-      editingShuttleNumber === null;
+      !isEditingFlow;
     const shouldAskToConfirmComplete =
-      !isRemoving &&
       targetShuttleSummary.isComplete &&
-      (shouldAdvanceAfterConfirm || editingShuttleNumber !== null);
+      (shouldAdvanceAfterConfirm || isEditingFlow);
     const confirmedComplete =
       shouldAskToConfirmComplete &&
       await showConfirm({
@@ -792,7 +1066,7 @@ export default function HomePage() {
         headline: "ครบ 4 คนแล้ว",
         message: shouldAdvanceAfterConfirm
           ? "ยืนยัน Match นี้แล้วระบบจะเลื่อนไปลูกถัดไป"
-          : "ยืนยัน Match นี้เพื่อจบการแก้ลูกเก่า",
+          : "ยืนยัน Match นี้เพื่อจบการแก้ลูก",
         details: [
           { label: "ลูกที่", value: String(targetShuttleNumber), tone: "primary" },
           { label: "ผู้เล่น", value: completedPlayerNames, tone: "primary" },
@@ -821,9 +1095,13 @@ export default function HomePage() {
     if (shouldAskToConfirmComplete && !confirmedComplete) {
       return;
     }
-    const nextShuttleNumber = shouldAdvanceAfterConfirm && confirmedComplete
+    const isConfirmedEditingComplete =
+      Boolean(confirmedComplete) && isEditingFlow && !shouldAdvanceAfterConfirm;
+    const rawNextShuttleNumber = shouldAdvanceAfterConfirm && confirmedComplete
       ? targetShuttleNumber + 1
-      : session.currentShuttleNumber;
+      : isConfirmedEditingComplete
+        ? returnShuttleNumber
+        : session.currentShuttleNumber;
     const confirmedAt = getTrustedNowIso();
     const restUntil = addMinutes(confirmedAt, REST_MINUTES);
     const restedPlayers = shouldAdvanceAfterConfirm && confirmedComplete
@@ -839,13 +1117,23 @@ export default function HomePage() {
       : nextPlayers;
 
     const shouldKeepEditingShuttle =
-      !targetShuttleSummary.isComplete && (isRemoving || editingShuttleNumber !== null);
+      targetShuttleSummary.count > 0 &&
+      !targetShuttleSummary.isComplete &&
+      (isRemoving || editingShuttleNumber !== null);
     setEditingShuttleNumber(shouldKeepEditingShuttle ? targetShuttleNumber : null);
+    setEditingReturnShuttleNumber(shouldKeepEditingShuttle ? returnShuttleNumber : null);
     updateSession((current) => {
+      const nextOpenShuttleNumber = getNextOpenShuttleNumber(restedPlayers);
       let nextSession: SessionState = {
         ...current,
         players: restedPlayers,
-        currentShuttleNumber: nextShuttleNumber
+        plannedMatches: isRemoving
+          ? current.plannedMatches
+          : current.plannedMatches.map((match) => ({
+            ...match,
+            playerIds: match.playerIds.filter((currentPlayerId) => currentPlayerId !== playerId)
+          })),
+        currentShuttleNumber: Math.min(rawNextShuttleNumber, nextOpenShuttleNumber)
       };
       const actionPlayerName = player.name;
       nextSession = appendActivity(
@@ -922,7 +1210,13 @@ export default function HomePage() {
                 paidAt: paid ? getTrustedNowIso() : undefined
               }
               : currentPlayer
-          )
+          ),
+          plannedMatches: paid
+            ? current.plannedMatches.map((match) => ({
+              ...match,
+              playerIds: match.playerIds.filter((currentPlayerId) => currentPlayerId !== playerId)
+            }))
+            : current.plannedMatches
         },
         createActivity(
           paid ? "paid" : "unpaid",
@@ -1205,6 +1499,8 @@ export default function HomePage() {
                 className="sheetTabs"
               >
                 <Tab label={`กำลังตี (${activePlayers.length})`} />
+                <Tab label="จัด Match ล่วงหน้า" disabled={isEditingLocked} />
+                <Tab label="สมุดจด" disabled={isEditingLocked} />
                 <Tab label={`Match (${matchGroups.length})`} disabled={isEditingLocked} />
                 <Tab
                   label={`สรุปจ่ายแล้ว (${formatBaht(summary.paidAmount)} บาท)`}
@@ -1229,7 +1525,7 @@ export default function HomePage() {
                       <IconButton
                         aria-label="ลดลูก number"
                         onClick={() => stepCurrentShuttleNumber(-1)}
-                        disabled={isEditingLocked || !canManageSession || activeShuttleNumber <= 1}
+                        disabled={isEditingMode || !canManageSession || activeShuttleNumber <= 1}
                       >
                         <RemoveIcon />
                       </IconButton>
@@ -1238,33 +1534,78 @@ export default function HomePage() {
                         type="number"
                         value={activeShuttleNumber}
                         onChange={(event) => updateCurrentShuttleNumber(event.target.value)}
-                        disabled={isEditingLocked || !canManageSession}
+                        disabled={isEditingMode || !canManageSession}
                         inputProps={{ min: 1 }}
                         className="currentShuttleField"
                       />
                       <IconButton
                         aria-label="เพิ่มลูก number"
                         onClick={() => stepCurrentShuttleNumber(1)}
-                        disabled={isEditingLocked || !canManageSession}
+                        disabled={isEditingMode || !canManageSession}
                       >
                         <AddIcon />
                       </IconButton>
                     </Stack>
                   </Box>
-                  <CurrentShuttleTracker
+                  <CurrentShuttlePicker
                     summary={currentShuttleSummary}
+                    players={visibleActivePlayers}
+                    allPlayerCount={activePlayers.length}
+                    hasSearch={Boolean(normalizedSearch)}
+                    activeShuttleNumber={activeShuttleNumber}
+                    now={now}
+                    isEditingMode={isEditingMode}
                     isEditingLocked={isEditingLocked}
+                    canManageSession={canManageSession}
+                    onTogglePlayer={addActiveShuttlePlayer}
                   />
                   <PriorityPlayers players={priorityPlayers} now={now} />
+                  <RecentActivity activityLog={session.activityLog} now={now} />
+                </>
+              ) : activeTab === 1 ? (
+                <PlannedMatchPanel
+                  plannedMatches={session.plannedMatches}
+                  selectedMatchId={selectedPlannedMatch?.id ?? ""}
+                  activePlayers={activePlayers}
+                  availablePlayers={availablePlannedPlayers}
+                  currentShuttleNumber={session.currentShuttleNumber}
+                  canManageSession={canManageSession}
+                  onSelectMatch={setSelectedPlannedMatchId}
+                  onAddPlayer={addPlayerToPlannedMatch}
+                  onRemovePlayer={removePlayerFromPlannedMatch}
+                  onCancelMatch={cancelPlannedMatch}
+                  onConfirmMatch={confirmPlannedMatch}
+                />
+              ) : activeTab === 2 ? (
+                <>
+                  <Box className="ledgerToolbar">
+                    <TextField
+                      label="ค้นหาชื่อในสมุด"
+                      value={ledgerSearchName}
+                      onChange={(event) => setLedgerSearchName(event.target.value)}
+                      className="searchField"
+                      autoComplete="off"
+                    />
+                    <TextField
+                      label="เลขลูก"
+                      type="number"
+                      value={ledgerSearchShuttle}
+                      onChange={(event) => setLedgerSearchShuttle(event.target.value)}
+                      className="ledgerShuttleSearchField"
+                      inputProps={{ min: 1 }}
+                    />
+                  </Box>
                   <ScoreSheet
-                    activePlayers={visibleActivePlayers}
+                    activePlayers={visibleLedgerPlayers}
                     allPlayerCount={session.players.length}
-                    hasSearch={Boolean(normalizedSearch)}
+                    hasSearch={Boolean(normalizedLedgerSearchName || ledgerSearchShuttle.trim())}
                     incompleteShuttleNumbers={incompleteShuttleNumbers}
                     overLimitShuttleNumbers={overLimitShuttleNumbers}
                     now={now}
                     pricing={session.pricing}
                     shuttleColumns={shuttleColumns}
+                    activeShuttleNumber={activeShuttleNumber}
+                    filteredShuttleNumber={searchedLedgerShuttleNumber}
                     editingShuttleNumber={editingShuttleNumber}
                     isEditingLocked={isEditingLocked}
                     canManageSession={canManageSession}
@@ -1273,15 +1614,14 @@ export default function HomePage() {
                     onSetPaid={setPaid}
                     onToggleShuttleMark={toggleShuttleMark}
                   />
-                  <RecentActivity activityLog={session.activityLog} now={now} />
                 </>
-              ) : activeTab === 1 ? (
+              ) : activeTab === 3 ? (
                 <MatchSummaryPanel
                   matchGroups={matchGroups}
                   searchTerm={matchSearchTerm}
                   onSearchTermChange={setMatchSearchTerm}
                 />
-              ) : activeTab === 2 ? (
+              ) : activeTab === 4 ? (
                 <PaidSummary
                   players={session.players}
                   paidGroups={visiblePaidGroups}
@@ -1485,6 +1825,8 @@ function ScoreSheet({
   now,
   pricing,
   shuttleColumns,
+  activeShuttleNumber,
+  filteredShuttleNumber,
   editingShuttleNumber,
   isEditingLocked,
   canManageSession,
@@ -1501,6 +1843,8 @@ function ScoreSheet({
   now: string;
   pricing: SessionState["pricing"];
   shuttleColumns: number[];
+  activeShuttleNumber: number;
+  filteredShuttleNumber: number | null;
   editingShuttleNumber: number | null;
   isEditingLocked: boolean;
   canManageSession: boolean;
@@ -1562,6 +1906,11 @@ function ScoreSheet({
                     {(() => {
                       const shuttleMark = getPlayerShuttleMarks(player)[column];
                       const checked = typeof shuttleMark === "number";
+                      const isFilteredOut =
+                        filteredShuttleNumber !== null && shuttleMark !== filteredShuttleNumber;
+                      if (isFilteredOut) {
+                        return <span className="emptyShuttleCell" aria-hidden="true" />;
+                      }
                       const isOverLimit =
                         typeof shuttleMark === "number" &&
                         overLimitShuttleNumbers.has(shuttleMark);
@@ -1649,12 +1998,28 @@ function getWaitingRowClass(player: Player, now: string): string {
   return "";
 }
 
-function CurrentShuttleTracker({
+function CurrentShuttlePicker({
   summary,
-  isEditingLocked
+  players,
+  allPlayerCount,
+  hasSearch,
+  activeShuttleNumber,
+  now,
+  isEditingMode,
+  isEditingLocked,
+  canManageSession,
+  onTogglePlayer
 }: {
   summary: ReturnType<typeof getShuttleMarkSummary>;
+  players: Player[];
+  allPlayerCount: number;
+  hasSearch: boolean;
+  activeShuttleNumber: number;
+  now: string;
+  isEditingMode: boolean;
   isEditingLocked: boolean;
+  canManageSession: boolean;
+  onTogglePlayer: (id: string) => void;
 }) {
   const statusText =
     summary.count === 0
@@ -1662,26 +2027,75 @@ function CurrentShuttleTracker({
       : summary.isComplete
         ? "ครบ 4 แล้ว"
         : `เหลืออีก ${summary.missingCount} ติ๊ก`;
+  const isFull = summary.count >= 4;
 
   return (
-    <Box className="currentShuttleTracker">
-      <Box>
-        <Typography fontWeight={800}>กำลังเลือกลูก {summary.shuttleNumber}</Typography>
-        <Typography color="text.secondary" className="currentShuttleNames">
-          {summary.names.length > 0 ? summary.names.join(", ") : "ยังไม่มีชื่อที่ติ๊ก"}
-        </Typography>
-        {isEditingLocked ? (
-          <Typography color="warning.main" className="currentShuttleLockNote">
-            กำลังแก้ลูกนี้ให้ครบก่อน จึงทำรายการอื่นได้
+    <Paper className="currentShuttlePicker" elevation={0} role="region" aria-label="เลือกคนลงลูก">
+      <Box className="currentShuttlePickerHeader">
+        <Box>
+          <Typography variant="h6" component="h2" fontWeight={900}>
+            {isEditingMode ? "กำลังแก้ลูก" : "เลือกคนลูก"} {activeShuttleNumber}
           </Typography>
-        ) : null}
+          <Typography color="text.secondary" className="currentShuttleNames">
+            {summary.names.length > 0 ? summary.names.join(", ") : "ยังไม่มีชื่อที่ติ๊ก"}
+          </Typography>
+          {isEditingMode ? (
+            <Typography color="warning.main" className="currentShuttleLockNote">
+              {isEditingLocked
+                ? "แก้ลูกนี้ให้ครบก่อน ระบบจะล็อกปุ่มอื่นไว้เพื่อกันเลขลูกเพี้ยน"
+                : "ลูกนี้ครบแล้ว กดยืนยัน Match เพื่อกลับไปลูกปัจจุบัน"}
+            </Typography>
+          ) : null}
+        </Box>
+        <Chip
+          label={`${summary.count}/4 ${statusText}`}
+          color={summary.isComplete ? "primary" : isFull ? "error" : "default"}
+          variant={summary.isComplete ? "filled" : "outlined"}
+        />
       </Box>
-      <Chip
-        label={`${summary.count}/4 ${statusText}`}
-        color={summary.isComplete ? "primary" : "default"}
-        variant={summary.isComplete ? "filled" : "outlined"}
-      />
-    </Box>
+      {summary.names.length > 0 ? (
+        <Box className="selectedPlayerStrip" aria-label="คนที่เลือกแล้ว">
+          {summary.names.map((name, index) => (
+            <Chip key={`${name}-${index}`} label={`${index + 1}. ${name}`} color="primary" />
+          ))}
+        </Box>
+      ) : null}
+      <Box className="playerPickerGrid" aria-label="รายชื่อสำหรับติ๊กลูก">
+        {players.length === 0 ? (
+          <Box className="emptyPlayerPicker">
+            {hasSearch
+              ? "ไม่พบชื่อที่ค้นหา"
+              : allPlayerCount === 0
+                ? "เพิ่มชื่อผู้เล่นเพื่อเริ่มเลือกคน"
+                : "ไม่มีผู้เล่นค้างจ่าย"}
+          </Box>
+        ) : (
+          players.map((player, index) => {
+            const selectedCount = getPlayerShuttleMarks(player).filter(
+              (mark) => mark === activeShuttleNumber
+            ).length;
+            const waitClass = getWaitingRowClass(player, now);
+            return (
+              <Button
+                key={player.id}
+                className={`playerPickerButton ${waitClass}${selectedCount > 0 ? " playerPickerButtonSelected" : ""
+                  }`}
+                variant={selectedCount > 0 ? "contained" : "outlined"}
+                disabled={!canManageSession || (isFull && selectedCount === 0)}
+                onClick={() => onTogglePlayer(player.id)}
+                aria-label={`เลือก ${player.name} ลงลูก ${activeShuttleNumber}`}
+              >
+                <span className="playerPickerOrder">{index + 1}</span>
+                <span className="playerPickerName">{player.name}</span>
+                {selectedCount > 0 ? (
+                  <span className="playerPickerCount">x{selectedCount}</span>
+                ) : null}
+              </Button>
+            );
+          })
+        )}
+      </Box>
+    </Paper>
   );
 }
 
@@ -1733,6 +2147,161 @@ function RecentActivity({
           ))}
         </Stack>
       )}
+    </Box>
+  );
+}
+
+function PlannedMatchPanel({
+  plannedMatches,
+  selectedMatchId,
+  activePlayers,
+  availablePlayers,
+  currentShuttleNumber,
+  canManageSession,
+  onSelectMatch,
+  onAddPlayer,
+  onRemovePlayer,
+  onCancelMatch,
+  onConfirmMatch
+}: {
+  plannedMatches: PlannedMatch[];
+  selectedMatchId: string;
+  activePlayers: Player[];
+  availablePlayers: Player[];
+  currentShuttleNumber: number;
+  canManageSession: boolean;
+  onSelectMatch: (id: string) => void;
+  onAddPlayer: (id: string) => void;
+  onRemovePlayer: (matchId: string, playerId: string) => void;
+  onCancelMatch: (matchId: string) => void;
+  onConfirmMatch: (matchId: string) => void;
+}) {
+  const playerById = useMemo(
+    () => new Map(activePlayers.map((player) => [player.id, player])),
+    [activePlayers]
+  );
+  const selectedMatch = plannedMatches.find((match) => match.id === selectedMatchId);
+  const selectedMatchFull = (selectedMatch?.playerIds.length ?? 0) >= 4;
+
+  return (
+    <Box className="plannedMatchPanel" role="region" aria-label="จัด Match ล่วงหน้า">
+      <Box className="plannedMatchColumn">
+        <Box>
+          <Typography variant="h5" component="h2">
+            Match ที่จัดไว้
+          </Typography>
+          <Typography color="text.secondary">
+            ยืนยันแล้วจะลงเป็นลูกที่ {currentShuttleNumber}
+          </Typography>
+        </Box>
+        <Stack spacing={1.25}>
+          {plannedMatches.map((match) => {
+            const isSelected = match.id === selectedMatchId;
+            const players = match.playerIds
+              .map((playerId) => playerById.get(playerId))
+              .filter((player): player is Player => Boolean(player));
+            const isReady = players.length === 4;
+
+            return (
+              <Paper
+                key={match.id}
+                className={`plannedMatchCard${isSelected ? " plannedMatchCardSelected" : ""}`}
+                elevation={0}
+              >
+                <Button
+                  className="plannedMatchSelectButton"
+                  onClick={() => onSelectMatch(match.id)}
+                  disabled={!canManageSession}
+                  fullWidth
+                >
+                  <span className="plannedMatchLabel">
+                    {isSelected ? <CheckCircleIcon fontSize="small" /> : null}
+                    {match.label}
+                  </span>
+                  <Chip
+                    label={`${players.length}/4`}
+                    size="small"
+                    color={isReady ? "primary" : "default"}
+                    variant={isReady ? "filled" : "outlined"}
+                  />
+                </Button>
+                <Box className="plannedMatchNames">
+                  {players.length === 0 ? (
+                    <Typography color="text.secondary" fontSize={14}>
+                      ยังไม่ได้เลือกคน
+                    </Typography>
+                  ) : (
+                    players.map((player, index) => (
+                      <Chip
+                        key={`${match.id}-${player.id}`}
+                        label={`${index + 1}. ${player.name}`}
+                        color="primary"
+                        variant={isSelected ? "filled" : "outlined"}
+                        onDelete={
+                          canManageSession
+                            ? () => onRemovePlayer(match.id, player.id)
+                            : undefined
+                        }
+                      />
+                    ))
+                  )}
+                </Box>
+                <Stack direction="row" spacing={1} className="plannedMatchActions">
+                  <Button
+                    variant="contained"
+                    disabled={!canManageSession || !isReady}
+                    onClick={() => onConfirmMatch(match.id)}
+                  >
+                    ยืนยัน
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    color="secondary"
+                    disabled={!canManageSession || players.length === 0}
+                    onClick={() => onCancelMatch(match.id)}
+                  >
+                    ยกเลิก
+                  </Button>
+                </Stack>
+              </Paper>
+            );
+          })}
+        </Stack>
+      </Box>
+      <Box className="plannedMatchColumn">
+        <Box>
+          <Typography variant="h5" component="h2">
+            รายชื่อที่เลือกได้
+          </Typography>
+          <Typography color="text.secondary">
+            {selectedMatch
+              ? `กำลังจัด ${selectedMatch.label}${selectedMatchFull ? " ครบแล้ว" : ""}`
+              : "เลือก Match ก่อน แล้วค่อยกดชื่อ"}
+          </Typography>
+        </Box>
+        <Box className="plannedPlayerGrid">
+          {availablePlayers.length === 0 ? (
+            <Box className="emptyPlayerPicker">
+              {activePlayers.length === 0
+                ? "ยังไม่มีผู้เล่นกำลังตี"
+                : "รายชื่อที่เลือกได้ถูกจัดไว้ครบแล้ว"}
+            </Box>
+          ) : (
+            availablePlayers.map((player, index) => (
+              <Button
+                key={player.id}
+                className="plannedPlayerButton"
+                variant="outlined"
+                disabled={!canManageSession || !selectedMatch || selectedMatchFull}
+                onClick={() => onAddPlayer(player.id)}
+              >
+                <span className="playerPickerOrder">{index + 1}</span>
+                <span className="playerPickerName">{player.name}</span>
+              </Button>
+            ))
+          )}
+        </Box>
+      </Box>
     </Box>
   );
 }

@@ -20,6 +20,7 @@ body {
 
 .appContainer {
   width: 100%;
+  min-width: 0;
 }
 
 .loginShell {
@@ -63,6 +64,11 @@ body {
 .summaryStat {
   border: 1px solid #e7e2d8;
   border-radius: 8px;
+}
+
+.tablePanel {
+  min-width: 0;
+  overflow: hidden;
 }
 
 .controlBand {
@@ -296,20 +302,232 @@ body {
 }
 
 .scoreTableWrap {
+  max-width: 100%;
   max-height: calc(100vh - 320px);
-  min-height: 280px;
+  min-height: 220px;
+  overflow: auto;
+}
+
+.scoreTableWrap .MuiTable-root {
+  width: max-content;
+  min-width: 100%;
+}
+
+.scoreTableWrap .MuiTableCell-root {
+  padding: 2px 4px;
+  font-size: 0.95rem;
+  line-height: 1.15;
 }
 
 .sheetTabs {
   padding: 0 12px;
 }
 
+.currentShuttlePicker {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border-bottom: 1px solid #d8d1c5;
+  background: #fffdf8;
+}
+
+.currentShuttlePickerHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.selectedPlayerStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.playerPickerGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  padding-right: 4px;
+}
+
+.ledgerToolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e7e2d8;
+  background: #fffdf8;
+}
+
+.ledgerShuttleSearchField {
+  width: 120px;
+}
+
+.playerPickerButton {
+  position: relative;
+  justify-content: center;
+  min-height: 58px;
+  border-radius: 8px;
+  border-color: #b9c8c5;
+  color: #1f2933;
+  background: #ffffff;
+  font-weight: 900;
+  padding-inline: 38px;
+}
+
+.playerPickerButton:hover {
+  border-color: #0f766e;
+  background: #ecf7f5;
+}
+
+.playerPickerButtonSelected {
+  background: #0f766e;
+  color: #ffffff;
+}
+
+.playerPickerOrder,
+.playerPickerCount {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.playerPickerOrder {
+  left: 10px;
+  width: 24px;
+  height: 24px;
+  border: 1px solid #c7d8d5;
+  border-radius: 999px;
+  color: #0f766e;
+  background: #f0fdfa;
+}
+
+.playerPickerButtonSelected .playerPickerOrder {
+  border-color: rgba(255, 255, 255, 0.7);
+  color: #0f766e;
+  background: #ffffff;
+}
+
+.playerPickerName {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.playerPickerCount {
+  right: 10px;
+  min-width: 28px;
+  height: 24px;
+  border-radius: 999px;
+  color: #0f766e;
+  background: #d9f3ee;
+}
+
+.plannedMatchPanel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  gap: 16px;
+  padding: 18px;
+  background: #fffdf8;
+}
+
+.plannedMatchColumn {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-width: 0;
+}
+
+.plannedMatchCard {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #e7e2d8;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.plannedMatchCardSelected {
+  border-color: #0f766e;
+  box-shadow: inset 0 0 0 1px #0f766e;
+}
+
+.plannedMatchSelectButton {
+  justify-content: space-between;
+  min-height: 38px;
+  color: #1f2933;
+  font-weight: 900;
+  text-align: left;
+}
+
+.plannedMatchLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.plannedMatchLabel .MuiSvgIcon-root {
+  color: #0f766e;
+}
+
+.plannedMatchNames {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 34px;
+  align-items: center;
+}
+
+.plannedMatchActions {
+  justify-content: flex-end;
+}
+
+.plannedPlayerGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.plannedPlayerButton {
+  position: relative;
+  justify-content: center;
+  min-height: 50px;
+  border-radius: 8px;
+  border-color: #b9c8c5;
+  color: #1f2933;
+  background: #ffffff;
+  font-weight: 900;
+  padding-inline: 38px;
+}
+
+.plannedPlayerButton:hover {
+  border-color: #0f766e;
+  background: #ecf7f5;
+}
+
+.emptyPlayerPicker {
+  grid-column: 1 / -1;
+  min-height: 96px;
+  display: grid;
+  place-items: center;
+  color: #5f6c7b;
+  border: 1px dashed #d8d1c5;
+  border-radius: 8px;
+}
+
 .stickyName {
   position: sticky;
   left: 0;
   z-index: 3;
-  min-width: 172px;
-  max-width: 220px;
+  min-width: 136px;
+  max-width: 176px;
   background: #ffffff;
   box-shadow: 1px 0 0 #e7e2d8;
 }
@@ -320,19 +538,21 @@ thead .stickyName {
 }
 
 .shuttleHeader {
-  min-width: 48px;
+  min-width: 38px;
   background: #f3eee3;
-  font-weight: 800;
+  font-size: 0.9rem;
+  font-weight: 900;
 }
 
 .shuttleCell {
-  min-width: 48px;
+  min-width: 38px;
   padding: 0;
 }
 
 .shuttleCell .MuiCheckbox-root {
-  width: 44px;
-  height: 44px;
+  width: 34px;
+  height: 34px;
+  padding: 4px;
   color: #9aa4ad;
 }
 
@@ -340,16 +560,22 @@ thead .stickyName {
   color: #0f766e;
 }
 
+.emptyShuttleCell {
+  display: block;
+  width: 34px;
+  height: 34px;
+}
+
 .shuttleNumberIcon {
   display: grid;
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   place-items: center;
   border: 1px solid #9aa4ad;
   border-radius: 999px;
   color: #5f6c7b;
-  font-size: 0.78rem;
-  font-weight: 800;
+  font-size: 0.82rem;
+  font-weight: 900;
   line-height: 1;
 }
 
@@ -372,7 +598,7 @@ thead .stickyName {
 }
 
 .playerCell {
-  padding: 6px 8px;
+  padding: 3px 4px;
 }
 
 .waitingWarningRow {
@@ -393,22 +619,23 @@ thead .stickyName {
 
 .playerNameButton {
   position: relative;
-  min-height: 38px;
+  min-height: 32px;
   justify-content: center;
   border: 1px solid transparent;
   color: #1f2933;
-  font-weight: 800;
-  line-height: 1.2;
+  font-size: 0.98rem;
+  font-weight: 900;
+  line-height: 1.1;
   text-align: center;
-  padding-inline: 36px;
+  padding: 3px 28px;
 }
 
 .playerOrder {
   position: absolute;
-  left: 8px;
+  left: 4px;
   display: grid;
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   place-items: center;
   border: 1px solid #c7d8d5;
   border-radius: 999px;
@@ -431,13 +658,15 @@ thead .stickyName {
 }
 
 .countCell {
-  min-width: 64px;
-  font-weight: 800;
+  min-width: 44px;
+  font-size: 0.98rem;
+  font-weight: 900;
 }
 
 .amountCell {
-  min-width: 96px;
-  font-weight: 800;
+  min-width: 72px;
+  font-size: 0.98rem;
+  font-weight: 900;
 }
 
 .emptyCell {
@@ -612,6 +841,10 @@ thead .stickyName {
     width: 100%;
   }
 
+  .plannedMatchPanel {
+    grid-template-columns: 1fr;
+  }
+
   .scoreTableWrap {
     max-height: none;
   }
@@ -655,9 +888,23 @@ thead .stickyName {
     flex-direction: column;
   }
 
-  .currentShuttleTracker {
+  .ledgerToolbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .currentShuttleTracker,
+  .currentShuttlePickerHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .playerPickerGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .plannedPlayerGrid {
+    grid-template-columns: 1fr 1fr;
   }
 
   .searchField {
@@ -673,7 +920,7 @@ thead .stickyName {
   }
 
   .stickyName {
-    min-width: 148px;
+    min-width: 118px;
   }
 }
 

@@ -4,13 +4,16 @@ import {
   DEFAULT_SHUTTLE_COLUMNS,
   appendActivity,
   calculatePlayersTotal,
+  calculatePlayersIndividualTotal,
   calculatePlayerTotal,
   createActivity,
+  createDefaultPlannedMatches,
   createInitialSession,
   createPlayer,
   exportSessionSummary,
   findMatchOverlapWarning,
   getBillableShuttleCount,
+  getNextOpenShuttleNumber,
   getPriorityPlayers,
   getPlayerWaitStatus,
   getShuttleMarkSummary,
@@ -18,6 +21,8 @@ import {
   groupMatchesByShuttle,
   getVisibleShuttleColumns,
   getVisibleShuttleColumnsForCurrent,
+  normalizeSession,
+  renumberPlannedMatches,
   summarizeSession,
 } from '@/lib/session';
 
@@ -43,6 +48,15 @@ describe('badminton session calculations', () => {
 
     expect(getBillableShuttleCount(players)).toBe(2);
     expect(calculatePlayersTotal(players, DEFAULT_PRICING)).toBe(550);
+  });
+
+  it('calculates individual totals by summing each player amount', () => {
+    const players = [
+      { ...createPlayer('A'), shuttleMarks: [1, 2] },
+      { ...createPlayer('B'), shuttleMarks: [1] },
+    ];
+
+    expect(calculatePlayersIndividualTotal(players, DEFAULT_PRICING)).toBe(275);
   });
 
   it('calculates waiting status after signup and after rest time ends', () => {
@@ -129,6 +143,7 @@ describe('badminton session calculations', () => {
           players,
           pricing: DEFAULT_PRICING,
           currentShuttleNumber: 1,
+          plannedMatches: createDefaultPlannedMatches(),
           activityLog: [],
           updatedAt: '2026-05-25T10:00:00.000Z',
         },
@@ -187,6 +202,17 @@ describe('badminton session calculations', () => {
     });
   });
 
+  it('returns the next open shuttle number from actual marks', () => {
+    const players = [
+      { ...createPlayer('A'), shuttleMarks: [1, 2, 23] },
+      { ...createPlayer('B'), shuttleMarks: [23] },
+      { ...createPlayer('C'), shuttleMarks: [] },
+    ];
+
+    expect(getNextOpenShuttleNumber(players)).toBe(24);
+    expect(getNextOpenShuttleNumber([])).toBe(1);
+  });
+
   it('summarizes unpaid total, paid amount, and remaining amount', () => {
     const players = [
       {
@@ -200,11 +226,24 @@ describe('badminton session calculations', () => {
 
     expect(summarizeSession(players, DEFAULT_PRICING)).toEqual({
       playerCount: 2,
-      shuttleCount: 1,
-      totalAmount: 100,
-      paidAmount: 125,
-      unpaidAmount: 100,
+      shuttleCount: 2,
+      totalAmount: 275,
+      paidAmount: 150,
+      unpaidAmount: 125,
     });
+  });
+
+  it('never reports fewer shuttles than recorded matches', () => {
+    const players = [
+      { ...createPlayer('A'), shuttleMarks: [1] },
+      { ...createPlayer('B'), shuttleMarks: [2] },
+      { ...createPlayer('C'), shuttleMarks: [3] },
+    ];
+
+    const summary = summarizeSession(players, DEFAULT_PRICING);
+
+    expect(summary.shuttleCount).toBe(3);
+    expect(groupMatchesByShuttle(players)).toHaveLength(3);
   });
 
   it("keeps paid players' shuttle marks in the remaining session calculation", () => {
@@ -223,9 +262,9 @@ describe('badminton session calculations', () => {
     expect(summarizeSession(players, DEFAULT_PRICING)).toEqual({
       playerCount: 4,
       shuttleCount: 1,
-      totalAmount: 300,
+      totalAmount: 500,
       paidAmount: 125,
-      unpaidAmount: 300,
+      unpaidAmount: 375,
     });
   });
 
@@ -255,12 +294,12 @@ describe('badminton session calculations', () => {
     expect(groupPaidPlayersByDay(players, DEFAULT_PRICING)).toEqual([
       {
         dateKey: '2026-05-25',
-        totalAmount: 125,
+        totalAmount: 200,
         players: [{ name: 'C', shuttleCount: 4, amount: 200 }],
       },
       {
         dateKey: '2026-05-24',
-        totalAmount: 225,
+        totalAmount: 275,
         players: [
           { name: 'A', shuttleCount: 2, amount: 150 },
           { name: 'B', shuttleCount: 1, amount: 125 },
@@ -281,8 +320,8 @@ describe('badminton session calculations', () => {
 
     expect(groupMatchesByShuttle(players)).toEqual([
       {
-        shuttleNumber: 1,
-        playerNames: ['a', 'b', 'c', 'd'],
+        shuttleNumber: 3,
+        playerNames: ['a', 'b', 'b', 'c'],
         isIncomplete: false,
         isOverLimit: false,
       },
@@ -293,8 +332,8 @@ describe('badminton session calculations', () => {
         isOverLimit: false,
       },
       {
-        shuttleNumber: 3,
-        playerNames: ['a', 'b', 'b', 'c'],
+        shuttleNumber: 1,
+        playerNames: ['a', 'b', 'c', 'd'],
         isIncomplete: false,
         isOverLimit: false,
       },
@@ -381,5 +420,59 @@ describe('badminton session calculations', () => {
       overlapNames: ['a', 'b', 'c', 'd'],
       overlapCount: 4,
     });
+  });
+
+  it('creates six empty planned matches for a new session', () => {
+    const session = createInitialSession();
+
+    expect(session.plannedMatches).toEqual([
+      { id: 'match-1', label: 'Match 1', playerIds: [] },
+      { id: 'match-2', label: 'Match 2', playerIds: [] },
+      { id: 'match-3', label: 'Match 3', playerIds: [] },
+      { id: 'match-4', label: 'Match 4', playerIds: [] },
+      { id: 'match-5', label: 'Match 5', playerIds: [] },
+      { id: 'match-6', label: 'Match 6', playerIds: [] },
+    ]);
+  });
+
+  it('normalizes planned matches and removes paid, missing, and duplicate player ids', () => {
+    const activePlayer = { ...createPlayer('A'), id: 'a', paid: false };
+    const paidPlayer = { ...createPlayer('B'), id: 'b', paid: true };
+
+    const session = normalizeSession({
+      players: [activePlayer, paidPlayer],
+      pricing: DEFAULT_PRICING,
+      currentShuttleNumber: 3,
+      plannedMatches: [
+        { id: 'match-1', label: 'Match 1', playerIds: ['a', 'b', 'missing'] },
+        { id: 'match-2', label: 'Match 2', playerIds: ['a'] },
+      ],
+      activityLog: [],
+      updatedAt: '2026-05-25T10:00:00.000Z',
+    });
+
+    expect(session.plannedMatches).toHaveLength(6);
+    expect(session.plannedMatches[0].playerIds).toEqual(['a']);
+    expect(session.plannedMatches[1].playerIds).toEqual([]);
+  });
+
+  it('renumbers planned matches after their order changes', () => {
+    const plannedMatches = createDefaultPlannedMatches();
+    const reordered = renumberPlannedMatches([
+      plannedMatches[1],
+      plannedMatches[2],
+      plannedMatches[0],
+    ]);
+
+    expect(reordered.map((match) => match.id)).toEqual([
+      'match-2',
+      'match-3',
+      'match-1',
+    ]);
+    expect(reordered.map((match) => match.label)).toEqual([
+      'Match 1',
+      'Match 2',
+      'Match 3',
+    ]);
   });
 });

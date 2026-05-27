@@ -18,8 +18,15 @@ export type SessionState = {
   players: Player[];
   pricing: Pricing;
   currentShuttleNumber: number;
+  plannedMatches: PlannedMatch[];
   activityLog: ActivityLogEntry[];
   updatedAt: string;
+};
+
+export type PlannedMatch = {
+  id: string;
+  label: string;
+  playerIds: string[];
 };
 
 export type SessionSummary = {
@@ -84,6 +91,7 @@ export const DEFAULT_PRICING: Pricing = {
 };
 
 export const DEFAULT_SHUTTLE_COLUMNS = 6;
+export const DEFAULT_PLANNED_MATCH_COUNT = 6;
 export const REST_MINUTES = 20;
 export const WAIT_WARNING_MINUTES = 15;
 export const WAIT_DANGER_MINUTES = 20;
@@ -111,9 +119,27 @@ export function createInitialSession(): SessionState {
     players: [],
     pricing: DEFAULT_PRICING,
     currentShuttleNumber: 1,
+    plannedMatches: createDefaultPlannedMatches(),
     activityLog: [],
     updatedAt: new Date().toISOString(),
   };
+}
+
+export function createDefaultPlannedMatches(): PlannedMatch[] {
+  return Array.from({ length: DEFAULT_PLANNED_MATCH_COUNT }, (_, index) => ({
+    id: `match-${index + 1}`,
+    label: `Match ${index + 1}`,
+    playerIds: [],
+  }));
+}
+
+export function renumberPlannedMatches(
+  plannedMatches: PlannedMatch[],
+): PlannedMatch[] {
+  return plannedMatches.map((match, index) => ({
+    ...match,
+    label: `Match ${index + 1}`,
+  }));
 }
 
 export function calculatePlayerTotal(player: Player, pricing: Pricing): number {
@@ -128,6 +154,16 @@ export function calculatePlayersTotal(
   const shuttleTotal = getBillableShuttleCount(players) * pricing.shuttleFee;
 
   return baseTotal + shuttleTotal;
+}
+
+export function calculatePlayersIndividualTotal(
+  players: Player[],
+  pricing: Pricing,
+): number {
+  return players.reduce(
+    (sum, player) => sum + calculatePlayerTotal(player, pricing),
+    0,
+  );
 }
 
 export function getVisibleShuttleColumns(players: Player[]): number {
@@ -163,6 +199,14 @@ export function getBillableShuttleCount(players: Player[]): number {
   );
 
   return Math.ceil(markCount / 4);
+}
+
+export function getNextOpenShuttleNumber(players: Player[]): number {
+  const highestMarkedShuttle = players.reduce((highest, player) => {
+    return Math.max(highest, ...getPlayerShuttleMarks(player));
+  }, 0);
+
+  return highestMarkedShuttle + 1;
 }
 
 export function getShuttleMarkSummary(
@@ -288,7 +332,7 @@ export function exportSessionSummary(
     `สรุปรอบ ${sessionId}`,
     `วันที่ ${toDateKey(typeof nowValue === 'string' ? nowValue : nowValue.toISOString())}`,
     `ลูกทั้งหมด ${summary.shuttleCount} ลูก`,
-    `รวม ${summary.totalAmount + summary.paidAmount} บาท`,
+    `รวม ${summary.totalAmount} บาท`,
     `จ่ายแล้ว ${summary.paidAmount} บาท`,
     `ค้าง ${summary.unpaidAmount} บาท`,
     '',
@@ -313,15 +357,18 @@ export function summarizeSession(
   pricing: Pricing,
 ): SessionSummary {
   const paidPlayers = players.filter((player) => player.paid);
-  const shuttleCount = getBillableShuttleCount(players);
-  const sessionAmount = calculatePlayersTotal(players, pricing);
-  const paidAmount = calculatePlayersTotal(paidPlayers, pricing);
-  const unpaidAmount = Math.max(0, sessionAmount - paidAmount);
+  const unpaidPlayers = players.filter((player) => !player.paid);
+  const shuttleCountFromMarks = getBillableShuttleCount(players);
+  const matchCount = groupMatchesByShuttle(players).length;
+  const shuttleCount = Math.max(shuttleCountFromMarks, matchCount);
+  const paidAmount = calculatePlayersIndividualTotal(paidPlayers, pricing);
+  const unpaidAmount = calculatePlayersIndividualTotal(unpaidPlayers, pricing);
+  const sessionAmount = paidAmount + unpaidAmount;
 
   return {
     playerCount: players.length,
     shuttleCount,
-    totalAmount: unpaidAmount,
+    totalAmount: sessionAmount,
     paidAmount,
     unpaidAmount,
   };
@@ -348,14 +395,9 @@ export function groupPaidPlayersByDay(
         shuttleCount: getPlayerShuttleCount(player),
         amount: calculatePlayerTotal(player, pricing),
       });
-      current.totalAmount = calculatePlayersTotal(
-        players.filter((paidPlayer) => {
-          return (
-            paidPlayer.paid &&
-            toDateKey(paidPlayer.paidAt ?? new Date().toISOString()) === dateKey
-          );
-        }),
-        pricing,
+      current.totalAmount = current.players.reduce(
+        (sum, paidPlayer) => sum + paidPlayer.amount,
+        0,
       );
       groups.set(dateKey, current);
     });
@@ -377,7 +419,7 @@ export function groupMatchesByShuttle(players: Player[]): MatchSummary[] {
   });
 
   return Array.from(groups.entries())
-    .sort(([first], [second]) => first - second)
+    .sort(([first], [second]) => second - first)
     .map(([shuttleNumber, playerNames]) => ({
       shuttleNumber,
       playerNames,
@@ -498,6 +540,62 @@ export function normalizeSession(value: unknown): SessionState {
           ),
         )
     : [];
+  const activePlayerIds = new Set(
+    players.filter((player) => !player.paid).map((player) => player.id),
+  );
+  const usedPlannedPlayerIds = new Set<string>();
+  const defaultPlannedMatches = createDefaultPlannedMatches();
+  const candidatePlannedMatches = Array.isArray(candidate.plannedMatches)
+    ? (candidate.plannedMatches as Partial<PlannedMatch>[])
+    : [];
+  const seenPlannedMatchIds = new Set<string>();
+  const orderedCandidatePlannedMatches = candidatePlannedMatches
+    .filter((match) => {
+      if (!match || typeof match !== 'object') {
+        return false;
+      }
+      const matchId = typeof match.id === 'string' ? match.id : '';
+      if (!matchId || seenPlannedMatchIds.has(matchId)) {
+        return false;
+      }
+      seenPlannedMatchIds.add(matchId);
+      return true;
+    })
+    .slice(0, DEFAULT_PLANNED_MATCH_COUNT);
+  const missingDefaultPlannedMatches = defaultPlannedMatches.filter(
+    (match) => !seenPlannedMatchIds.has(match.id),
+  );
+  const plannedMatches = renumberPlannedMatches(
+    [...orderedCandidatePlannedMatches, ...missingDefaultPlannedMatches]
+      .slice(0, DEFAULT_PLANNED_MATCH_COUNT)
+      .map((candidateMatch, index) => {
+        const defaultMatch = defaultPlannedMatches[index];
+        const playerIds = Array.isArray(candidateMatch?.playerIds)
+          ? candidateMatch.playerIds
+              .map((playerId) => String(playerId))
+              .filter((playerId) => {
+                if (
+                  !activePlayerIds.has(playerId) ||
+                  usedPlannedPlayerIds.has(playerId)
+                ) {
+                  return false;
+                }
+                usedPlannedPlayerIds.add(playerId);
+                return true;
+              })
+              .slice(0, 4)
+          : [];
+
+        return {
+          ...defaultMatch,
+          id:
+            typeof candidateMatch?.id === 'string'
+              ? candidateMatch.id
+              : defaultMatch.id,
+          playerIds,
+        };
+      }),
+  );
 
   return {
     players,
@@ -506,6 +604,7 @@ export function normalizeSession(value: unknown): SessionState {
       1,
       Number(candidate.currentShuttleNumber) || 1,
     ),
+    plannedMatches,
     activityLog: Array.isArray(candidate.activityLog)
       ? candidate.activityLog
           .filter((activity): activity is ActivityLogEntry => {

@@ -7,6 +7,7 @@ const remoteSession: SessionState = {
   players: [],
   pricing: { baseFee: 100, shuttleFee: 25 },
   currentShuttleNumber: 1,
+  plannedMatches: [],
   activityLog: [],
   updatedAt: "2026-05-25T00:00:00.000Z"
 };
