@@ -69,6 +69,7 @@ body {
 .tablePanel {
   min-width: 0;
   overflow: hidden;
+  min-height: 90vh;
 }
 
 .controlBand {
@@ -250,6 +251,7 @@ body {
   display: grid;
   grid-template-columns: repeat(5, minmax(150px, 1fr));
   gap: 12px;
+  margin: 20px 10px;
 }
 
 .summarySecondary {
@@ -325,7 +327,7 @@ body {
 
 .sheetContent {
   overflow-y: auto;
-  max-height: calc(100vh - 280px);
+  /* max-height: calc(100vh - 280px); */
 }
 
 .currentShuttlePicker {
@@ -363,7 +365,7 @@ body {
 
 .playerPickerGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
   gap: 8px;
   padding-right: 4px;
 }
@@ -390,8 +392,9 @@ body {
   color: #1f2933;
   background: #ffffff;
   font-weight: 700;
-  padding-inline: 28px;
-  font-size: 0.85rem;
+  font-size: 1rem !important;
+  padding: 5px !important;
+  line-height: 1 !important;
 }
 
 .playerPickerButton:hover {
@@ -414,13 +417,14 @@ body {
 }
 
 .playerPickerOrder {
-  left: 8px;
-  width: 20px;
-  height: 20px;
-  border: 1px solid #c7d8d5;
-  border-radius: 999px;
+  left: 5px;
   color: #0f766e;
-  background: #f0fdfa;
+  font-size: 0.7rem !important;
+  width: 16px;
+  height: 16px;
+  background: #82f0e782;
+  border-radius: 50%;
+  padding: 0px;
 }
 
 .playerPickerButtonSelected .playerPickerOrder {
@@ -458,6 +462,8 @@ body {
   align-content: start;
   gap: 14px;
   min-width: 0;
+  overflow-y: auto;
+  max-height: calc(100vh - 180px);
 }
 
 .plannedMatchCard {
@@ -510,6 +516,14 @@ body {
   gap: 8px;
 }
 
+.plannedPlayerSection {
+  margin-bottom: 24px;
+}
+
+.plannedPlayerSection:last-child {
+  margin-bottom: 0;
+}
+
 .plannedPlayerButton {
   position: relative;
   justify-content: center;
@@ -519,13 +533,36 @@ body {
   color: #1f2933;
   background: #ffffff;
   font-weight: 700;
-  padding-inline: 28px;
-  font-size: 0.85rem;
+  font-size: 1rem !important;
+  padding: 5px !important;
+  line-height: 1 !important;
 }
 
 .plannedPlayerButton:hover {
   border-color: #0f766e;
   background: #ecf7f5;
+}
+
+.plannedPlayerButton.plannedPlayerButtonDanger {
+  border-color: #fca5a5;
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.plannedPlayerButton.plannedPlayerButtonDanger:hover {
+  border-color: #ef4444;
+  background: #fecaca;
+}
+
+.plannedPlayerButton.plannedPlayerButtonWarning {
+  border-color: #fcd34d;
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.plannedPlayerButton.plannedPlayerButtonWarning:hover {
+  border-color: #f59e0b;
+  background: #fde68a;
 }
 
 .emptyPlayerPicker {
@@ -858,7 +895,7 @@ thead .stickyName {
   }
 
   .plannedMatchPanel {
-    grid-template-columns: 1fr;
+    grid-template-columns: 40% 60%;
   }
 
   .scoreTableWrap {
@@ -917,6 +954,10 @@ thead .stickyName {
 
   .playerPickerGrid {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .plannedMatchPanel {
+    grid-template-columns: 1fr;
   }
 
   .plannedPlayerGrid {

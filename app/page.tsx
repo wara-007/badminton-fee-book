@@ -709,7 +709,8 @@ export default function HomePage() {
           shuttleCount: 0,
           shuttleMarks: [],
           paid: false,
-          paidAt: undefined
+          paidAt: undefined,
+          gameCount: 0
         }))
       }));
       setActiveTab(0);
@@ -929,6 +930,95 @@ export default function HomePage() {
     }));
   }
 
+  async function addMatchToNextShuttle(shuttleNumber: number) {
+    if (isEditingLocked || !canManageSession) {
+      return;
+    }
+
+    const targetGroup = matchGroups.find((group) => group.shuttleNumber === shuttleNumber);
+    if (!targetGroup || targetGroup.playerNames.length !== 4) {
+      return;
+    }
+
+    const targetShuttleNumber = session.currentShuttleNumber;
+    const currentSummary = getShuttleMarkSummary(session.players, targetShuttleNumber);
+    if (currentSummary.count > 0) {
+      await showAlert({
+        title: "ลูกปัจจุบันมีข้อมูลแล้ว",
+        headline: `ลูกที่ ${targetShuttleNumber} มี ${currentSummary.count} ติ๊กอยู่แล้ว`,
+        message: "เคลียร์หรือแก้ลูกนี้ให้เรียบร้อยก่อนเพิ่ม Match เพื่อกันข้อมูลปนกัน",
+        details: [
+          { label: "ลูกที่", value: String(targetShuttleNumber), tone: "warning" },
+          { label: "รายชื่อที่มีอยู่", value: currentSummary.names.join(", "), tone: "warning" }
+        ],
+        confirmLabel: "รับทราบ",
+        color: "warning"
+      });
+      return;
+    }
+
+    const targetPlayers = session.players.filter((player) =>
+      targetGroup.playerNames.includes(player.name)
+    );
+    if (targetPlayers.length !== 4) {
+      await showAlert({
+        title: "รายชื่อไม่ครบ",
+        headline: "มีผู้เล่นบางคนไม่อยู่ในรายชื่อกำลังตีแล้ว",
+        message: "ระบบจะเพิ่มเฉพาะคนที่ยังอยู่ในรายชื่อกำลังตี",
+        confirmLabel: "รับทราบ",
+        color: "warning"
+      });
+    }
+
+    const confirmed = await showConfirm({
+      title: "เพิ่มลูก",
+      headline: `เพิ่ม ${targetPlayers.length} คนไปลูกที่ ${targetShuttleNumber}`,
+      message: "ระบบจะติ๊กลูกให้ทั้ง 4 คน",
+      details: [
+        { label: "ลูกที่", value: String(targetShuttleNumber), tone: "primary" },
+        { label: "ผู้เล่น", value: targetPlayers.map((p) => p.name).join(", "), tone: "primary" }
+      ],
+      confirmLabel: "เพิ่มลูก",
+      color: "primary"
+    });
+    if (!confirmed) {
+      return;
+    }
+
+    const confirmedAt = getTrustedNowIso();
+    const restUntil = addMinutes(confirmedAt, REST_MINUTES);
+    const selectedPlayerIds = new Set(targetPlayers.map((player) => player.id));
+    setEditingShuttleNumber(null);
+    setEditingReturnShuttleNumber(null);
+    updateSession((current) => {
+      const nextPlayers = current.players.map((player) =>
+        selectedPlayerIds.has(player.id)
+          ? setPlayerShuttleMarks(
+            {
+              ...player,
+              restUntil,
+              waitingSince: restUntil
+            },
+            [...getPlayerShuttleMarks(player), targetShuttleNumber]
+          )
+          : player
+      );
+      const nextSession = appendActivity(
+        {
+          ...current,
+          players: nextPlayers,
+          currentShuttleNumber: targetShuttleNumber + 1
+        },
+        createActivity(
+          "mark-added",
+          `เพิ่มลูกที่ ${targetShuttleNumber}: ${targetPlayers.map((p) => p.name).join(", ")}`,
+          confirmedAt
+        )
+      );
+      return nextSession;
+    });
+  }
+
   async function confirmPlannedMatch(matchId: string) {
     if (isEditingLocked || !canManageSession) {
       return;
@@ -999,7 +1089,8 @@ export default function HomePage() {
             {
               ...player,
               restUntil,
-              waitingSince: restUntil
+              waitingSince: restUntil,
+              gameCount: player.gameCount + 1
             },
             [...getPlayerShuttleMarks(player), targetShuttleNumber]
           )
@@ -1014,7 +1105,8 @@ export default function HomePage() {
             ...current.plannedMatches.filter((match) => match.id !== matchId),
             {
               ...targetMatch,
-              playerIds: []
+              playerIds: [],
+              confirmed: true
             }
           ])
         },
@@ -1172,7 +1264,8 @@ export default function HomePage() {
           ? {
             ...currentPlayer,
             restUntil,
-            waitingSince: restUntil
+            waitingSince: restUntil,
+            gameCount: currentPlayer.gameCount + 1
           }
           : currentPlayer
       )
@@ -1507,48 +1600,6 @@ export default function HomePage() {
               />
             ) : null}
 
-            <Box className="summaryGrid">
-              <SummaryStat
-                label="ลูกทั้งหมด"
-                value={`${summary.shuttleCount} ลูก`}
-                tone={noteShuttleSummary.missingCount > 0 ? "danger" : undefined}
-                note={
-                  noteShuttleSummary.missingCount > 0
-                    ? `ลูกที่ ${noteShuttleSummary.shuttleNumber} ยังไม่ครบ 4 ติ๊ก เหลืออีก ${noteShuttleSummary.missingCount} ติ๊ก`
-                    : undefined
-                }
-              />
-              <Button
-                className="mobileSummaryToggle"
-                variant="outlined"
-                onClick={() => setMobileSummaryExpanded((expanded) => !expanded)}
-                endIcon={
-                  <ExpandMoreIcon
-                    className={mobileSummaryExpanded ? "expandIconOpen" : undefined}
-                  />
-                }
-              >
-                {mobileSummaryExpanded ? "ซ่อนสรุป" : "ดูสรุปทั้งหมด"}
-              </Button>
-              <Box
-                className={`summarySecondary${mobileSummaryExpanded ? " summarySecondaryOpen" : ""}`}
-              >
-                <SummaryStat label="ผู้เล่น" value={`${summary.playerCount} คน`} />
-                <SummaryStat
-                  label="รวม"
-                  value={`ยอดรวม ${formatBaht(summary.totalAmount)} บาท`}
-                />
-                <SummaryStat
-                  label="จ่ายแล้ว"
-                  value={`จ่ายแล้ว ${formatBaht(summary.paidAmount)} บาท`}
-                />
-                <SummaryStat
-                  label="ค้างจ่าย"
-                  value={`ค้างจ่าย ${formatBaht(summary.unpaidAmount)} บาท`}
-                />
-              </Box>
-            </Box>
-
             <Paper className="tablePanel" elevation={0}>
               <Tabs
                 value={activeTab}
@@ -1633,6 +1684,7 @@ export default function HomePage() {
                   availablePlayers={availablePlannedPlayers}
                   currentShuttleNumber={session.currentShuttleNumber}
                   canManageSession={canManageSession}
+                  now={now}
                   onSelectMatch={setSelectedPlannedMatchId}
                   onAddPlayer={addPlayerToPlannedMatch}
                   onRemovePlayer={removePlayerFromPlannedMatch}
@@ -1677,12 +1729,55 @@ export default function HomePage() {
                     onSetPaid={setPaid}
                     onToggleShuttleMark={toggleShuttleMark}
                   />
+                  <Box className="summaryGrid">
+                    <SummaryStat
+                      label="ลูกทั้งหมด"
+                      value={`${summary.shuttleCount} ลูก`}
+                      tone={noteShuttleSummary.missingCount > 0 ? "danger" : undefined}
+                      note={
+                        noteShuttleSummary.missingCount > 0
+                          ? `ลูกที่ ${noteShuttleSummary.shuttleNumber} ยังไม่ครบ 4 ติ๊ก เหลืออีก ${noteShuttleSummary.missingCount} ติ๊ก`
+                          : undefined
+                      }
+                    />
+                    <Button
+                      className="mobileSummaryToggle"
+                      variant="outlined"
+                      onClick={() => setMobileSummaryExpanded((expanded) => !expanded)}
+                      endIcon={
+                        <ExpandMoreIcon
+                          className={mobileSummaryExpanded ? "expandIconOpen" : undefined}
+                        />
+                      }
+                    >
+                      {mobileSummaryExpanded ? "ซ่อนสรุป" : "ดูสรุปทั้งหมด"}
+                    </Button>
+                    <Box
+                      className={`summarySecondary${mobileSummaryExpanded ? " summarySecondaryOpen" : ""}`}
+                    >
+                      <SummaryStat label="ผู้เล่น" value={`${summary.playerCount} คน`} />
+                      <SummaryStat
+                        label="รวม"
+                        value={`ยอดรวม ${formatBaht(summary.totalAmount)} บาท`}
+                      />
+                      <SummaryStat
+                        label="จ่ายแล้ว"
+                        value={`จ่ายแล้ว ${formatBaht(summary.paidAmount)} บาท`}
+                      />
+                      <SummaryStat
+                        label="ค้างจ่าย"
+                        value={`ค้างจ่าย ${formatBaht(summary.unpaidAmount)} บาท`}
+                      />
+                    </Box>
+                  </Box>
                 </>
               ) : activeTab === 3 ? (
                 <MatchSummaryPanel
                   matchGroups={matchGroups}
                   searchTerm={matchSearchTerm}
                   onSearchTermChange={setMatchSearchTerm}
+                  onAddMatchToNextShuttle={addMatchToNextShuttle}
+                  canManageSession={canManageSession}
                 />
               ) : activeTab === 4 ? (
                 <PaidSummary
@@ -1928,6 +2023,7 @@ function ScoreSheet({
               </TableCell>
             ))}
             <TableCell align="center">ลูก</TableCell>
+            <TableCell align="center">เกม</TableCell>
             <TableCell align="right">ยอด</TableCell>
             <TableCell align="center">จ่ายแล้ว</TableCell>
             <TableCell align="center">ลบ</TableCell>
@@ -1936,7 +2032,7 @@ function ScoreSheet({
         <TableBody>
           {activePlayers.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={shuttleColumns.length + 5} className="emptyCell">
+              <TableCell colSpan={shuttleColumns.length + 6} className="emptyCell">
                 {hasSearch
                   ? "ไม่พบชื่อที่ค้นหา"
                   : allPlayerCount === 0
@@ -2015,6 +2111,13 @@ function ScoreSheet({
                   aria-label={`${player.name} จำนวนลูก ${getPlayerShuttleCount(player)}`}
                 >
                   {getPlayerShuttleCount(player)}
+                </TableCell>
+                <TableCell
+                  align="center"
+                  className="countCell"
+                  aria-label={`${player.name} จำนวนเกม ${player.gameCount}`}
+                >
+                  {player.gameCount}
                 </TableCell>
                 <TableCell align="right" className="amountCell">
                   {formatBaht(calculatePlayerTotal(player, pricing))}
@@ -2229,6 +2332,7 @@ function PlannedMatchPanel({
   availablePlayers,
   currentShuttleNumber,
   canManageSession,
+  now,
   onSelectMatch,
   onAddPlayer,
   onRemovePlayer,
@@ -2241,6 +2345,7 @@ function PlannedMatchPanel({
   availablePlayers: Player[];
   currentShuttleNumber: number;
   canManageSession: boolean;
+  now: string;
   onSelectMatch: (id: string) => void;
   onAddPlayer: (id: string) => void;
   onRemovePlayer: (matchId: string, playerId: string) => void;
@@ -2254,6 +2359,30 @@ function PlannedMatchPanel({
   const selectedMatch = plannedMatches.find((match) => match.id === selectedMatchId);
   const selectedMatchFull = (selectedMatch?.playerIds.length ?? 0) >= 4;
 
+  const sortedPlannedMatches = useMemo(() => {
+    return [...plannedMatches].sort((a, b) => {
+      if (a.confirmed && !b.confirmed) return 1;
+      if (!a.confirmed && b.confirmed) return -1;
+      return 0;
+    });
+  }, [plannedMatches]);
+
+  const playerGroups = useMemo(() => {
+    const nowDate = new Date(now);
+    const restUntil = (player: Player) => player.restUntil ? new Date(player.restUntil) : null;
+    const isResting = (player: Player) => {
+      const restEnd = restUntil(player);
+      return restEnd && nowDate < restEnd;
+    };
+
+    return {
+      danger: availablePlayers.filter(p => getPlayerWaitStatus(p, now) === "danger"),
+      warning: availablePlayers.filter(p => getPlayerWaitStatus(p, now) === "warning"),
+      normal: availablePlayers.filter(p => getPlayerWaitStatus(p, now) === "normal" && !isResting(p)),
+      resting: availablePlayers.filter(p => isResting(p))
+    };
+  }, [availablePlayers, now]);
+
   return (
     <Box className="plannedMatchPanel" role="region" aria-label="จัด Match ล่วงหน้า">
       <Box className="plannedMatchColumn">
@@ -2266,7 +2395,7 @@ function PlannedMatchPanel({
           </Typography>
         </Box>
         <Stack spacing={1.25}>
-          {plannedMatches.map((match) => {
+          {sortedPlannedMatches.map((match) => {
             const isSelected = match.id === selectedMatchId;
             const players = match.playerIds
               .map((playerId) => playerById.get(playerId))
@@ -2350,7 +2479,7 @@ function PlannedMatchPanel({
               : "เลือก Match ก่อน แล้วค่อยกดชื่อ"}
           </Typography>
         </Box>
-        <Box className="plannedPlayerGrid">
+        <Box>
           {availablePlayers.length === 0 ? (
             <Box className="emptyPlayerPicker">
               {activePlayers.length === 0
@@ -2358,18 +2487,88 @@ function PlannedMatchPanel({
                 : "รายชื่อที่เลือกได้ถูกจัดไว้ครบแล้ว"}
             </Box>
           ) : (
-            availablePlayers.map((player, index) => (
-              <Button
-                key={player.id}
-                className="plannedPlayerButton"
-                variant="outlined"
-                disabled={!canManageSession || !selectedMatch || selectedMatchFull}
-                onClick={() => onAddPlayer(player.id)}
-              >
-                <span className="playerPickerOrder">{index + 1}</span>
-                <span className="playerPickerName">{player.name}</span>
-              </Button>
-            ))
+            <>
+              {playerGroups.danger.length > 0 && (
+                <Box className="plannedPlayerSection">
+                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                    วิกฤต (รอ 20 นาทีขึ้นไป) ({playerGroups.danger.length})
+                  </Typography>
+                  <Box className="plannedPlayerGrid">
+                    {playerGroups.danger.map((player) => (
+                      <Button
+                        key={player.id}
+                        className="plannedPlayerButton plannedPlayerButtonDanger"
+                        variant="outlined"
+                        disabled={!canManageSession || !selectedMatch || selectedMatchFull}
+                        onClick={() => onAddPlayer(player.id)}
+                      >
+                        <span className="playerPickerName">{player.name}</span>
+                      </Button>
+                    ))}
+                  </Box>
+                </Box>
+              )}
+              {playerGroups.warning.length > 0 && (
+                <Box className="plannedPlayerSection">
+                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                    เตือน (รอ 15-19 นาที) ({playerGroups.warning.length})
+                  </Typography>
+                  <Box className="plannedPlayerGrid">
+                    {playerGroups.warning.map((player) => (
+                      <Button
+                        key={player.id}
+                        className="plannedPlayerButton plannedPlayerButtonWarning"
+                        variant="outlined"
+                        disabled={!canManageSession || !selectedMatch || selectedMatchFull}
+                        onClick={() => onAddPlayer(player.id)}
+                      >
+                        <span className="playerPickerName">{player.name}</span>
+                      </Button>
+                    ))}
+                  </Box>
+                </Box>
+              )}
+              {playerGroups.normal.length > 0 && (
+                <Box className="plannedPlayerSection">
+                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                    ปกติ (รอน้อยกว่า 15 นาที) ({playerGroups.normal.length})
+                  </Typography>
+                  <Box className="plannedPlayerGrid">
+                    {playerGroups.normal.map((player) => (
+                      <Button
+                        key={player.id}
+                        className="plannedPlayerButton"
+                        variant="outlined"
+                        disabled={!canManageSession || !selectedMatch || selectedMatchFull}
+                        onClick={() => onAddPlayer(player.id)}
+                      >
+                        <span className="playerPickerName">{player.name}</span>
+                      </Button>
+                    ))}
+                  </Box>
+                </Box>
+              )}
+              {playerGroups.resting.length > 0 && (
+                <Box className="plannedPlayerSection">
+                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                    พักเล่น ({playerGroups.resting.length})
+                  </Typography>
+                  <Box className="plannedPlayerGrid">
+                    {playerGroups.resting.map((player) => (
+                      <Button
+                        key={player.id}
+                        className="plannedPlayerButton"
+                        variant="outlined"
+                        disabled={!canManageSession || !selectedMatch || selectedMatchFull}
+                        onClick={() => onAddPlayer(player.id)}
+                      >
+                        <span className="playerPickerName">{player.name}</span>
+                      </Button>
+                    ))}
+                  </Box>
+                </Box>
+              )}
+            </>
           )}
         </Box>
       </Box>
@@ -2380,11 +2579,15 @@ function PlannedMatchPanel({
 function MatchSummaryPanel({
   matchGroups,
   searchTerm,
-  onSearchTermChange
+  onSearchTermChange,
+  onAddMatchToNextShuttle,
+  canManageSession
 }: {
   matchGroups: ReturnType<typeof groupMatchesByShuttle>;
   searchTerm: string;
   onSearchTermChange: (value: string) => void;
+  onAddMatchToNextShuttle: (shuttleNumber: number) => void;
+  canManageSession: boolean;
 }) {
   const normalizedSearch = searchTerm.trim().toLocaleLowerCase("th-TH");
   const visibleMatchGroups = normalizedSearch
@@ -2422,14 +2625,30 @@ function MatchSummaryPanel({
                 }`}
               elevation={0}
             >
-              <Typography variant="h6" component="h3">
-                ลูกที่ {group.shuttleNumber}
-              </Typography>
-              <Typography className="matchNames">
-                {group.playerNames.join(" ")}
-                {group.isOverLimit ? ` (${group.playerNames.length}/4 เกิน)` : ""}
-                {group.isIncomplete ? ` (${group.playerNames.length}/4 ยังไม่ครบ)` : ""}
-              </Typography>
+              <Box display="flex" justifyContent="space-between" alignItems="flex-start">
+                <Box flex={1}>
+                  <Typography variant="h6" component="h3">
+                    ลูกที่ {group.shuttleNumber}
+                  </Typography>
+                  <Typography className="matchNames">
+                    {group.playerNames.join(" ")}
+                    {group.isOverLimit ? ` (${group.playerNames.length}/4 เกิน)` : ""}
+                    {group.isIncomplete ? ` (${group.playerNames.length}/4 ยังไม่ครบ)` : ""}
+                  </Typography>
+                </Box>
+                {!group.isOverLimit && !group.isIncomplete && (
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<AddIcon />}
+                    onClick={() => onAddMatchToNextShuttle(group.shuttleNumber)}
+                    disabled={!canManageSession}
+                    sx={{ ml: 1, minWidth: 'auto' }}
+                  >
+                    เพิ่มลูก
+                  </Button>
+                )}
+              </Box>
             </Paper>
           ))}
         </Stack>

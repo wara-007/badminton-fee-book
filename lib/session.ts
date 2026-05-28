@@ -7,6 +7,7 @@ export type Player = {
   paidAt?: string;
   waitingSince?: string;
   restUntil?: string;
+  gameCount: number;
 };
 
 export type Pricing = {
@@ -27,6 +28,7 @@ export type PlannedMatch = {
   id: string;
   label: string;
   playerIds: string[];
+  confirmed: boolean;
 };
 
 export type SessionSummary = {
@@ -118,6 +120,7 @@ export function createPlayer(name: string): Player {
     shuttleMarks: [],
     paid: false,
     waitingSince: new Date().toISOString(),
+    gameCount: 0,
   };
 }
 
@@ -137,6 +140,7 @@ export function createDefaultPlannedMatches(): PlannedMatch[] {
     id: `match-${index + 1}`,
     label: `Match ${index + 1}`,
     playerIds: [],
+    confirmed: false,
   }));
 }
 
@@ -544,6 +548,7 @@ export function normalizeSession(value: unknown): SessionState {
                 typeof player.restUntil === 'string'
                   ? player.restUntil
                   : undefined,
+              gameCount: Math.max(0, Number(player.gameCount) || 0),
             },
             Array.isArray(player.shuttleMarks)
               ? player.shuttleMarks
@@ -607,6 +612,10 @@ export function normalizeSession(value: unknown): SessionState {
               ? candidateMatch.id
               : defaultMatch.id,
           playerIds,
+          confirmed:
+            typeof candidateMatch?.confirmed === 'boolean'
+              ? candidateMatch.confirmed
+              : false,
         };
       }),
   );
