@@ -656,6 +656,12 @@ thead .stickyName {
   background: #f59e0b;
 }
 
+.shuttleNumberIconBatch {
+  border-color: #2563eb;
+  color: #ffffff;
+  background: #3b82f6;
+}
+
 .playerCell {
   padding: 3px 4px;
 }
@@ -805,6 +811,15 @@ thead .stickyName {
 
 .matchItemWarning .MuiTypography-root {
   color: #92400e;
+}
+
+.matchItemBatch {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.matchItemBatch .MuiTypography-root {
+  color: #1e40af;
 }
 
 .matchNames {

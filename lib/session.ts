@@ -56,6 +56,7 @@ export type MatchSummary = {
   playerNames: string[];
   isIncomplete: boolean;
   isOverLimit: boolean;
+  source?: 'batch' | 'planned' | 'manual';
 };
 
 export type MatchOverlapWarning = {
@@ -425,7 +426,10 @@ export function groupPaidPlayersByDay(
   );
 }
 
-export function groupMatchesByShuttle(players: Player[]): MatchSummary[] {
+export function groupMatchesByShuttle(
+  players: Player[],
+  activityLog?: ActivityLogEntry[],
+): MatchSummary[] {
   const groups = new Map<number, string[]>();
 
   players.forEach((player) => {
@@ -436,6 +440,38 @@ export function groupMatchesByShuttle(players: Player[]): MatchSummary[] {
     });
   });
 
+  const sourceMap = new Map<number, 'batch' | 'planned' | 'manual'>();
+  if (activityLog) {
+    for (let i = activityLog.length - 1; i >= 0; i--) {
+      const activity = activityLog[i];
+      if (activity.action === 'match-confirmed') {
+        const match = activity.message.match(/ลูก\s*(\d+)/);
+        if (match) {
+          const shuttleNumber = parseInt(match[1], 10);
+          if (!sourceMap.has(shuttleNumber)) {
+            sourceMap.set(shuttleNumber, 'planned');
+          }
+        }
+      } else if (activity.action === 'mark-added') {
+        const batchMatch = activity.message.match(/เพิ่มลูกที่\s*(\d+)/);
+        if (batchMatch) {
+          const shuttleNumber = parseInt(batchMatch[1], 10);
+          if (!sourceMap.has(shuttleNumber)) {
+            sourceMap.set(shuttleNumber, 'batch');
+          }
+        } else {
+          const manualMatch = activity.message.match(/ลงลูก\s*(\d+)/);
+          if (manualMatch) {
+            const shuttleNumber = parseInt(manualMatch[1], 10);
+            if (!sourceMap.has(shuttleNumber)) {
+              sourceMap.set(shuttleNumber, 'manual');
+            }
+          }
+        }
+      }
+    }
+  }
+
   return Array.from(groups.entries())
     .sort(([first], [second]) => second - first)
     .map(([shuttleNumber, playerNames]) => ({
@@ -443,6 +479,7 @@ export function groupMatchesByShuttle(players: Player[]): MatchSummary[] {
       playerNames,
       isIncomplete: playerNames.length > 0 && playerNames.length < 4,
       isOverLimit: playerNames.length > 4,
+      source: sourceMap.get(shuttleNumber) ?? 'manual',
     }));
 }
 

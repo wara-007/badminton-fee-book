@@ -441,7 +441,7 @@ export default function HomePage() {
     () => groupPaidPlayersByDay(session.players, session.pricing),
     [session.players, session.pricing]
   );
-  const matchGroups = useMemo(() => groupMatchesByShuttle(session.players), [session.players]);
+  const matchGroups = useMemo(() => groupMatchesByShuttle(session.players, session.activityLog), [session.players, session.activityLog]);
   const overLimitShuttleNumbers = useMemo(
     () =>
       new Set(
@@ -456,6 +456,9 @@ export default function HomePage() {
       ),
     [matchGroups]
   );
+  const shuttleSourceMap = useMemo(() => {
+    return new Map(matchGroups.map((group) => [group.shuttleNumber, group.source]));
+  }, [matchGroups]);
   const visiblePaidGroups = useMemo(() => {
     if (!normalizedSearch) {
       return paidGroups;
@@ -1718,6 +1721,7 @@ export default function HomePage() {
                     hasSearch={Boolean(normalizedLedgerSearchName || ledgerSearchShuttle.trim())}
                     incompleteShuttleNumbers={incompleteShuttleNumbers}
                     overLimitShuttleNumbers={overLimitShuttleNumbers}
+                    shuttleSourceMap={shuttleSourceMap}
                     now={now}
                     pricing={session.pricing}
                     shuttleColumns={shuttleColumns}
@@ -1982,6 +1986,7 @@ function ScoreSheet({
   hasSearch,
   incompleteShuttleNumbers,
   overLimitShuttleNumbers,
+  shuttleSourceMap,
   now,
   pricing,
   shuttleColumns,
@@ -2000,6 +2005,7 @@ function ScoreSheet({
   hasSearch: boolean;
   incompleteShuttleNumbers: ReadonlySet<number>;
   overLimitShuttleNumbers: ReadonlySet<number>;
+  shuttleSourceMap: ReadonlyMap<number, 'batch' | 'planned' | 'manual' | undefined>;
   now: string;
   pricing: SessionState["pricing"];
   shuttleColumns: number[];
@@ -2078,6 +2084,9 @@ function ScoreSheet({
                       const isIncomplete =
                         typeof shuttleMark === "number" &&
                         incompleteShuttleNumbers.has(shuttleMark);
+                      const isBatch =
+                        typeof shuttleMark === "number" &&
+                        shuttleSourceMap.get(shuttleMark) === 'batch';
                       const isLockedOtherShuttle =
                         isEditingLocked &&
                         typeof shuttleMark === "number" &&
@@ -2097,7 +2106,7 @@ function ScoreSheet({
                           checkedIcon={
                             <span
                               className={`shuttleNumberIcon shuttleNumberIconChecked${isOverLimit ? " shuttleNumberIconDanger" : ""
-                                }${isIncomplete ? " shuttleNumberIconWarning" : ""}`}
+                                }${isIncomplete ? " shuttleNumberIconWarning" : ""}${isBatch ? " shuttleNumberIconBatch" : ""}`}
                             >
                               {shuttleMark}
                             </span>
@@ -2623,7 +2632,7 @@ function MatchSummaryPanel({
           {visibleMatchGroups.map((group) => (
             <Paper
               key={group.shuttleNumber}
-              className={`matchItem${group.isOverLimit ? " matchItemDanger" : ""}${group.isIncomplete ? " matchItemWarning" : ""
+              className={`matchItem${group.isOverLimit ? " matchItemDanger" : ""}${group.isIncomplete ? " matchItemWarning" : ""}${group.source === 'batch' ? " matchItemBatch" : ""
                 }`}
               elevation={0}
             >
