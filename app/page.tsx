@@ -1610,6 +1610,8 @@ export default function HomePage() {
                 }}
                 aria-label="มุมมองสมุดค่าตีแบด"
                 className="sheetTabs"
+                variant="scrollable"
+                scrollButtons="auto"
               >
                 <Tab label={`กำลังตี (${activePlayers.length})`} />
                 <Tab label="จัด Match ล่วงหน้า" disabled={isEditingLocked} />

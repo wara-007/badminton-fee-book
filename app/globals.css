@@ -323,6 +323,12 @@ body {
 
 .sheetTabs {
   padding: 0 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.sheetTabs::-webkit-scrollbar {
+  display: none;
 }
 
 .sheetContent {
