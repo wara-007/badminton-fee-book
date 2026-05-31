@@ -96,8 +96,8 @@ export type ActivityLogEntry = {
 };
 
 export const DEFAULT_PRICING: Pricing = {
-  baseFee: 100,
-  shuttleFee: 25,
+  baseFee: 90,
+  shuttleFee: 26,
 };
 
 export const DEFAULT_SHUTTLE_COLUMNS = 6;

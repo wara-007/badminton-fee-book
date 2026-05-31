@@ -30,6 +30,7 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import LogoutIcon from "@mui/icons-material/Logout";
 import { createInitialSession } from "@/lib/session";
 import {
+  deleteRemoteSession,
   hasSupabaseConfig,
   listRemoteSessions,
   saveRemoteSession
@@ -120,6 +121,7 @@ export default function RoomsPage() {
   const [loading, setLoading] = useState(true);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingRoomId, setDeletingRoomId] = useState<string | null>(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
   useEffect(() => {
     const session = loadAuthSession();
@@ -194,7 +196,7 @@ export default function RoomsPage() {
   }
 
   function openDeleteDialog(roomId: string) {
-    if (roomId === "main" || hasSupabaseConfig) return;
+    if (roomId === "main") return;
     setDeletingRoomId(roomId);
     setDeleteDialogOpen(true);
   }
@@ -202,20 +204,33 @@ export default function RoomsPage() {
   function closeDeleteDialog() {
     setDeleteDialogOpen(false);
     setDeletingRoomId(null);
+    setDeleteSubmitting(false);
   }
 
-  function confirmDeleteRoom() {
+  async function confirmDeleteRoom() {
     const roomId = deletingRoomId;
-    if (!roomId || hasSupabaseConfig) return;
+    if (!roomId) return;
 
-    localStorage.removeItem(getStorageKey(roomId));
-    const storedCurrent = localStorage.getItem(ROOM_STORAGE_KEY);
-    if (storedCurrent === roomId) {
-      localStorage.setItem(ROOM_STORAGE_KEY, "main");
-      setCurrentRoom("main");
+    setDeleteSubmitting(true);
+    try {
+      if (hasSupabaseConfig) {
+        await deleteRemoteSession(roomId);
+      }
+
+      localStorage.removeItem(getStorageKey(roomId));
+      const storedCurrent = localStorage.getItem(ROOM_STORAGE_KEY);
+      if (storedCurrent === roomId) {
+        localStorage.setItem(ROOM_STORAGE_KEY, "main");
+        setCurrentRoom("main");
+      }
+      setRooms((prev) => prev.filter((r) => r !== roomId));
+      closeDeleteDialog();
+    } catch (error) {
+      console.error("Failed to delete room", error);
+      window.alert("ลบ Room ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+    } finally {
+      setDeleteSubmitting(false);
     }
-    setRooms((prev) => prev.filter((r) => r !== roomId));
-    closeDeleteDialog();
   }
 
   function handleLogout() {
@@ -408,7 +423,7 @@ export default function RoomsPage() {
                         <Tooltip
                           title={
                             hasSupabaseConfig
-                              ? "ปิดการลบ Room เมื่อเชื่อมฐานข้อมูลจนกว่าจะมีระบบยืนยันตัวตน"
+                              ? "ลบ Room ออกจากฐานข้อมูลและเครื่องนี้"
                               : "ลบ Room"
                           }
                         >
@@ -416,7 +431,6 @@ export default function RoomsPage() {
                             <IconButton
                               size="small"
                               color="error"
-                              disabled={hasSupabaseConfig}
                               onClick={() => openDeleteDialog(roomId)}
                             >
                               <DeleteIcon fontSize="small" />
@@ -444,14 +458,21 @@ export default function RoomsPage() {
             <DialogContentText>
               ลบ room &quot;{deletingRoomId}&quot; ใช่ไหม?
               <br />
-              ข้อมูลทั้งหมดใน room นี้จะถูกลบจากเครื่องนี้
+              {hasSupabaseConfig
+                ? "ข้อมูลทั้งหมดใน room นี้จะถูกลบทั้งจากฐานข้อมูลและเครื่องนี้"
+                : "ข้อมูลทั้งหมดใน room นี้จะถูกลบจากเครื่องนี้"}
             </DialogContentText>
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
-            <Button onClick={closeDeleteDialog} variant="outlined">
+            <Button onClick={closeDeleteDialog} variant="outlined" disabled={deleteSubmitting}>
               ยกเลิก
             </Button>
-            <Button onClick={confirmDeleteRoom} variant="contained" color="error">
+            <Button
+              onClick={confirmDeleteRoom}
+              variant="contained"
+              color="error"
+              disabled={deleteSubmitting}
+            >
               ลบ
             </Button>
           </DialogActions>

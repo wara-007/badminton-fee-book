@@ -2316,6 +2316,16 @@ function CurrentShuttleVoicePicker({
   }, []);
 
   function clearVoiceSelection() {
+    const recognition = recognitionRef.current;
+    if (recognition) {
+      try {
+        recognition.stop();
+      } catch {
+        // Ignored: recognition might already be inactive.
+      }
+    }
+    recognitionRef.current = null;
+    setIsListening(false);
     setVoiceMessage("");
     setVoiceSummary([]);
     setAmbiguousMatches([]);
@@ -2392,8 +2402,12 @@ function CurrentShuttleVoicePicker({
           : "ฟังเสียงไม่สำเร็จ กรุณาลองใหม่"
       );
       setIsListening(false);
+      recognitionRef.current = null;
     };
-    recognition.onend = () => setIsListening(false);
+    recognition.onend = () => {
+      setIsListening(false);
+      recognitionRef.current = null;
+    };
     recognitionRef.current = recognition;
     setVoiceMessage("กำลังฟัง...");
     setIsListening(true);
@@ -2402,6 +2416,7 @@ function CurrentShuttleVoicePicker({
     } catch {
       setVoiceMessage("เปิดไมโครโฟนไม่สำเร็จ กรุณาลองใหม่");
       setIsListening(false);
+      recognitionRef.current = null;
     }
   }
 
@@ -2421,13 +2436,25 @@ function CurrentShuttleVoicePicker({
   return (
     <Box mt={1}>
       <Stack direction="row" spacing={1} alignItems="center">
-        <Tooltip title={speechSupported ? "แตะแล้วพูดชื่อคนลงลูก" : "Browser นี้ไม่รองรับการเลือกด้วยเสียง"}>
+        <Tooltip
+          title={
+            speechSupported
+              ? isListening
+                ? "หยุดการเลือกด้วยเสียง"
+                : "แตะแล้วพูดชื่อคนลงลูก"
+              : "Browser นี้ไม่รองรับการเลือกด้วยเสียง"
+          }
+        >
           <span>
             <IconButton
-              aria-label="เลือกคนลงลูกด้วยเสียง"
+              aria-label={
+                isListening
+                  ? "หยุดเลือกคนลงลูกด้วยเสียง"
+                  : "เลือกคนลงลูกด้วยเสียง"
+              }
               color={isListening ? "secondary" : "primary"}
-              disabled={!speechSupported || isListening || disabled}
-              onClick={startVoiceSelection}
+              disabled={!speechSupported || disabled}
+              onClick={isListening ? clearVoiceSelection : startVoiceSelection}
             >
               <MicIcon />
             </IconButton>

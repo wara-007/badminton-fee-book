@@ -98,6 +98,21 @@ export async function listRemoteSessions(): Promise<
   return (data ?? []) as Array<{ id: string; updated_at: string }>;
 }
 
+export async function deleteRemoteSession(sessionId: string): Promise<void> {
+  if (!supabase) {
+    return;
+  }
+
+  const { error } = await supabase
+    .from('badminton_sessions')
+    .delete()
+    .eq('id', sessionId);
+
+  if (error) {
+    throw error;
+  }
+}
+
 export function subscribeRemoteSession(
   sessionId: string,
   onSession: (session: SessionState) => void,
