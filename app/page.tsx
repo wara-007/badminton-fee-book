@@ -2,10 +2,15 @@
 
 import AddIcon from "@mui/icons-material/Add";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import CloseIcon from "@mui/icons-material/Close";
+import DarkModeIcon from "@mui/icons-material/DarkMode";
 import DeleteIcon from "@mui/icons-material/Delete";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import LightModeIcon from "@mui/icons-material/LightMode";
+import MicIcon from "@mui/icons-material/Mic";
 import RemoveIcon from "@mui/icons-material/Remove";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import SportsTennisIcon from "@mui/icons-material/SportsTennis";
 import {
   Box,
@@ -36,9 +41,11 @@ import {
   TextField,
   ThemeProvider,
   Tooltip,
-  Typography,
-  createTheme
+  Typography
 } from "@mui/material";
+import { getAppTheme } from "@/lib/theme";
+import { useThemeMode } from "@/lib/theme-context";
+import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   Player,
@@ -74,6 +81,11 @@ import {
   subscribeRemoteSession
 } from "@/lib/supabase-session";
 import packageInfo from "@/package.json";
+import {
+  VoicePlayer,
+  VoicePlayerMatchResult,
+  matchSpokenPlayerNames
+} from "@/lib/voice-player-match";
 
 const bahtFormatter = new Intl.NumberFormat("th-TH");
 const appVersion = packageInfo.version;
@@ -124,59 +136,11 @@ const loginUsers: Record<UserRole, { label: string; password: string }> = {
   }
 };
 
-const theme = createTheme({
-  palette: {
-    mode: "light",
-    primary: {
-      main: "#0f766e"
-    },
-    secondary: {
-      main: "#b45309"
-    },
-    background: {
-      default: "#f7f5ef",
-      paper: "#ffffff"
-    },
-    text: {
-      primary: "#1f2933",
-      secondary: "#5f6c7b"
-    }
-  },
-  shape: {
-    borderRadius: 8
-  },
-  typography: {
-    fontFamily:
-      'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    button: {
-      textTransform: "none",
-      fontWeight: 700
-    }
-  },
-  components: {
-    MuiButton: {
-      styleOverrides: {
-        root: {
-          minHeight: 44
-        }
-      }
-    },
-    MuiTextField: {
-      defaultProps: {
-        size: "small"
-      }
-    },
-    MuiTableCell: {
-      styleOverrides: {
-        root: {
-          borderColor: "#e7e2d8"
-        }
-      }
-    }
-  }
-});
 
 export default function HomePage() {
+  const router = useRouter();
+  const { mode, toggleTheme } = useThemeMode();
+  const theme = useMemo(() => getAppTheme(mode), [mode]);
   const [authSession, setAuthSession] = useState<AuthSession | null>(null);
   const [loginName, setLoginName] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
@@ -564,20 +528,17 @@ export default function HomePage() {
     }
 
     const nextAuthSession = { role: normalizedName };
-    const activeSessionId = getInitialSessionId();
-    setSessionId(activeSessionId);
-    setRoomDraft(activeSessionId);
-    persistSessionId(activeSessionId);
-    setAuthSession(nextAuthSession);
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(nextAuthSession));
     setLoginName("");
     setLoginPassword("");
     setLoginError("");
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(nextAuthSession));
+    router.push("/rooms");
   }
 
   function logout() {
     setAuthSession(null);
     localStorage.removeItem(AUTH_STORAGE_KEY);
+    router.push("/");
   }
 
   async function addPlayer(event: FormEvent<HTMLFormElement>) {
@@ -1500,6 +1461,14 @@ export default function HomePage() {
                   color={userRole === "admin" ? "primary" : "secondary"}
                   variant="outlined"
                 />
+                <Tooltip title={mode === "dark" ? "สลับไปโหมดสว่าง" : "สลับไปโหมดมืด"}>
+                  <IconButton onClick={toggleTheme} size="small">
+                    {mode === "dark" ? <LightModeIcon /> : <DarkModeIcon />}
+                  </IconButton>
+                </Tooltip>
+                <Button variant="outlined" startIcon={<ArrowBackIcon />} onClick={() => router.push("/rooms")}>
+                  Room
+                </Button>
                 <Button variant="outlined" onClick={logout}>
                   ออกจากระบบ
                 </Button>
@@ -1668,6 +1637,7 @@ export default function HomePage() {
                   <CurrentShuttlePicker
                     summary={currentShuttleSummary}
                     players={visibleActivePlayers}
+                    voicePlayers={activePlayers}
                     allPlayerCount={activePlayers.length}
                     hasSearch={Boolean(normalizedSearch)}
                     activeShuttleNumber={activeShuttleNumber}
@@ -2178,6 +2148,7 @@ function getWaitingRowClass(player: Player, now: string): string {
 function CurrentShuttlePicker({
   summary,
   players,
+  voicePlayers,
   allPlayerCount,
   hasSearch,
   activeShuttleNumber,
@@ -2190,6 +2161,7 @@ function CurrentShuttlePicker({
 }: {
   summary: ReturnType<typeof getShuttleMarkSummary>;
   players: Player[];
+  voicePlayers: Player[];
   allPlayerCount: number;
   hasSearch: boolean;
   activeShuttleNumber: number;
@@ -2209,78 +2181,302 @@ function CurrentShuttlePicker({
   const isFull = summary.count >= 4;
 
   return (
-    <Paper className="currentShuttlePicker" elevation={0} role="region" aria-label="เลือกคนลงลูก">
-      <Box className="currentShuttlePickerHeader">
-        <Box>
-          <Typography variant="h6" component="h2" fontWeight={900}>
-            {isEditingMode ? "กำลังแก้ลูก" : "เลือกคนลูก"} {activeShuttleNumber}
-          </Typography>
-
-          {isEditingMode ? (
-            <Typography color="warning.main" className="currentShuttleLockNote">
-              {isEditingLocked
-                ? "แก้ลูกนี้ให้ครบก่อน ระบบจะล็อกปุ่มอื่นไว้เพื่อกันเลขลูกเพี้ยน"
-                : "ลูกนี้ครบแล้ว กดยืนยัน Match เพื่อกลับไปลูกปัจจุบัน"}
+    <>
+      <Box className="currentShuttlePickerSticky">
+        <Box className="currentShuttlePickerHeader">
+          <Box>
+            <Typography variant="h6" component="h2" fontWeight={900}>
+              {isEditingMode ? "กำลังแก้ลูก" : "เลือกคนลูก"} {activeShuttleNumber}
             </Typography>
-          ) : null}
-          <Typography color="text.secondary" className="currentShuttleNames">
-            {summary.names.length == 0 && "ยังไม่มีชื่อที่ติ๊ก"}
-          </Typography>
+
+            {isEditingMode ? (
+              <Typography color="warning.main" className="currentShuttleLockNote">
+                {isEditingLocked
+                  ? "แก้ลูกนี้ให้ครบก่อน ระบบจะล็อกปุ่มอื่นไว้เพื่อกันเลขลูกเพี้ยน"
+                  : "ลูกนี้ครบแล้ว กดยืนยัน Match เพื่อกลับไปลูกปัจจุบัน"}
+              </Typography>
+            ) : null}
+            <Typography color="text.secondary" className="currentShuttleNames">
+              {summary.names.length == 0 && "ยังไม่มีชื่อที่ติ๊ก"}
+            </Typography>
+          </Box>
+          <Chip
+            label={`${summary.count}/4 ${statusText}`}
+            color={summary.isComplete ? "primary" : isFull ? "error" : "default"}
+            variant={summary.isComplete ? "filled" : "outlined"}
+          />
         </Box>
-        <Chip
-          label={`${summary.count}/4 ${statusText}`}
-          color={summary.isComplete ? "primary" : isFull ? "error" : "default"}
-          variant={summary.isComplete ? "filled" : "outlined"}
-        />
+        {summary.entries.length > 0 ? (
+          <Box className="selectedPlayerStrip" aria-label="คนที่เลือกแล้ว">
+            {summary.entries.map((entry, index) => (
+              <Chip
+                key={`${entry.playerId}-${entry.columnIndex}`}
+                label={`${index + 1}. ${entry.playerName}`}
+                className="selectedPlayerChip"
+                onDelete={canManageSession ? () => onRemovePlayer(entry.playerId) : undefined}
+              />
+            ))}
+          </Box>
+        ) : null}
       </Box>
-      {summary.entries.length > 0 ? (
-        <Box className="selectedPlayerStrip" aria-label="คนที่เลือกแล้ว">
-          {summary.entries.map((entry, index) => (
-            <Chip
-              key={`${entry.playerId}-${entry.columnIndex}`}
-              label={`${index + 1}. ${entry.playerName}`}
-              className="selectedPlayerChip"
-              onDelete={canManageSession ? () => onRemovePlayer(entry.playerId) : undefined}
-            />
+      <Paper className="currentShuttlePicker" elevation={0} role="region" aria-label="เลือกคนลงลูก">
+        <CurrentShuttleVoicePicker
+          players={voicePlayers}
+          initiallySelectedIds={summary.entries.map((entry) => entry.playerId)}
+          disabled={!canManageSession || isFull}
+          maxSelections={Math.max(0, 4 - summary.count)}
+          label="เลือกคนลงลูกด้วยเสียง"
+          onSelectPlayer={onTogglePlayer}
+        />
+        <Box className="playerPickerGrid" aria-label="รายชื่อสำหรับติ๊กลูก">
+          {players.length === 0 ? (
+            <Box className="emptyPlayerPicker">
+              {hasSearch
+                ? "ไม่พบชื่อที่ค้นหา"
+                : allPlayerCount === 0
+                  ? "เพิ่มชื่อผู้เล่นเพื่อเริ่มเลือกคน"
+                  : "ไม่มีผู้เล่นค้างจ่าย"}
+            </Box>
+          ) : (
+            players.map((player, index) => {
+              const selectedCount = getPlayerShuttleMarks(player).filter(
+                (mark) => mark === activeShuttleNumber
+              ).length;
+              const waitClass = getWaitingRowClass(player, now);
+              return (
+                <Button
+                  key={player.id}
+                  className={`playerPickerButton ${waitClass}${selectedCount > 0 ? " playerPickerButtonSelected" : ""
+                    }`}
+                  variant={selectedCount > 0 ? "contained" : "outlined"}
+                  disabled={!canManageSession || (isFull && selectedCount === 0)}
+                  onClick={() => onTogglePlayer(player.id)}
+                  aria-label={`เลือก ${player.name} ลงลูก ${activeShuttleNumber}`}
+                >
+                  <span className="playerPickerOrder">{index + 1}</span>
+                  <span className="playerPickerName">{player.name}</span>
+                  {selectedCount > 0 ? (
+                    <span className="playerPickerCount">x{selectedCount}</span>
+                  ) : null}
+                </Button>
+              );
+            })
+          )}
+        </Box>
+      </Paper>
+    </>
+  );
+}
+
+function CurrentShuttleVoicePicker({
+  players,
+  initiallySelectedIds,
+  disabled,
+  maxSelections,
+  label,
+  onSelectPlayer
+}: {
+  players: Player[];
+  initiallySelectedIds: string[];
+  disabled: boolean;
+  maxSelections: number;
+  label: string;
+  onSelectPlayer: (id: string) => void;
+}) {
+  type RecognitionLike = {
+    lang: string;
+    continuous: boolean;
+    interimResults: boolean;
+    onresult: ((event: { results: ArrayLike<{ 0: { transcript: string } }> }) => void) | null;
+    onerror: ((event: { error: string }) => void) | null;
+    onend: (() => void) | null;
+    start: () => void;
+    stop: () => void;
+  };
+  type RecognitionConstructor = new () => RecognitionLike;
+  type AmbiguousMatch = Extract<VoicePlayerMatchResult, { status: "ambiguous" }> & { id: string };
+
+  const [speechSupported, setSpeechSupported] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [voiceMessage, setVoiceMessage] = useState("");
+  const [voiceSummary, setVoiceSummary] = useState<string[]>([]);
+  const [ambiguousMatches, setAmbiguousMatches] = useState<AmbiguousMatch[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const selectedIdsRef = useRef<string[]>([]);
+  const selectionLimitRef = useRef(maxSelections);
+  const recognitionRef = useRef<RecognitionLike | null>(null);
+
+  useEffect(() => {
+    const speechWindow = window as typeof window & {
+      SpeechRecognition?: RecognitionConstructor;
+      webkitSpeechRecognition?: RecognitionConstructor;
+    };
+    setSpeechSupported(Boolean(speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition));
+    return () => recognitionRef.current?.stop();
+  }, []);
+
+  function clearVoiceSelection() {
+    setVoiceMessage("");
+    setVoiceSummary([]);
+    setAmbiguousMatches([]);
+    setSelectedIds([]);
+    selectedIdsRef.current = [];
+  }
+
+  function startVoiceSelection() {
+    const speechWindow = window as typeof window & {
+      SpeechRecognition?: RecognitionConstructor;
+      webkitSpeechRecognition?: RecognitionConstructor;
+    };
+    const Recognition = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
+    if (!Recognition) return;
+
+    clearVoiceSelection();
+    selectionLimitRef.current = maxSelections;
+    const recognition = new Recognition();
+    recognition.lang = "th-TH";
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.onresult = (event) => {
+      const transcript = event.results[0]?.[0]?.transcript?.trim() ?? "";
+      const results = matchSpokenPlayerNames(transcript, players);
+      const unavailableIds = new Set([...initiallySelectedIds, ...selectedIds]);
+      const matchedPlayers = results
+        .filter((result): result is Extract<VoicePlayerMatchResult, { status: "matched" }> =>
+          result.status === "matched"
+        )
+        .map((result) => result.player)
+        .filter(
+          (player, index, allPlayers) =>
+            !unavailableIds.has(player.id) &&
+            allPlayers.findIndex((currentPlayer) => currentPlayer.id === player.id) === index
+        )
+        .slice(0, maxSelections);
+      const nextAmbiguousMatches = results
+        .filter(
+          (result): result is Extract<VoicePlayerMatchResult, { status: "ambiguous" }> =>
+            result.status === "ambiguous"
+        )
+        .map((result, index) => ({
+          ...result,
+          id: `${index}-${result.spokenText}`
+        }));
+      const autoSelectedPlayers = matchedPlayers.length === 1 ? matchedPlayers : [];
+      const displayedAmbiguousMatches =
+        matchedPlayers.length > 1
+          ? [
+            {
+              status: "ambiguous" as const,
+              id: `matched-${transcript}`,
+              spokenText: transcript,
+              candidates: matchedPlayers
+            },
+            ...nextAmbiguousMatches
+          ]
+          : nextAmbiguousMatches;
+
+      autoSelectedPlayers.forEach((player) => onSelectPlayer(player.id));
+      selectedIdsRef.current = autoSelectedPlayers.map((player) => player.id);
+      setSelectedIds(autoSelectedPlayers.map((player) => player.id));
+      setAmbiguousMatches(displayedAmbiguousMatches);
+      setVoiceSummary([
+        ...autoSelectedPlayers.map((player) => `เพิ่มแล้ว: ${player.name}`),
+        ...displayedAmbiguousMatches.map((match) => `กรุณาเลือกชื่อใกล้เคียงสำหรับ: ${match.spokenText}`)
+      ]);
+      setVoiceMessage(`ได้ยิน: ${transcript}`);
+    };
+    recognition.onerror = (event) => {
+      setVoiceMessage(
+        event.error === "not-allowed" || event.error === "service-not-allowed"
+          ? "ไม่ได้รับสิทธิ์ใช้ไมโครโฟน"
+          : "ฟังเสียงไม่สำเร็จ กรุณาลองใหม่"
+      );
+      setIsListening(false);
+    };
+    recognition.onend = () => setIsListening(false);
+    recognitionRef.current = recognition;
+    setVoiceMessage("กำลังฟัง...");
+    setIsListening(true);
+    try {
+      recognition.start();
+    } catch {
+      setVoiceMessage("เปิดไมโครโฟนไม่สำเร็จ กรุณาลองใหม่");
+      setIsListening(false);
+    }
+  }
+
+  function chooseCandidate(player: VoicePlayer) {
+    if (
+      !initiallySelectedIds.includes(player.id) &&
+      !selectedIdsRef.current.includes(player.id) &&
+      selectedIdsRef.current.length < selectionLimitRef.current
+    ) {
+      onSelectPlayer(player.id);
+      selectedIdsRef.current = [...selectedIdsRef.current, player.id];
+      setSelectedIds(selectedIdsRef.current);
+      setVoiceSummary((current) => [...current, `เพิ่มแล้ว: ${player.name}`]);
+    }
+  }
+
+  return (
+    <Box mt={1}>
+      <Stack direction="row" spacing={1} alignItems="center">
+        <Tooltip title={speechSupported ? "แตะแล้วพูดชื่อคนลงลูก" : "Browser นี้ไม่รองรับการเลือกด้วยเสียง"}>
+          <span>
+            <IconButton
+              aria-label="เลือกคนลงลูกด้วยเสียง"
+              color={isListening ? "secondary" : "primary"}
+              disabled={!speechSupported || isListening || disabled}
+              onClick={startVoiceSelection}
+            >
+              <MicIcon />
+            </IconButton>
+          </span>
+        </Tooltip>
+        <Typography fontSize={14} color="text.secondary">{label}</Typography>
+      </Stack>
+      {voiceMessage || voiceSummary.length > 0 || ambiguousMatches.length > 0 ? (
+        <Box mt={0.5}>
+          <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
+            <Box>
+              <Typography fontSize={14} color={voiceMessage.includes("ไม่") ? "error" : "text.secondary"}>
+                {voiceMessage}
+              </Typography>
+              {voiceSummary.map((message, index) => (
+                <Typography key={`${message}-${index}`} fontSize={14}>
+                  {index + 1}. {message}
+                </Typography>
+              ))}
+            </Box>
+            <IconButton aria-label="ปิดรายการเสียงลงลูก" size="small" onClick={clearVoiceSelection}>
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </Box>
+          {ambiguousMatches.map((match) => (
+            <Box key={match.id} mt={1}>
+              <Typography fontSize={14}>เลือกชื่อที่ได้ยินว่า “{match.spokenText}”</Typography>
+              <Stack direction="row" spacing={1} mt={0.5} flexWrap="wrap" useFlexGap>
+                {match.candidates.map((player) => (
+                  <Button
+                    key={`${match.id}-${player.id}`}
+                    size="small"
+                    variant="outlined"
+                    disabled={
+                      initiallySelectedIds.includes(player.id) ||
+                      selectedIds.includes(player.id) ||
+                      selectedIds.length >= selectionLimitRef.current
+                    }
+                    onClick={() => chooseCandidate(player)}
+                  >
+                    {player.name}
+                  </Button>
+                ))}
+              </Stack>
+            </Box>
           ))}
         </Box>
       ) : null}
-      <Box className="playerPickerGrid" aria-label="รายชื่อสำหรับติ๊กลูก">
-        {players.length === 0 ? (
-          <Box className="emptyPlayerPicker">
-            {hasSearch
-              ? "ไม่พบชื่อที่ค้นหา"
-              : allPlayerCount === 0
-                ? "เพิ่มชื่อผู้เล่นเพื่อเริ่มเลือกคน"
-                : "ไม่มีผู้เล่นค้างจ่าย"}
-          </Box>
-        ) : (
-          players.map((player, index) => {
-            const selectedCount = getPlayerShuttleMarks(player).filter(
-              (mark) => mark === activeShuttleNumber
-            ).length;
-            const waitClass = getWaitingRowClass(player, now);
-            return (
-              <Button
-                key={player.id}
-                className={`playerPickerButton ${waitClass}${selectedCount > 0 ? " playerPickerButtonSelected" : ""
-                  }`}
-                variant={selectedCount > 0 ? "contained" : "outlined"}
-                disabled={!canManageSession || (isFull && selectedCount === 0)}
-                onClick={() => onTogglePlayer(player.id)}
-                aria-label={`เลือก ${player.name} ลงลูก ${activeShuttleNumber}`}
-              >
-                <span className="playerPickerOrder">{index + 1}</span>
-                <span className="playerPickerName">{player.name}</span>
-                {selectedCount > 0 ? (
-                  <span className="playerPickerCount">x{selectedCount}</span>
-                ) : null}
-              </Button>
-            );
-          })
-        )}
-      </Box>
-    </Paper>
+    </Box>
   );
 }
 
@@ -2369,7 +2565,6 @@ function PlannedMatchPanel({
   );
   const selectedMatch = plannedMatches.find((match) => match.id === selectedMatchId);
   const selectedMatchFull = (selectedMatch?.playerIds.length ?? 0) >= 4;
-
   const sortedPlannedMatches = useMemo(() => {
     return [...plannedMatches].sort((a, b) => {
       if (a.confirmed && !b.confirmed) return 1;
@@ -2489,6 +2684,14 @@ function PlannedMatchPanel({
               ? `กำลังจัด ${selectedMatch.label}${selectedMatchFull ? " ครบแล้ว" : ""}`
               : "เลือก Match ก่อน แล้วค่อยกดชื่อ"}
           </Typography>
+          <CurrentShuttleVoicePicker
+            players={availablePlayers}
+            initiallySelectedIds={[]}
+            disabled={!canManageSession || !selectedMatch || selectedMatchFull}
+            maxSelections={Math.max(0, 4 - (selectedMatch?.playerIds.length ?? 0))}
+            label="เลือกผู้เล่นด้วยเสียง"
+            onSelectPlayer={onAddPlayer}
+          />
         </Box>
         <Box>
           {availablePlayers.length === 0 ? (

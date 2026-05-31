@@ -38,6 +38,10 @@ to anon
 using (true)
 with check (true);
 
+drop policy if exists "Public delete badminton sessions" on public.badminton_sessions;
+revoke delete on table public.badminton_sessions from anon;
+drop function if exists public.delete_badminton_session(text);
+
 do $$
 begin
   alter publication supabase_realtime add table public.badminton_sessions;

@@ -1,5 +1,9 @@
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
-import { SessionState, createInitialSession, normalizeSession } from "@/lib/session";
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import {
+  SessionState,
+  createInitialSession,
+  normalizeSession,
+} from '@/lib/session';
 
 type SessionRow = {
   id: string;
@@ -16,16 +20,18 @@ export const supabase: SupabaseClient | null = hasSupabaseConfig
   ? createClient(supabaseUrl as string, supabaseAnonKey as string)
   : null;
 
-export async function loadRemoteSession(sessionId: string): Promise<SessionState> {
+export async function loadRemoteSession(
+  sessionId: string,
+): Promise<SessionState> {
   if (!supabase) {
     return createInitialSession();
   }
 
   const { data, error } = await supabase
-    .from("badminton_sessions")
-    .select("state")
-    .eq("id", sessionId)
-    .maybeSingle<Pick<SessionRow, "state">>();
+    .from('badminton_sessions')
+    .select('state')
+    .eq('id', sessionId)
+    .maybeSingle<Pick<SessionRow, 'state'>>();
 
   if (error) {
     throw error;
@@ -40,15 +46,18 @@ export async function loadRemoteSession(sessionId: string): Promise<SessionState
   return normalizeSession(data.state);
 }
 
-export async function saveRemoteSession(sessionId: string, session: SessionState): Promise<void> {
+export async function saveRemoteSession(
+  sessionId: string,
+  session: SessionState,
+): Promise<void> {
   if (!supabase) {
     return;
   }
 
-  const { error } = await supabase.from("badminton_sessions").upsert({
+  const { error } = await supabase.from('badminton_sessions').upsert({
     id: sessionId,
     state: session,
-    updated_at: new Date().toISOString()
+    updated_at: new Date().toISOString(),
   });
 
   if (error) {
@@ -61,17 +70,37 @@ export async function loadRemoteNow(): Promise<string> {
     return new Date().toISOString();
   }
 
-  const { data, error } = await supabase.rpc("current_server_time");
-  if (error || typeof data !== "string") {
+  const { data, error } = await supabase.rpc('current_server_time');
+  if (error || typeof data !== 'string') {
     return new Date().toISOString();
   }
 
   return data;
 }
 
+export async function listRemoteSessions(): Promise<
+  Array<{ id: string; updated_at: string }>
+> {
+  if (!supabase) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from('badminton_sessions')
+    .select('id, updated_at')
+    .order('updated_at', { ascending: false })
+    .limit(50);
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []) as Array<{ id: string; updated_at: string }>;
+}
+
 export function subscribeRemoteSession(
   sessionId: string,
-  onSession: (session: SessionState) => void
+  onSession: (session: SessionState) => void,
 ) {
   if (!supabase) {
     return () => undefined;
@@ -80,19 +109,19 @@ export function subscribeRemoteSession(
   const channel = supabase
     .channel(`badminton-session-${sessionId}`)
     .on(
-      "postgres_changes",
+      'postgres_changes',
       {
-        event: "*",
-        schema: "public",
-        table: "badminton_sessions",
-        filter: `id=eq.${sessionId}`
+        event: '*',
+        schema: 'public',
+        table: 'badminton_sessions',
+        filter: `id=eq.${sessionId}`,
       },
       (payload) => {
         const nextRow = payload.new as SessionRow | null;
         if (nextRow?.state) {
           onSession(normalizeSession(nextRow.state));
         }
-      }
+      },
     )
     .subscribe();
 

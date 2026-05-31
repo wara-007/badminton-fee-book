@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import PwaRegister from "./pwa-register";
+import { ThemeContextProvider } from "@/lib/theme-context";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -25,15 +27,29 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0f766e"
+  themeColor: "#1a1a1a"
 };
+
+const themeInitScript = `
+  (function() {
+    var theme = localStorage.getItem('badminton-fee-book.theme');
+    if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+  })();
+`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="th">
       <body suppressHydrationWarning>
-        <PwaRegister />
-        {children}
+        <Script id="theme-init" strategy="beforeInteractive">
+          {themeInitScript}
+        </Script>
+        <ThemeContextProvider>
+          <PwaRegister />
+          {children}
+        </ThemeContextProvider>
       </body>
     </html>
   );

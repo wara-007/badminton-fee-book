@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import HomePage from "@/app/page";
@@ -7,6 +7,8 @@ describe("Badminton fee book page", () => {
   beforeEach(() => {
     localStorage.clear();
     localStorage.setItem("badminton-fee-book.auth", JSON.stringify({ role: "admin" }));
+    delete (window as typeof window & { SpeechRecognition?: unknown }).SpeechRecognition;
+    delete (window as typeof window & { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition;
     vi.restoreAllMocks();
   });
 
@@ -1101,4 +1103,112 @@ describe("Badminton fee book page", () => {
     await user.click(screen.getByRole("tab", { name: /กำลังตี/ }));
     expect(screen.getByRole("row", { name: /C/ })).toBeInTheDocument();
   });
+
+  it("adds multiple available players to a planned match from one voice transcript", async () => {
+    const user = userEvent.setup();
+    const recognition = installSpeechRecognitionMock();
+
+    render(<HomePage />);
+
+    for (const name of ["Ann", "Ben", "Cat"]) {
+      await user.type(screen.getByLabelText("ชื่อผู้เล่น"), name);
+      await user.click(screen.getByRole("button", { name: "เพิ่มผู้เล่น" }));
+    }
+
+    await user.click(screen.getByRole("tab", { name: "จัด Match ล่วงหน้า" }));
+    await user.click(screen.getByRole("button", { name: /Match 1/ }));
+    await user.click(screen.getByRole("button", { name: "เลือกผู้เล่นด้วยเสียง" }));
+    act(() => recognition.emitResult("Ann Ben"));
+
+    expect(await screen.findByText("1. Ann")).toBeInTheDocument();
+    expect(screen.getByText("2. Ben")).toBeInTheDocument();
+    expect(screen.getByText("ได้ยิน: Ann Ben")).toBeInTheDocument();
+  });
+
+  it("shows candidate buttons instead of selecting an ambiguous spoken name", async () => {
+    const user = userEvent.setup();
+    const recognition = installSpeechRecognitionMock();
+
+    render(<HomePage />);
+
+    for (const name of ["Boy", "Ball"]) {
+      await user.type(screen.getByLabelText("ชื่อผู้เล่น"), name);
+      await user.click(screen.getByRole("button", { name: "เพิ่มผู้เล่น" }));
+    }
+
+    await user.click(screen.getByRole("tab", { name: "จัด Match ล่วงหน้า" }));
+    await user.click(screen.getByRole("button", { name: /Match 1/ }));
+    await user.click(screen.getByRole("button", { name: "เลือกผู้เล่นด้วยเสียง" }));
+    act(() => recognition.emitResult("B"));
+
+    const candidatePrompt = await screen.findByText("เลือกชื่อที่ได้ยินว่า “b”");
+    const candidateBox = candidatePrompt.parentElement;
+    expect(candidateBox).not.toBeNull();
+    expect(within(candidateBox as HTMLElement).getByRole("button", { name: "Boy" })).toBeInTheDocument();
+    expect(within(candidateBox as HTMLElement).getByRole("button", { name: "Ball" })).toBeInTheDocument();
+    expect(screen.queryByText("1. Boy")).not.toBeInTheDocument();
+  });
+
+  it("shows a microphone permission error without breaking manual selection", async () => {
+    const user = userEvent.setup();
+    const recognition = installSpeechRecognitionMock();
+
+    render(<HomePage />);
+
+    await user.type(screen.getByLabelText("ชื่อผู้เล่น"), "Ann");
+    await user.click(screen.getByRole("button", { name: "เพิ่มผู้เล่น" }));
+    await user.click(screen.getByRole("tab", { name: "จัด Match ล่วงหน้า" }));
+    await user.click(screen.getByRole("button", { name: /Match 1/ }));
+    await user.click(screen.getByRole("button", { name: "เลือกผู้เล่นด้วยเสียง" }));
+    act(() => recognition.emitError("not-allowed"));
+
+    expect(await screen.findByText("ไม่ได้รับสิทธิ์ใช้ไมโครโฟน")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Ann" }));
+    expect(screen.getByText("1. Ann")).toBeInTheDocument();
+  });
+
+  it("disables voice selection when the browser does not support speech recognition", async () => {
+    const user = userEvent.setup();
+
+    render(<HomePage />);
+
+    await user.type(screen.getByLabelText("ชื่อผู้เล่น"), "Ann");
+    await user.click(screen.getByRole("button", { name: "เพิ่มผู้เล่น" }));
+    await user.click(screen.getByRole("tab", { name: "จัด Match ล่วงหน้า" }));
+    await user.click(screen.getByRole("button", { name: /Match 1/ }));
+
+    expect(screen.getByRole("button", { name: "เลือกผู้เล่นด้วยเสียง" })).toBeDisabled();
+  });
 });
+
+function installSpeechRecognitionMock() {
+  class SpeechRecognitionMock {
+    lang = "";
+    continuous = false;
+    interimResults = false;
+    onresult: ((event: { results: ArrayLike<{ 0: { transcript: string } }> }) => void) | null = null;
+    onerror: ((event: { error: string }) => void) | null = null;
+    onend: (() => void) | null = null;
+
+    start = vi.fn();
+    stop = vi.fn();
+
+    emitResult(transcript: string) {
+      this.onresult?.({ results: [{ 0: { transcript } }] });
+    }
+
+    emitError(error: string) {
+      this.onerror?.({ error });
+    }
+  }
+
+  const recognition = new SpeechRecognitionMock();
+  (window as typeof window & { SpeechRecognition: new () => SpeechRecognitionMock }).SpeechRecognition =
+    class {
+      constructor() {
+        return recognition;
+      }
+    } as new () => SpeechRecognitionMock;
+
+  return recognition;
+}
