@@ -136,6 +136,39 @@ describe("Badminton fee book page", () => {
     expect(screen.getByText("v1.4.0")).toBeInTheDocument();
   });
 
+  it("groups the shuttle picker by initial and shows an alphabetical index", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(
+      "badminton-fee-book.session.main",
+      JSON.stringify({
+        players: [
+          { id: "jane", name: "Jane", shuttleCount: 0, shuttleMarks: [], paid: false },
+          { id: "kai", name: "ไก่", shuttleCount: 0, shuttleMarks: [], paid: false },
+          { id: "golf", name: "กอล์ฟ", shuttleCount: 0, shuttleMarks: [], paid: false },
+          { id: "joy", name: "จอย", shuttleCount: 0, shuttleMarks: [], paid: false },
+          { id: "zeta", name: "ซีต้า", shuttleCount: 0, shuttleMarks: [], paid: false },
+          { id: "number", name: "99", shuttleCount: 0, shuttleMarks: [], paid: false }
+        ],
+        pricing: { baseFee: 100, shuttleFee: 25 },
+        currentShuttleNumber: 1,
+        updatedAt: new Date().toISOString()
+      })
+    );
+
+    render(<HomePage />);
+    await user.click(await screen.findByRole("button", { name: "เรียงตามอักษร" }));
+
+    const index = screen.getByRole("navigation", { name: "ดัชนีรายชื่อตามอักษร" });
+    expect(within(index).getByRole("button", { name: "ไปที่หมวด ก" })).toBeInTheDocument();
+    expect(within(index).getByRole("button", { name: "ไปที่หมวด จ" })).toBeInTheDocument();
+    expect(within(index).getByRole("button", { name: "ไปที่หมวด ซ" })).toBeInTheDocument();
+    expect(within(index).queryByRole("button", { name: "ไปที่หมวด สระ" })).not.toBeInTheDocument();
+    expect(within(index).queryByRole("button", { name: "ไปที่หมวด 0-9" })).not.toBeInTheDocument();
+    expect(within(index).getByRole("button", { name: "ไปที่หมวด J" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "หมวด ก" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "หมวด ซ" })).toBeInTheDocument();
+  });
+
   it("ticks the next shuttle slot when clicking a player name", async () => {
     const user = userEvent.setup();
 

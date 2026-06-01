@@ -38,6 +38,8 @@ import {
   TableHead,
   TableRow,
   Tabs,
+  ToggleButton,
+  ToggleButtonGroup,
   TextField,
   ThemeProvider,
   Tooltip,
@@ -46,7 +48,7 @@ import {
 import { getAppTheme } from "@/lib/theme";
 import { useThemeMode } from "@/lib/theme-context";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Player,
   PlannedMatch,
@@ -136,6 +138,22 @@ const loginUsers: Record<UserRole, { label: string; password: string }> = {
   }
 };
 
+function getPlayerInitialGroupLabel(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return "#";
+  }
+  const firstChar = trimmed[0]?.toLocaleUpperCase("th-TH") ?? "#";
+  if (/^[A-Za-z]$/.test(firstChar)) {
+    return firstChar.toUpperCase();
+  }
+  const firstThaiConsonant = [...trimmed].find((character) => /^[ก-ฮ]$/.test(character));
+  if (firstThaiConsonant) {
+    return firstThaiConsonant;
+  }
+  return "#";
+}
+
 
 export default function HomePage() {
   const router = useRouter();
@@ -155,6 +173,7 @@ export default function HomePage() {
   const [matchSearchTerm, setMatchSearchTerm] = useState("");
   const [selectedPlannedMatchId, setSelectedPlannedMatchId] = useState("");
   const [activeTab, setActiveTab] = useState(0);
+  const [playerSortMode, setPlayerSortMode] = useState<"queue" | "alphabetical">("queue");
   const [settingsExpanded, setSettingsExpanded] = useState(false);
   const [mobileSummaryExpanded, setMobileSummaryExpanded] = useState(false);
   const [editingShuttleNumber, setEditingShuttleNumber] = useState<number | null>(null);
@@ -172,6 +191,7 @@ export default function HomePage() {
     title: "",
     message: ""
   });
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const lastRemoteSnapshotRef = useRef("");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clockOffsetRef = useRef(0);
@@ -186,6 +206,13 @@ export default function HomePage() {
   useEffect(() => {
     setAuthSession(loadAuthSession());
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 0 && hydrated && searchInputRef.current) {
+      searchInputRef.current.focus();
+      searchInputRef.current.select();
+    }
+  }, [activeTab, hydrated]);
 
   useEffect(() => {
     let cancelled = false;
@@ -378,15 +405,23 @@ export default function HomePage() {
     () => session.players.filter((player) => !player.paid),
     [session.players]
   );
+  const orderedActivePlayers = useMemo(() => {
+    if (playerSortMode === "alphabetical") {
+      return [...activePlayers].sort((first, second) =>
+        first.name.localeCompare(second.name, "th-TH", { sensitivity: "base" })
+      );
+    }
+    return activePlayers;
+  }, [activePlayers, playerSortMode]);
   const normalizedSearch = searchTerm.trim().toLocaleLowerCase("th-TH");
   const visibleActivePlayers = useMemo(() => {
     if (!normalizedSearch) {
-      return activePlayers;
+      return orderedActivePlayers;
     }
-    return activePlayers.filter((player) =>
+    return orderedActivePlayers.filter((player) =>
       player.name.toLocaleLowerCase("th-TH").includes(normalizedSearch)
     );
-  }, [activePlayers, normalizedSearch]);
+  }, [normalizedSearch, orderedActivePlayers]);
   const normalizedLedgerSearchName = ledgerSearchName.trim().toLocaleLowerCase("th-TH");
   const ledgerSearchShuttleNumber = Number(ledgerSearchShuttle);
   const searchedLedgerShuttleNumber =
@@ -1600,13 +1635,34 @@ export default function HomePage() {
               {activeTab === 0 ? (
                 <Box className="sheetContent">
                   <Box className="sheetToolbar">
-                    <TextField
-                      label="ค้นหาชื่อ"
-                      value={searchTerm}
-                      onChange={(event) => setSearchTerm(event.target.value)}
-                      className="searchField"
-                      autoComplete="off"
-                    />
+                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                      <TextField
+                        label="ค้นหาชื่อ"
+                        value={searchTerm}
+                        onChange={(event) => setSearchTerm(event.target.value)}
+                        className="searchField"
+                        autoComplete="off"
+                        inputRef={searchInputRef}
+                      />
+                      <ToggleButtonGroup
+                        value={playerSortMode}
+                        exclusive
+                        onChange={(_, nextValue: "queue" | "alphabetical" | null) => {
+                          if (nextValue) {
+                            setPlayerSortMode(nextValue);
+                          }
+                        }}
+                        size="small"
+                        aria-label="ตัวเลือกการเรียงรายชื่อ"
+                      >
+                        <ToggleButton value="queue" aria-label="เรียงตามคิว">
+                          ตามคิว
+                        </ToggleButton>
+                        <ToggleButton value="alphabetical" aria-label="เรียงตามอักษร">
+                          ก-ฮ
+                        </ToggleButton>
+                      </ToggleButtonGroup>
+                    </Stack>
                     <Stack direction="row" spacing={1} alignItems="center">
                       <Typography fontWeight={800}>ลูก number</Typography>
                       <IconButton
@@ -1641,6 +1697,7 @@ export default function HomePage() {
                     allPlayerCount={activePlayers.length}
                     hasSearch={Boolean(normalizedSearch)}
                     activeShuttleNumber={activeShuttleNumber}
+                    sortMode={playerSortMode}
                     now={now}
                     isEditingMode={isEditingMode}
                     isEditingLocked={isEditingLocked}
@@ -2152,6 +2209,7 @@ function CurrentShuttlePicker({
   allPlayerCount,
   hasSearch,
   activeShuttleNumber,
+  sortMode,
   now,
   isEditingMode,
   isEditingLocked,
@@ -2165,6 +2223,7 @@ function CurrentShuttlePicker({
   allPlayerCount: number;
   hasSearch: boolean;
   activeShuttleNumber: number;
+  sortMode: "queue" | "alphabetical";
   now: string;
   isEditingMode: boolean;
   isEditingLocked: boolean;
@@ -2179,6 +2238,27 @@ function CurrentShuttlePicker({
         ? "ครบ 4 แล้ว"
         : `เหลืออีก ${summary.missingCount} ติ๊ก`;
   const isFull = summary.count >= 4;
+  const enableAlphabetGrouping = sortMode === "alphabetical";
+  const groupedPlayers = useMemo(() => {
+    const groups: Array<{ label: string; players: Player[] }> = [];
+    players.forEach((player) => {
+      const label = getPlayerInitialGroupLabel(player.name);
+      const existingGroup = groups.find((group) => group.label === label);
+      if (existingGroup) {
+        existingGroup.players.push(player);
+      } else {
+        groups.push({ label, players: [player] });
+      }
+    });
+    return groups;
+  }, [players]);
+  const groupRefs = useRef<Record<string, HTMLElement | null>>({});
+  const handleJumpToGroup = useCallback((label: string) => {
+    const target = groupRefs.current[label];
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, []);
 
   return (
     <>
@@ -2236,6 +2316,73 @@ function CurrentShuttlePicker({
                 : allPlayerCount === 0
                   ? "เพิ่มชื่อผู้เล่นเพื่อเริ่มเลือกคน"
                   : "ไม่มีผู้เล่นค้างจ่าย"}
+            </Box>
+          ) : enableAlphabetGrouping ? (
+            <Box className="playerPickerGroupedList">
+              {groupedPlayers.length > 1 ? (
+                <Stack
+                  className="playerPickerIndexBar"
+                  role="navigation"
+                  aria-label="ดัชนีรายชื่อตามอักษร"
+                >
+                  {groupedPlayers.map((group) => (
+                    <Button
+                      key={`index-${group.label}`}
+                      size="small"
+                      variant="outlined"
+                      onClick={() => handleJumpToGroup(group.label)}
+                      className="playerPickerIndexButton"
+                      aria-label={`ไปที่หมวด ${group.label}`}
+                    >
+                      {group.label}
+                    </Button>
+                  ))}
+                </Stack>
+              ) : null}
+              <Box className="playerPickerGroups">
+                {groupedPlayers.map((group) => (
+                  <Box
+                    key={group.label}
+                    className="playerPickerGroup"
+                    ref={(element) => {
+                      if (element) {
+                        groupRefs.current[group.label] = element as HTMLElement;
+                      } else {
+                        delete groupRefs.current[group.label];
+                      }
+                    }}
+                  >
+                    <Typography className="playerPickerGroupLabel" component="h3">
+                      หมวด {group.label}
+                    </Typography>
+                    <Box className="playerPickerGrid">
+                      {group.players.map((player, index) => {
+                        const selectedCount = getPlayerShuttleMarks(player).filter(
+                          (mark) => mark === activeShuttleNumber
+                        ).length;
+                        const waitClass = getWaitingRowClass(player, now);
+                        return (
+                          <Button
+                            key={player.id}
+                            className={`playerPickerButton ${waitClass}${selectedCount > 0 ? " playerPickerButtonSelected" : ""
+                              }`}
+                            variant={selectedCount > 0 ? "contained" : "outlined"}
+                            disabled={!canManageSession || (isFull && selectedCount === 0)}
+                            onClick={() => onTogglePlayer(player.id)}
+                            aria-label={`เลือก ${player.name} ลงลูก ${activeShuttleNumber}`}
+                          >
+                            <span className="playerPickerOrder">{index + 1}</span>
+                            <span className="playerPickerName">{player.name}</span>
+                            {selectedCount > 0 ? (
+                              <span className="playerPickerCount">x{selectedCount}</span>
+                            ) : null}
+                          </Button>
+                        );
+                      })}
+                    </Box>
+                  </Box>
+                ))}
+              </Box>
             </Box>
           ) : (
             players.map((player, index) => {

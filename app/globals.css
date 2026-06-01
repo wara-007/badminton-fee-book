@@ -85,7 +85,7 @@
   --app-dialog-border: #eee7dc;
 }
 
-[data-theme="dark"] {
+[data-theme='dark'] {
   --app-bg: #1a1a1a;
   --app-text: #e5e7eb;
   --card-bg: #252525;
@@ -551,6 +551,74 @@ body {
   padding-right: 4px;
 }
 
+.playerPickerGroupedList {
+  display: flex;
+  grid-column: 1 / -1;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.playerPickerIndexBar {
+  position: sticky;
+  top: 112px;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.playerPickerIndexButton {
+  min-width: 30px;
+  min-height: 24px !important;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 0.72rem !important;
+  line-height: 1 !important;
+  padding: 2px 6px !important;
+}
+
+.playerPickerGroup {
+  scroll-margin-top: 180px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--card-bg);
+}
+
+.playerPickerGroups {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 12px;
+}
+
+.playerPickerGroupLabel {
+  font-weight: 800;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.playerPickerGroup .playerPickerGrid {
+  margin-top: 8px;
+}
+
+@media (max-width: 600px) {
+  .playerPickerGroupedList {
+    gap: 8px;
+  }
+
+  .playerPickerIndexBar {
+    top: 104px;
+  }
+
+  .playerPickerIndexButton {
+    min-width: 26px;
+    min-height: 21px !important;
+    font-size: 0.65rem !important;
+    padding: 1px 4px !important;
+  }
+}
+
 .ledgerToolbar {
   display: flex;
   align-items: center;
@@ -586,6 +654,26 @@ body {
 .playerPickerButtonSelected {
   background: var(--primary);
   color: #ffffff;
+}
+
+.playerPickerButton.waitingWarningRow {
+  border-color: var(--warning-border);
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+
+.playerPickerButton.waitingDangerRow {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+
+.playerPickerButton.waitingWarningRow:hover {
+  background: var(--waiting-warning-hover);
+}
+
+.playerPickerButton.waitingDangerRow:hover {
+  background: var(--waiting-danger-hover);
 }
 
 .playerPickerOrder,
