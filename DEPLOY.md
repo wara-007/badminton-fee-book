@@ -25,3 +25,17 @@ Restart `npm run dev`.
 3. Deploy.
 
 Use the same session code on multiple devices to sync the same badminton round.
+
+## Impeccable
+
+Run the Impeccable detector before shipping UI changes:
+
+```bash
+npm run impeccable:detect
+```
+
+Keep the skills package current:
+
+```bash
+npm run impeccable:skills
+```

@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "impeccable:detect": "impeccable detect app/",
+    "impeccable:skills": "impeccable skills check"
   },
   "dependencies": {
     "@emotion/react": "^11.11.4",
@@ -31,6 +33,7 @@
     "@vitejs/plugin-react": "^4.3.1",
     "eslint": "^8.57.0",
     "eslint-config-next": "^14.2.4",
+    "impeccable": "^2.3.2",
     "jsdom": "^24.1.0",
     "typescript": "^5.4.5",
     "vitest": "^1.6.0"

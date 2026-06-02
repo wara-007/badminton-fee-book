@@ -66,7 +66,8 @@
   --picker-order-text: #0f766e;
   --picker-count-bg: #d9f3ee;
   --picker-count-text: #0f766e;
-  --selected-chip-bg: #ff894a;
+  --selected-chip-bg: #c2410c;
+  --selected-chip-text: #ffffff;
   --waiting-warning-hover: #fef3c7;
   --waiting-danger-hover: #ffe4e6;
   --planned-btn-danger-hover-bg: #fecaca;
@@ -150,6 +151,7 @@
   --picker-count-bg: #0f2926;
   --picker-count-text: #14b8a6;
   --selected-chip-bg: #14b8a6;
+  --selected-chip-text: #ffffff;
   --waiting-warning-hover: #4a2a0a;
   --waiting-danger-hover: #4a1a1a;
   --planned-btn-danger-hover-bg: #4a1a1a;
@@ -541,7 +543,7 @@ body {
   font-weight: 700 !important;
   height: 36px !important;
   background-color: var(--selected-chip-bg) !important;
-  color: #ffffff !important;
+  color: var(--selected-chip-text) !important;
 }
 
 .playerPickerGrid {
@@ -560,25 +562,28 @@ body {
 
 .playerPickerIndexBar {
   position: sticky;
-  top: 112px;
+  top: calc(var(--picker-sticky-height, 112px) + 8px);
   z-index: 4;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
+  max-height: calc(100vh - var(--picker-sticky-height, 112px) - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .playerPickerIndexButton {
-  min-width: 30px;
-  min-height: 24px !important;
-  border-radius: 999px;
+  min-width: 36px;
+  min-height: 36px !important;
+  border-radius: 10px;
   font-weight: 800;
-  font-size: 0.72rem !important;
+  font-size: 0.82rem !important;
   line-height: 1 !important;
-  padding: 2px 6px !important;
+  padding: 4px 6px !important;
 }
 
 .playerPickerGroup {
-  scroll-margin-top: 180px;
+  scroll-margin-top: calc(var(--picker-sticky-height, 112px) + 12px);
   border: 1px solid var(--border-color);
   border-radius: 10px;
   padding: 12px;
@@ -607,15 +612,11 @@ body {
     gap: 8px;
   }
 
-  .playerPickerIndexBar {
-    top: 104px;
-  }
-
   .playerPickerIndexButton {
-    min-width: 26px;
-    min-height: 21px !important;
-    font-size: 0.65rem !important;
-    padding: 1px 4px !important;
+    min-width: 34px;
+    min-height: 34px !important;
+    font-size: 0.78rem !important;
+    padding: 3px 5px !important;
   }
 }
 
@@ -1134,9 +1135,12 @@ thead .stickyName {
 }
 
 @media (max-width: 900px) {
-  .appHeader {
-    align-items: stretch;
-    flex-direction: column;
+  .appShell {
+    padding-top: 16px;
+  }
+
+  .controlBand {
+    padding: 12px;
   }
 
   .summaryGrid {
@@ -1207,6 +1211,19 @@ thead .stickyName {
 
   .addPlayerForm {
     grid-template-columns: 1fr;
+  }
+
+  .appHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .appSubtitle {
+    display: none;
+  }
+
+  .authStatus {
+    flex-wrap: wrap;
   }
 
   .roomForm {

@@ -48,7 +48,7 @@ import {
 import { getAppTheme } from "@/lib/theme";
 import { useThemeMode } from "@/lib/theme-context";
 import { useRouter } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Player,
   PlannedMatch,
@@ -1486,7 +1486,7 @@ export default function HomePage() {
                 <Typography variant="h4" component="h1" className="appTitle">
                   สมุดค่าตีแบด
                 </Typography>
-                <Typography color="text.secondary">
+                <Typography color="text.secondary" className="appSubtitle">
                   จดลูก คิดเงิน และเช็กจ่ายแล้วในรอบเดียว
                 </Typography>
               </Box>
@@ -1502,7 +1502,7 @@ export default function HomePage() {
                   </IconButton>
                 </Tooltip>
                 <Button variant="outlined" startIcon={<ArrowBackIcon />} onClick={() => router.push("/rooms")}>
-                  Room
+                  รอบ
                 </Button>
                 <Button variant="outlined" onClick={logout}>
                   ออกจากระบบ
@@ -1511,7 +1511,7 @@ export default function HomePage() {
             </Box>
 
             <Paper className="controlBand" elevation={0}>
-              <Stack direction={{ xs: "column", md: "row" }} spacing={2} className="quickControls">
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={2} className="quickControls">
                 <Button
                   variant="outlined"
                   endIcon={
@@ -1664,7 +1664,7 @@ export default function HomePage() {
                       </ToggleButtonGroup>
                     </Stack>
                     <Stack direction="row" spacing={1} alignItems="center">
-                      <Typography fontWeight={800}>ลูก number</Typography>
+                      <Typography fontWeight={800}>ลูกที่</Typography>
                       <IconButton
                         aria-label="ลดลูก number"
                         onClick={() => stepCurrentShuttleNumber(-1)}
@@ -1673,12 +1673,12 @@ export default function HomePage() {
                         <RemoveIcon />
                       </IconButton>
                       <TextField
-                        label="ลูก number"
+                        label="ลูกที่"
                         type="number"
                         value={activeShuttleNumber}
                         onChange={(event) => updateCurrentShuttleNumber(event.target.value)}
                         disabled={isEditingMode || !canManageSession}
-                        inputProps={{ min: 1 }}
+                        inputProps={{ min: 1, "aria-label": "ลูก number" }}
                         className="currentShuttleField"
                       />
                       <IconButton
@@ -2253,6 +2253,27 @@ function CurrentShuttlePicker({
     return groups;
   }, [players]);
   const groupRefs = useRef<Record<string, HTMLElement | null>>({});
+  const stickyHeaderRef = useRef<HTMLDivElement | null>(null);
+  const [stickyHeaderHeight, setStickyHeaderHeight] = useState(112);
+  useEffect(() => {
+    const element = stickyHeaderRef.current;
+    if (!element) {
+      return;
+    }
+    const updateHeight = () => {
+      const nextHeight = element.getBoundingClientRect().height;
+      if (nextHeight > 0) {
+        setStickyHeaderHeight(nextHeight);
+      }
+    };
+    updateHeight();
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
   const handleJumpToGroup = useCallback((label: string) => {
     const target = groupRefs.current[label];
     if (target) {
@@ -2262,7 +2283,7 @@ function CurrentShuttlePicker({
 
   return (
     <>
-      <Box className="currentShuttlePickerSticky">
+      <Box className="currentShuttlePickerSticky" ref={stickyHeaderRef}>
         <Box className="currentShuttlePickerHeader">
           <Box>
             <Typography variant="h6" component="h2" fontWeight={900}>
@@ -2299,7 +2320,13 @@ function CurrentShuttlePicker({
           </Box>
         ) : null}
       </Box>
-      <Paper className="currentShuttlePicker" elevation={0} role="region" aria-label="เลือกคนลงลูก">
+      <Paper
+        className="currentShuttlePicker"
+        elevation={0}
+        role="region"
+        aria-label="เลือกคนลงลูก"
+        style={{ "--picker-sticky-height": `${stickyHeaderHeight}px` } as CSSProperties}
+      >
         <CurrentShuttleVoicePicker
           players={voicePlayers}
           initiallySelectedIds={summary.entries.map((entry) => entry.playerId)}
