@@ -191,10 +191,14 @@ export default function HomePage() {
     title: "",
     message: ""
   });
-  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const lastRemoteSnapshotRef = useRef("");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clockOffsetRef = useRef(0);
+  const sessionRef = useRef(session);
+
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
 
   useEffect(() => {
     const initialSessionId = getInitialSessionId();
@@ -206,13 +210,6 @@ export default function HomePage() {
   useEffect(() => {
     setAuthSession(loadAuthSession());
   }, []);
-
-  useEffect(() => {
-    if (activeTab === 0 && hydrated && searchInputRef.current) {
-      searchInputRef.current.focus();
-      searchInputRef.current.select();
-    }
-  }, [activeTab, hydrated]);
 
   useEffect(() => {
     let cancelled = false;
@@ -270,16 +267,26 @@ export default function HomePage() {
           const normalizedRemoteSession = normalizeSession(remoteSession);
           const remoteSnapshot = serializeSession(normalizedRemoteSession);
           const pendingSnapshot = localStorage.getItem(getPendingSyncKey(sessionId));
-          const workingSession = pendingSnapshot
+          const pendingSession = pendingSnapshot
             ? parseSessionSnapshot(pendingSnapshot, normalizedRemoteSession)
+            : null;
+          const workingSession = pendingSession && isSessionNewerThan(pendingSession, normalizedRemoteSession)
+            ? pendingSession
             : normalizedRemoteSession;
           const workingSnapshot = serializeSession(workingSession);
+          const hasPendingSync = pendingSnapshot !== null && workingSession === pendingSession;
           lastRemoteSnapshotRef.current = remoteSnapshot;
           setSession(workingSession);
           localStorage.setItem(getStorageKey(sessionId), workingSnapshot);
           setLastLocalSavedAt(new Date().toISOString());
-          setPendingSyncSnapshot(pendingSnapshot ? workingSnapshot : null);
-          setSyncStatus(pendingSnapshot ? "รอส่งขึ้นเซิร์ฟเวอร์" : "ซิงก์แล้ว");
+          if (hasPendingSync) {
+            setPendingSyncSnapshot(workingSnapshot);
+            setSyncStatus("รอส่งขึ้นเซิร์ฟเวอร์");
+          } else {
+            localStorage.removeItem(getPendingSyncKey(sessionId));
+            setPendingSyncSnapshot(null);
+            setSyncStatus("ซิงก์แล้ว");
+          }
         } catch {
           if (cancelled) {
             return;
@@ -314,17 +321,32 @@ export default function HomePage() {
     }
 
     return subscribeRemoteSession(sessionId, (remoteSession) => {
-      if (localStorage.getItem(getPendingSyncKey(sessionId))) {
-        return;
-      }
       const normalizedRemoteSession = normalizeSession(remoteSession);
       const snapshot = serializeSession(normalizedRemoteSession);
       if (snapshot === lastRemoteSnapshotRef.current) {
         return;
       }
+      const currentSession = normalizeSession(sessionRef.current);
+      const currentSnapshot = serializeSession(currentSession);
+      if (snapshot === currentSnapshot) {
+        lastRemoteSnapshotRef.current = snapshot;
+        localStorage.removeItem(getPendingSyncKey(sessionId));
+        setPendingSyncSnapshot(null);
+        setSyncStatus("ซิงก์แล้ว");
+        return;
+      }
+      if (!isSessionNewerThan(normalizedRemoteSession, currentSession)) {
+        return;
+      }
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
       lastRemoteSnapshotRef.current = snapshot;
       setSession(normalizedRemoteSession);
       localStorage.setItem(getStorageKey(sessionId), snapshot);
+      localStorage.removeItem(getPendingSyncKey(sessionId));
+      setPendingSyncSnapshot(null);
       setLastLocalSavedAt(new Date().toISOString());
       setSyncStatus("ซิงก์แล้ว");
     });
@@ -350,6 +372,16 @@ export default function HomePage() {
 
     setSyncStatus("กำลังบันทึก");
     saveTimerRef.current = setTimeout(() => {
+      const lastRemoteSession = lastRemoteSnapshotRef.current
+        ? parseSessionSnapshot(lastRemoteSnapshotRef.current, normalizedSession)
+        : null;
+      if (lastRemoteSession && !isSessionNewerThan(normalizedSession, lastRemoteSession)) {
+        setSession(lastRemoteSession);
+        localStorage.removeItem(getPendingSyncKey(sessionId));
+        setPendingSyncSnapshot(null);
+        setSyncStatus("ซิงก์แล้ว");
+        return;
+      }
       saveRemoteSession(sessionId, normalizedSession)
         .then(() => {
           lastRemoteSnapshotRef.current = snapshot;
@@ -1642,7 +1674,6 @@ export default function HomePage() {
                         onChange={(event) => setSearchTerm(event.target.value)}
                         className="searchField"
                         autoComplete="off"
-                        inputRef={searchInputRef}
                       />
                       <ToggleButtonGroup
                         value={playerSortMode}
@@ -3307,6 +3338,18 @@ function parseSessionSnapshot(snapshot: string, fallback: SessionState): Session
   } catch {
     return normalizeSession(fallback);
   }
+}
+
+function isSessionNewerThan(candidate: SessionState, current: SessionState): boolean {
+  const candidateTime = new Date(candidate.updatedAt).getTime();
+  const currentTime = new Date(current.updatedAt).getTime();
+  if (Number.isNaN(candidateTime)) {
+    return false;
+  }
+  if (Number.isNaN(currentTime)) {
+    return true;
+  }
+  return candidateTime > currentTime;
 }
 
 function loadAuthSession(): AuthSession | null {
