@@ -136,6 +136,24 @@ describe("Badminton fee book page", () => {
     expect(screen.getByText("v1.4.0")).toBeInTheDocument();
   });
 
+  it("focuses the page for match setup mode", async () => {
+    const user = userEvent.setup();
+
+    render(<HomePage />);
+
+    await user.click(screen.getByRole("button", { name: "เริ่มจัด Match" }));
+
+    expect(screen.queryByRole("heading", { name: "สมุดค่าตีแบด" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "รอบและราคา" })).not.toBeInTheDocument();
+    expect(screen.queryByText("รอบ main")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ออกจากโหมดจัด Match" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "เพิ่มผู้เล่น" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "จัด Match ล่วงหน้า" })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+  });
+
   it("groups the shuttle picker by initial and shows an alphabetical index", async () => {
     const user = userEvent.setup();
     localStorage.setItem(
@@ -798,15 +816,15 @@ describe("Badminton fee book page", () => {
 
     expect(screen.getByText("ยืนยัน Match")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "ยืนยัน" }));
-    await user.click(screen.getByRole("tab", { name: /Match/ }));
+    await user.click(screen.getByRole("tab", { name: /^Match/ }));
 
     const matchSummary = screen.getByRole("region", { name: "รายการ Match" });
     expect(within(matchSummary).getByText("ลูกที่ 1")).toBeInTheDocument();
-    expect(within(matchSummary).getByText("a b c d")).toBeInTheDocument();
+    expect(within(matchSummary).getByText("a, b, c, d")).toBeInTheDocument();
     expect(within(matchSummary).getByText("ลูกที่ 2")).toBeInTheDocument();
-    expect(within(matchSummary).getByText("a c e f")).toBeInTheDocument();
+    expect(within(matchSummary).getByText("a, c, e, f")).toBeInTheDocument();
     expect(within(matchSummary).getByText("ลูกที่ 3")).toBeInTheDocument();
-    expect(within(matchSummary).getByText("a b b c")).toBeInTheDocument();
+    expect(within(matchSummary).getByText("a, b, b, c")).toBeInTheDocument();
   });
 
   it("marks match rows and checked shuttle buttons when a shuttle has more than four names", async () => {
@@ -831,11 +849,11 @@ describe("Badminton fee book page", () => {
 
     await screen.findByRole("row", { name: /a/ });
 
-    await user.click(screen.getByRole("tab", { name: /Match/ }));
+    await user.click(screen.getByRole("tab", { name: /^Match/ }));
 
     const matchSummary = screen.getByRole("region", { name: "รายการ Match" });
     expect(within(matchSummary).getByText("ลูกที่ 1")).toBeInTheDocument();
-    expect(within(matchSummary).getByText("a b c d e (5/4 เกิน)")).toBeInTheDocument();
+    expect(within(matchSummary).getByText("a, b, c, d, e (5/4 เกิน)")).toBeInTheDocument();
     expect(within(matchSummary).queryByText("ลูกที่ 1 ชุด 2")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: /กำลังตี/ }));
@@ -845,6 +863,34 @@ describe("Badminton fee book page", () => {
         .getByRole("checkbox", { name: "a ช่องที่ 1 ลูก 1" })
         .parentElement?.querySelector(".shuttleNumberIcon")
     ).toHaveClass("shuttleNumberIconDanger");
+  });
+
+  it("disables adding a match when the current shuttle already has marks", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(
+      "badminton-fee-book.session.main",
+      JSON.stringify({
+        players: [
+          { id: "a", name: "a", shuttleCount: 2, shuttleMarks: [1, 2], paid: false },
+          { id: "b", name: "b", shuttleCount: 1, shuttleMarks: [1], paid: false },
+          { id: "c", name: "c", shuttleCount: 1, shuttleMarks: [1], paid: false },
+          { id: "d", name: "d", shuttleCount: 1, shuttleMarks: [1], paid: false }
+        ],
+        pricing: { baseFee: 100, shuttleFee: 25 },
+        currentShuttleNumber: 2,
+        updatedAt: "2026-05-25T00:00:00.000Z"
+      })
+    );
+
+    render(<HomePage />);
+
+    await user.click(screen.getByRole("tab", { name: /^Match/ }));
+
+    const matchSummary = screen.getByRole("region", { name: "รายการ Match" });
+    expect(
+      within(matchSummary).getByText("ลูกที่ 2 มี 1 ติ๊กแล้ว เคลียร์ก่อนถึงจะเพิ่มลูกได้")
+    ).toBeInTheDocument();
+    expect(within(matchSummary).getByRole("button", { name: "เพิ่มลูก" })).toBeDisabled();
   });
 
   it("marks incomplete match rows and checked shuttle buttons with a warning color", async () => {
@@ -865,7 +911,7 @@ describe("Badminton fee book page", () => {
     await user.click(screen.getByRole("tab", { name: /Match/ }));
 
     const matchSummary = screen.getByRole("region", { name: "รายการ Match" });
-    expect(within(matchSummary).getByText("a b c (3/4 ยังไม่ครบ)")).toBeInTheDocument();
+    expect(within(matchSummary).getByText("a, b, c (3/4 ยังไม่ครบ)")).toBeInTheDocument();
     expect(within(matchSummary).getByText("ลูกที่ 1").closest(".matchItem")).toHaveClass(
       "matchItemWarning"
     );
@@ -956,10 +1002,10 @@ describe("Badminton fee book page", () => {
 
     const matchSummary = screen.getByRole("region", { name: "รายการ Match" });
     expect(within(matchSummary).getByText("ลูกที่ 1")).toBeInTheDocument();
-    expect(within(matchSummary).getByText("a b c d")).toBeInTheDocument();
+    expect(within(matchSummary).getByText("a, b, c, d")).toBeInTheDocument();
     expect(within(matchSummary).queryByText("ลูกที่ 2")).not.toBeInTheDocument();
     expect(within(matchSummary).getByText("ลูกที่ 3")).toBeInTheDocument();
-    expect(within(matchSummary).getByText("a b b c")).toBeInTheDocument();
+    expect(within(matchSummary).getByText("a, b, b, c")).toBeInTheDocument();
   });
 
   it("confirms before removing a checked shuttle mark", async () => {
@@ -1156,6 +1202,36 @@ describe("Badminton fee book page", () => {
     expect(await screen.findByText("1. Ann")).toBeInTheDocument();
     expect(screen.getByText("2. Ben")).toBeInTheDocument();
     expect(screen.getByText("ได้ยิน: Ann Ben")).toBeInTheDocument();
+  });
+
+  it("sorts available planned match players alphabetically", async () => {
+    const user = userEvent.setup();
+
+    render(<HomePage />);
+
+    for (const name of ["มะลิ", "กานต์", "ฮานะ"]) {
+      await user.type(screen.getByLabelText("ชื่อผู้เล่น"), name);
+      await user.click(screen.getByRole("button", { name: "เพิ่มผู้เล่น" }));
+    }
+
+    await user.click(screen.getByRole("tab", { name: "จัด Match ล่วงหน้า" }));
+    await user.click(
+      screen.getByRole("button", { name: "เรียงรายชื่อ Match ล่วงหน้าตามอักษร" })
+    );
+
+    const plannedMatchPanel = screen.getByRole("region", { name: "จัด Match ล่วงหน้า" });
+    expect(plannedMatchPanel).toHaveClass("plannedMatchPanelAlphabet");
+    const index = within(plannedMatchPanel).getByRole("navigation", {
+      name: "ดัชนีรายชื่อ Match ล่วงหน้าตามอักษร"
+    });
+    expect(within(index).getByRole("button", { name: "ไปที่หมวด Match ก" })).toBeInTheDocument();
+    expect(within(index).getByRole("button", { name: "ไปที่หมวด Match ม" })).toBeInTheDocument();
+    expect(within(index).getByRole("button", { name: "ไปที่หมวด Match ฮ" })).toBeInTheDocument();
+    const playerNames = Array.from(
+      plannedMatchPanel.querySelectorAll(".plannedPlayerGrid .playerPickerName")
+    ).map((element) => element.textContent);
+
+    expect(playerNames).toEqual(["กานต์", "มะลิ", "ฮานะ"]);
   });
 
   it("shows candidate buttons instead of selecting an ambiguous spoken name", async () => {

@@ -174,10 +174,12 @@ export default function HomePage() {
   const [selectedPlannedMatchId, setSelectedPlannedMatchId] = useState("");
   const [activeTab, setActiveTab] = useState(0);
   const [playerSortMode, setPlayerSortMode] = useState<"queue" | "alphabetical">("queue");
+  const [matchSetupMode, setMatchSetupMode] = useState(false);
   const [settingsExpanded, setSettingsExpanded] = useState(false);
   const [mobileSummaryExpanded, setMobileSummaryExpanded] = useState(false);
   const [editingShuttleNumber, setEditingShuttleNumber] = useState<number | null>(null);
   const [editingReturnShuttleNumber, setEditingReturnShuttleNumber] = useState<number | null>(null);
+  const [ledgerSelectedPlayerId, setLedgerSelectedPlayerId] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date().toISOString());
   const [clockOffsetMs, setClockOffsetMs] = useState(0);
   const [hydrated, setHydrated] = useState(false);
@@ -416,6 +418,14 @@ export default function HomePage() {
       ),
     [activeShuttleNumber, session.players]
   );
+  const targetShuttleSummary = useMemo(
+    () =>
+      getShuttleMarkSummary(
+        session.players,
+        session.currentShuttleNumber
+      ),
+    [session.currentShuttleNumber, session.players]
+  );
   const noteShuttleSummary = useMemo(
     () =>
       getShuttleMarkSummary(
@@ -563,6 +573,17 @@ export default function HomePage() {
         mode,
         resolve
       });
+    });
+  }
+
+  function toggleMatchSetupMode() {
+    setMatchSetupMode((enabled) => {
+      const nextEnabled = !enabled;
+      if (nextEnabled) {
+        setActiveTab(1);
+        setSettingsExpanded(false);
+      }
+      return nextEnabled;
     });
   }
 
@@ -1513,49 +1534,61 @@ export default function HomePage() {
       <Box component="main" className="appShell">
         <Container maxWidth="xl" className="appContainer">
           <Stack spacing={3}>
-            <Box className="appHeader">
-              <Box>
-                <Typography variant="h4" component="h1" className="appTitle">
-                  สมุดค่าตีแบด
-                </Typography>
-                <Typography color="text.secondary" className="appSubtitle">
-                  จดลูก คิดเงิน และเช็กจ่ายแล้วในรอบเดียว
-                </Typography>
+            {!matchSetupMode ? (
+              <Box className="appHeader">
+                <Box>
+                  <Typography variant="h4" component="h1" className="appTitle">
+                    สมุดค่าตีแบด
+                  </Typography>
+                  <Typography color="text.secondary" className="appSubtitle">
+                    จดลูก คิดเงิน และเช็กจ่ายแล้วในรอบเดียว
+                  </Typography>
+                </Box>
+                <Stack direction="row" spacing={1} alignItems="center" className="authStatus">
+                  <Chip
+                    label={userRole === "admin" ? "admin: ทำได้ทุกอย่าง" : "admin2: จ่ายเงินเท่านั้น"}
+                    color={userRole === "admin" ? "primary" : "secondary"}
+                    variant="outlined"
+                  />
+                  <Tooltip title={mode === "dark" ? "สลับไปโหมดสว่าง" : "สลับไปโหมดมืด"}>
+                    <IconButton onClick={toggleTheme} size="small">
+                      {mode === "dark" ? <LightModeIcon /> : <DarkModeIcon />}
+                    </IconButton>
+                  </Tooltip>
+                  <Button variant="outlined" startIcon={<ArrowBackIcon />} onClick={() => router.push("/rooms")}>
+                    รอบ
+                  </Button>
+                  <Button variant="outlined" onClick={logout}>
+                    ออกจากระบบ
+                  </Button>
+                </Stack>
               </Box>
-              <Stack direction="row" spacing={1} alignItems="center" className="authStatus">
-                <Chip
-                  label={userRole === "admin" ? "admin: ทำได้ทุกอย่าง" : "admin2: จ่ายเงินเท่านั้น"}
-                  color={userRole === "admin" ? "primary" : "secondary"}
-                  variant="outlined"
-                />
-                <Tooltip title={mode === "dark" ? "สลับไปโหมดสว่าง" : "สลับไปโหมดมืด"}>
-                  <IconButton onClick={toggleTheme} size="small">
-                    {mode === "dark" ? <LightModeIcon /> : <DarkModeIcon />}
-                  </IconButton>
-                </Tooltip>
-                <Button variant="outlined" startIcon={<ArrowBackIcon />} onClick={() => router.push("/rooms")}>
-                  รอบ
-                </Button>
-                <Button variant="outlined" onClick={logout}>
-                  ออกจากระบบ
-                </Button>
-              </Stack>
-            </Box>
+            ) : null}
 
-            <Paper className="controlBand" elevation={0}>
+            <Paper className={`controlBand${matchSetupMode ? " controlBandMatchSetup" : ""}`} elevation={0}>
               <Stack direction={{ xs: "column", sm: "row" }} spacing={2} className="quickControls">
                 <Button
-                  variant="outlined"
-                  endIcon={
-                    <ExpandMoreIcon
-                      className={settingsExpanded ? "settingsChevron expanded" : "settingsChevron"}
-                    />
-                  }
-                  onClick={() => setSettingsExpanded((expanded) => !expanded)}
-                  className="settingsToggle"
+                  variant={matchSetupMode ? "contained" : "outlined"}
+                  color={matchSetupMode ? "secondary" : "primary"}
+                  onClick={toggleMatchSetupMode}
+                  className="matchSetupToggle"
                 >
-                  รอบและราคา
+                  {matchSetupMode ? "ออกจากโหมดจัด Match" : "เริ่มจัด Match"}
                 </Button>
+                {!matchSetupMode ? (
+                  <Button
+                    variant="outlined"
+                    endIcon={
+                      <ExpandMoreIcon
+                        className={settingsExpanded ? "settingsChevron expanded" : "settingsChevron"}
+                      />
+                    }
+                    onClick={() => setSettingsExpanded((expanded) => !expanded)}
+                    className="settingsToggle"
+                  >
+                    รอบและราคา
+                  </Button>
+                ) : null}
                 <Box component="form" onSubmit={addPlayer} className="addPlayerForm">
                   <TextField
                     label="ชื่อผู้เล่น"
@@ -1575,7 +1608,7 @@ export default function HomePage() {
                   </Button>
                 </Box>
               </Stack>
-              <Collapse in={settingsExpanded}>
+              <Collapse in={!matchSetupMode && settingsExpanded}>
                 <Box className="settingsPanel">
                   <Box component="form" onSubmit={switchSession} className="roomForm">
                     <TextField
@@ -1621,13 +1654,15 @@ export default function HomePage() {
                   />
                 </Box>
               </Collapse>
-              <Stack direction="row" spacing={1} className="syncBar">
-                <Chip label={`รอบ ${sessionId}`} size="small" color="primary" variant="outlined" />
-                <Chip label={syncStatus} size="small" />
-              </Stack>
+              {!matchSetupMode ? (
+                <Stack direction="row" spacing={1} className="syncBar">
+                  <Chip label={`รอบ ${sessionId}`} size="small" color="primary" variant="outlined" />
+                  <Chip label={syncStatus} size="small" />
+                </Stack>
+              ) : null}
             </Paper>
 
-            {isEmergencySyncStatus ? (
+            {isEmergencySyncStatus && !matchSetupMode ? (
               <EmergencySyncPanel
                 status={syncStatus}
                 lastLocalSavedAt={lastLocalSavedAt}
@@ -1745,6 +1780,8 @@ export default function HomePage() {
                   selectedMatchId={selectedPlannedMatch?.id ?? ""}
                   activePlayers={activePlayers}
                   availablePlayers={availablePlannedPlayers}
+                  playerSortMode={playerSortMode}
+                  onPlayerSortModeChange={setPlayerSortMode}
                   currentShuttleNumber={session.currentShuttleNumber}
                   canManageSession={canManageSession}
                   now={now}
@@ -1791,7 +1828,8 @@ export default function HomePage() {
                     canSetPaid={canSetPaid}
                     onRemovePlayer={removePlayer}
                     onSetPaid={setPaid}
-                    onToggleShuttleMark={toggleShuttleMark}
+                    onToggleShuttleMark={(id) => setLedgerSelectedPlayerId(id)}
+                    selectedPlayerId={ledgerSelectedPlayerId}
                   />
                   <Box className="summaryGrid">
                     <SummaryStat
@@ -1839,6 +1877,8 @@ export default function HomePage() {
                 <MatchSummaryPanel
                   matchGroups={matchGroups}
                   searchTerm={matchSearchTerm}
+                  targetShuttleNumber={session.currentShuttleNumber}
+                  targetShuttleMarkCount={targetShuttleSummary.count}
                   onSearchTermChange={setMatchSearchTerm}
                   onAddMatchToNextShuttle={addMatchToNextShuttle}
                   canManageSession={canManageSession}
@@ -2056,7 +2096,8 @@ function ScoreSheet({
   canSetPaid,
   onRemovePlayer,
   onSetPaid,
-  onToggleShuttleMark
+  onToggleShuttleMark,
+  selectedPlayerId
 }: {
   activePlayers: Player[];
   allPlayerCount: number;
@@ -2076,6 +2117,7 @@ function ScoreSheet({
   onRemovePlayer: (id: string) => void;
   onSetPaid: (id: string, paid: boolean) => void;
   onToggleShuttleMark: (id: string, column: number) => void;
+  selectedPlayerId?: string | null;
 }) {
   return (
     <TableContainer className="scoreTableWrap">
@@ -2112,7 +2154,9 @@ function ScoreSheet({
                 key={player.id}
                 hover
                 aria-label={player.name}
-                className={getWaitingRowClass(player, now)}
+                className={`${getWaitingRowClass(player, now)}${
+                  selectedPlayerId === player.id ? " ledgerSelectedRow" : ""
+                }`}
               >
                 <TableCell className="stickyName playerCell">
                   <Button
@@ -2769,6 +2813,8 @@ function PlannedMatchPanel({
   selectedMatchId,
   activePlayers,
   availablePlayers,
+  playerSortMode,
+  onPlayerSortModeChange,
   currentShuttleNumber,
   canManageSession,
   now,
@@ -2782,6 +2828,8 @@ function PlannedMatchPanel({
   selectedMatchId: string;
   activePlayers: Player[];
   availablePlayers: Player[];
+  playerSortMode: "queue" | "alphabetical";
+  onPlayerSortModeChange: (sortMode: "queue" | "alphabetical") => void;
   currentShuttleNumber: number;
   canManageSession: boolean;
   now: string;
@@ -2797,6 +2845,7 @@ function PlannedMatchPanel({
   );
   const selectedMatch = plannedMatches.find((match) => match.id === selectedMatchId);
   const selectedMatchFull = (selectedMatch?.playerIds.length ?? 0) >= 4;
+  const enableAlphabetGrouping = playerSortMode === "alphabetical";
   const sortedPlannedMatches = useMemo(() => {
     return [...plannedMatches].sort((a, b) => {
       if (a.confirmed && !b.confirmed) return 1;
@@ -2812,17 +2861,60 @@ function PlannedMatchPanel({
       const restEnd = restUntil(player);
       return restEnd && nowDate < restEnd;
     };
+    const orderedPlayers = playerSortMode === "alphabetical"
+      ? [...availablePlayers].sort((first, second) =>
+        first.name.localeCompare(second.name, "th-TH", { sensitivity: "base" })
+      )
+      : availablePlayers;
 
     return {
-      danger: availablePlayers.filter(p => getPlayerWaitStatus(p, now) === "danger"),
-      warning: availablePlayers.filter(p => getPlayerWaitStatus(p, now) === "warning"),
-      normal: availablePlayers.filter(p => getPlayerWaitStatus(p, now) === "normal" && !isResting(p)),
-      resting: availablePlayers.filter(p => isResting(p))
+      danger: orderedPlayers.filter(p => getPlayerWaitStatus(p, now) === "danger"),
+      warning: orderedPlayers.filter(p => getPlayerWaitStatus(p, now) === "warning"),
+      normal: orderedPlayers.filter(p => getPlayerWaitStatus(p, now) === "normal" && !isResting(p)),
+      resting: orderedPlayers.filter(p => isResting(p))
     };
-  }, [availablePlayers, now]);
+  }, [availablePlayers, now, playerSortMode]);
+  const alphabetPlayerGroups = useMemo(() => {
+    const groups: Array<{ label: string; players: Player[] }> = [];
+    const orderedPlayers = [...availablePlayers].sort((first, second) =>
+      first.name.localeCompare(second.name, "th-TH", { sensitivity: "base" })
+    );
+    orderedPlayers.forEach((player) => {
+      const label = getPlayerInitialGroupLabel(player.name);
+      const existingGroup = groups.find((group) => group.label === label);
+      if (existingGroup) {
+        existingGroup.players.push(player);
+      } else {
+        groups.push({ label, players: [player] });
+      }
+    });
+    return groups;
+  }, [availablePlayers]);
+  const plannedGroupRefs = useRef<Record<string, HTMLElement | null>>({});
+  const handleJumpToPlannedGroup = useCallback((label: string) => {
+    const target = plannedGroupRefs.current[label];
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, []);
+  const renderPlannedPlayerButton = (player: Player, className = "plannedPlayerButton") => (
+    <Button
+      key={player.id}
+      className={className}
+      variant="outlined"
+      disabled={!canManageSession || !selectedMatch || selectedMatchFull}
+      onClick={() => onAddPlayer(player.id)}
+    >
+      <span className="playerPickerName">{player.name}</span>
+    </Button>
+  );
 
   return (
-    <Box className="plannedMatchPanel" role="region" aria-label="จัด Match ล่วงหน้า">
+    <Box
+      className={`plannedMatchPanel${enableAlphabetGrouping ? " plannedMatchPanelAlphabet" : ""}`}
+      role="region"
+      aria-label="จัด Match ล่วงหน้า"
+    >
       <Box className="plannedMatchColumn">
         <Box>
           <Typography variant="h5" component="h2">
@@ -2916,6 +3008,25 @@ function PlannedMatchPanel({
               ? `กำลังจัด ${selectedMatch.label}${selectedMatchFull ? " ครบแล้ว" : ""}`
               : "เลือก Match ก่อน แล้วค่อยกดชื่อ"}
           </Typography>
+          <ToggleButtonGroup
+            value={playerSortMode}
+            exclusive
+            onChange={(_, nextValue: "queue" | "alphabetical" | null) => {
+              if (nextValue) {
+                onPlayerSortModeChange(nextValue);
+              }
+            }}
+            size="small"
+            aria-label="ตัวเลือกการเรียงรายชื่อสำหรับ Match ล่วงหน้า"
+            sx={{ mt: 1 }}
+          >
+            <ToggleButton value="queue" aria-label="เรียงรายชื่อ Match ล่วงหน้าตามคิว">
+              ตามคิว
+            </ToggleButton>
+            <ToggleButton value="alphabetical" aria-label="เรียงรายชื่อ Match ล่วงหน้าตามอักษร">
+              ก-ฮ
+            </ToggleButton>
+          </ToggleButtonGroup>
           <CurrentShuttleVoicePicker
             players={availablePlayers}
             initiallySelectedIds={[]}
@@ -2934,85 +3045,113 @@ function PlannedMatchPanel({
             </Box>
           ) : (
             <>
-              {playerGroups.danger.length > 0 && (
-                <Box className="plannedPlayerSection">
-                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                    วิกฤต (รอ 20 นาทีขึ้นไป) ({playerGroups.danger.length})
-                  </Typography>
-                  <Box className="plannedPlayerGrid">
-                    {playerGroups.danger.map((player) => (
-                      <Button
-                        key={player.id}
-                        className="plannedPlayerButton plannedPlayerButtonDanger"
-                        variant="outlined"
-                        disabled={!canManageSession || !selectedMatch || selectedMatchFull}
-                        onClick={() => onAddPlayer(player.id)}
+              {enableAlphabetGrouping ? (
+                <Box className="plannedPlayerGroupedList">
+                  <Box className="plannedPlayerGroups">
+                    {alphabetPlayerGroups.map((group) => (
+                      <Box
+                        key={group.label}
+                        className="plannedPlayerAlphabetGroup"
+                        ref={(element) => {
+                          if (element) {
+                            plannedGroupRefs.current[group.label] = element as HTMLElement;
+                          } else {
+                            delete plannedGroupRefs.current[group.label];
+                          }
+                        }}
                       >
-                        <span className="playerPickerName">{player.name}</span>
-                      </Button>
+                        <Typography className="playerPickerGroupLabel" component="h3">
+                          หมวด {group.label}
+                        </Typography>
+                        <Box className="plannedPlayerGrid">
+                          {group.players.map((player) => {
+                            const waitStatus = getPlayerWaitStatus(player, now);
+                            const waitClass =
+                              waitStatus === "danger"
+                                ? "plannedPlayerButton plannedPlayerButtonDanger"
+                                : waitStatus === "warning"
+                                  ? "plannedPlayerButton plannedPlayerButtonWarning"
+                                  : "plannedPlayerButton";
+                            return renderPlannedPlayerButton(player, waitClass);
+                          })}
+                        </Box>
+                      </Box>
                     ))}
                   </Box>
+                  {alphabetPlayerGroups.length > 1 ? (
+                    <Stack
+                      className="plannedPlayerIndexBar"
+                      role="navigation"
+                      aria-label="ดัชนีรายชื่อ Match ล่วงหน้าตามอักษร"
+                    >
+                      {alphabetPlayerGroups.map((group) => (
+                        <Button
+                          key={`planned-index-${group.label}`}
+                          size="small"
+                          variant="outlined"
+                          onClick={() => handleJumpToPlannedGroup(group.label)}
+                          className="playerPickerIndexButton"
+                          aria-label={`ไปที่หมวด Match ${group.label}`}
+                        >
+                          {group.label}
+                        </Button>
+                      ))}
+                    </Stack>
+                  ) : null}
                 </Box>
-              )}
-              {playerGroups.warning.length > 0 && (
-                <Box className="plannedPlayerSection">
-                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                    เตือน (รอ 15-19 นาที) ({playerGroups.warning.length})
-                  </Typography>
-                  <Box className="plannedPlayerGrid">
-                    {playerGroups.warning.map((player) => (
-                      <Button
-                        key={player.id}
-                        className="plannedPlayerButton plannedPlayerButtonWarning"
-                        variant="outlined"
-                        disabled={!canManageSession || !selectedMatch || selectedMatchFull}
-                        onClick={() => onAddPlayer(player.id)}
-                      >
-                        <span className="playerPickerName">{player.name}</span>
-                      </Button>
-                    ))}
-                  </Box>
-                </Box>
-              )}
-              {playerGroups.normal.length > 0 && (
-                <Box className="plannedPlayerSection">
-                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                    ปกติ (รอน้อยกว่า 15 นาที) ({playerGroups.normal.length})
-                  </Typography>
-                  <Box className="plannedPlayerGrid">
-                    {playerGroups.normal.map((player) => (
-                      <Button
-                        key={player.id}
-                        className="plannedPlayerButton"
-                        variant="outlined"
-                        disabled={!canManageSession || !selectedMatch || selectedMatchFull}
-                        onClick={() => onAddPlayer(player.id)}
-                      >
-                        <span className="playerPickerName">{player.name}</span>
-                      </Button>
-                    ))}
-                  </Box>
-                </Box>
-              )}
-              {playerGroups.resting.length > 0 && (
-                <Box className="plannedPlayerSection">
-                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                    พักเล่น ({playerGroups.resting.length})
-                  </Typography>
-                  <Box className="plannedPlayerGrid">
-                    {playerGroups.resting.map((player) => (
-                      <Button
-                        key={player.id}
-                        className="plannedPlayerButton"
-                        variant="outlined"
-                        disabled={!canManageSession || !selectedMatch || selectedMatchFull}
-                        onClick={() => onAddPlayer(player.id)}
-                      >
-                        <span className="playerPickerName">{player.name}</span>
-                      </Button>
-                    ))}
-                  </Box>
-                </Box>
+              ) : (
+                <>
+                  {playerGroups.danger.length > 0 && (
+                    <Box className="plannedPlayerSection">
+                      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                        วิกฤต (รอ 20 นาทีขึ้นไป) ({playerGroups.danger.length})
+                      </Typography>
+                      <Box className="plannedPlayerGrid">
+                        {playerGroups.danger.map((player) =>
+                          renderPlannedPlayerButton(
+                            player,
+                            "plannedPlayerButton plannedPlayerButtonDanger"
+                          )
+                        )}
+                      </Box>
+                    </Box>
+                  )}
+                  {playerGroups.warning.length > 0 && (
+                    <Box className="plannedPlayerSection">
+                      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                        เตือน (รอ 15-19 นาที) ({playerGroups.warning.length})
+                      </Typography>
+                      <Box className="plannedPlayerGrid">
+                        {playerGroups.warning.map((player) =>
+                          renderPlannedPlayerButton(
+                            player,
+                            "plannedPlayerButton plannedPlayerButtonWarning"
+                          )
+                        )}
+                      </Box>
+                    </Box>
+                  )}
+                  {playerGroups.normal.length > 0 && (
+                    <Box className="plannedPlayerSection">
+                      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                        ปกติ (รอน้อยกว่า 15 นาที) ({playerGroups.normal.length})
+                      </Typography>
+                      <Box className="plannedPlayerGrid">
+                        {playerGroups.normal.map((player) => renderPlannedPlayerButton(player))}
+                      </Box>
+                    </Box>
+                  )}
+                  {playerGroups.resting.length > 0 && (
+                    <Box className="plannedPlayerSection">
+                      <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                        พักเล่น ({playerGroups.resting.length})
+                      </Typography>
+                      <Box className="plannedPlayerGrid">
+                        {playerGroups.resting.map((player) => renderPlannedPlayerButton(player))}
+                      </Box>
+                    </Box>
+                  )}
+                </>
               )}
             </>
           )}
@@ -3025,12 +3164,16 @@ function PlannedMatchPanel({
 function MatchSummaryPanel({
   matchGroups,
   searchTerm,
+  targetShuttleNumber,
+  targetShuttleMarkCount,
   onSearchTermChange,
   onAddMatchToNextShuttle,
   canManageSession
 }: {
   matchGroups: ReturnType<typeof groupMatchesByShuttle>;
   searchTerm: string;
+  targetShuttleNumber: number;
+  targetShuttleMarkCount: number;
   onSearchTermChange: (value: string) => void;
   onAddMatchToNextShuttle: (shuttleNumber: number) => void;
   canManageSession: boolean;
@@ -3047,9 +3190,16 @@ function MatchSummaryPanel({
   return (
     <Box className="matchSummaryPanel" role="region" aria-label="รายการ Match">
       <Box className="matchSummaryHeader">
-        <Typography variant="h5" component="h2">
-          Match
-        </Typography>
+        <Box>
+          <Typography variant="h5" component="h2">
+            Match
+          </Typography>
+          {targetShuttleMarkCount > 0 ? (
+            <Typography className="matchAddGuardText" color="warning.main">
+              ลูกที่ {targetShuttleNumber} มี {targetShuttleMarkCount} ติ๊กแล้ว เคลียร์ก่อนถึงจะเพิ่มลูกได้
+            </Typography>
+          ) : null}
+        </Box>
         <TextField
           label="ค้นหา Match"
           value={searchTerm}
@@ -3077,7 +3227,12 @@ function MatchSummaryPanel({
                     ลูกที่ {group.shuttleNumber}
                   </Typography>
                   <Typography className="matchNames">
-                    {group.playerNames.join(" ")}
+                    {group.playerNames.map((name, index) => (
+                      <span key={`${group.shuttleNumber}-${name}-${index}`}>
+                        {index > 0 ? ", " : ""}
+                        <span className="matchNamePill">{name}</span>
+                      </span>
+                    ))}
                     {group.isOverLimit ? ` (${group.playerNames.length}/4 เกิน)` : ""}
                     {group.isIncomplete ? ` (${group.playerNames.length}/4 ยังไม่ครบ)` : ""}
                   </Typography>
@@ -3088,7 +3243,7 @@ function MatchSummaryPanel({
                     size="small"
                     startIcon={<AddIcon />}
                     onClick={() => onAddMatchToNextShuttle(group.shuttleNumber)}
-                    disabled={!canManageSession}
+                    disabled={!canManageSession || targetShuttleMarkCount > 0}
                     sx={{ ml: 1, minWidth: 'auto' }}
                   >
                     เพิ่มลูก

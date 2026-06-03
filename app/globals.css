@@ -245,12 +245,25 @@ body {
   padding: 16px;
 }
 
+.controlBandMatchSetup {
+  padding: 12px 16px;
+}
+
 .quickControls {
   align-items: flex-start;
 }
 
+.matchSetupToggle,
 .settingsToggle {
   flex-shrink: 0;
+}
+
+.controlBandMatchSetup .quickControls {
+  align-items: stretch;
+}
+
+.controlBandMatchSetup .addPlayerForm {
+  align-items: stretch;
 }
 
 .settingsChevron {
@@ -612,6 +625,10 @@ body {
     gap: 8px;
   }
 
+  .plannedPlayerGroupedList {
+    gap: 8px;
+  }
+
   .playerPickerIndexButton {
     min-width: 34px;
     min-height: 34px !important;
@@ -677,6 +694,17 @@ body {
   background: var(--waiting-danger-hover);
 }
 
+.ledgerSelectedRow {
+  outline: 2px solid var(--primary-light);
+  outline-offset: -2px;
+  background: var(--primary-bg);
+}
+
+.scoreTableWrap .MuiTableRow-root.ledgerSelectedRow,
+.scoreTableWrap .MuiTableRow-root.ledgerSelectedRow.MuiTableRow-hover:hover {
+  background: var(--primary-bg) !important;
+}
+
 .playerPickerOrder,
 .playerPickerCount {
   position: absolute;
@@ -725,6 +753,10 @@ body {
   gap: 16px;
   padding: 18px;
   background: var(--planned-match-bg);
+}
+
+.plannedMatchPanelAlphabet {
+  grid-template-columns: minmax(220px, 0.58fr) minmax(420px, 1.42fr);
 }
 
 .plannedMatchColumn {
@@ -792,6 +824,39 @@ body {
 
 .plannedPlayerSection:last-child {
   margin-bottom: 0;
+}
+
+.plannedPlayerGroupedList {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.plannedPlayerGroups {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 12px;
+}
+
+.plannedPlayerAlphabetGroup {
+  scroll-margin-top: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--card-bg);
+}
+
+.plannedPlayerIndexBar {
+  position: sticky;
+  top: 8px;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .plannedPlayerButton {
@@ -1048,6 +1113,12 @@ thead .stickyName {
   width: min(280px, 100%);
 }
 
+.matchAddGuardText {
+  margin-top: 2px;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
 .matchItem {
   display: grid;
   grid-template-columns: minmax(96px, auto) 1fr;
@@ -1088,6 +1159,38 @@ thead .stickyName {
 
 .matchNames {
   word-break: break-word;
+  line-height: 2;
+}
+
+.matchNamePill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 8px;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  background: var(--toolbar-bg);
+  color: var(--app-text);
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.matchItemDanger .matchNamePill {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+
+.matchItemWarning .matchNamePill {
+  border-color: var(--warning-border);
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+
+.matchItemBatch .matchNamePill {
+  border-color: var(--batch-border);
+  background: var(--batch-bg);
+  color: var(--batch-text);
 }
 
 .emptyPaidSummary {
@@ -1186,6 +1289,10 @@ thead .stickyName {
     grid-template-columns: 40% 60%;
   }
 
+  .plannedMatchPanelAlphabet {
+    grid-template-columns: minmax(200px, 34%) minmax(0, 66%);
+  }
+
   .scoreTableWrap {
     max-height: none;
   }
@@ -1258,6 +1365,10 @@ thead .stickyName {
   }
 
   .plannedMatchPanel {
+    grid-template-columns: 1fr;
+  }
+
+  .plannedMatchPanelAlphabet {
     grid-template-columns: 1fr;
   }
 
