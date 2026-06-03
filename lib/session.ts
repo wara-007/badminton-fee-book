@@ -43,6 +43,7 @@ export type PaidPlayerSummary = {
   name: string;
   shuttleCount: number;
   amount: number;
+  paidAt?: string;
 };
 
 export type PaidDaySummary = {
@@ -57,6 +58,7 @@ export type MatchSummary = {
   isIncomplete: boolean;
   isOverLimit: boolean;
   source?: 'batch' | 'planned' | 'manual';
+  startedAt?: string;
 };
 
 export type MatchOverlapWarning = {
@@ -413,6 +415,7 @@ export function groupPaidPlayersByDay(
         name: player.name,
         shuttleCount: getPlayerShuttleCount(player),
         amount: calculatePlayerTotal(player, pricing),
+        paidAt: player.paidAt,
       });
       current.totalAmount = current.players.reduce(
         (sum, paidPlayer) => sum + paidPlayer.amount,
@@ -441,6 +444,7 @@ export function groupMatchesByShuttle(
   });
 
   const sourceMap = new Map<number, 'batch' | 'planned' | 'manual'>();
+  const startedAtMap = new Map<number, string>();
   if (activityLog) {
     for (let i = activityLog.length - 1; i >= 0; i--) {
       const activity = activityLog[i];
@@ -451,6 +455,9 @@ export function groupMatchesByShuttle(
           if (!sourceMap.has(shuttleNumber)) {
             sourceMap.set(shuttleNumber, 'planned');
           }
+          if (!startedAtMap.has(shuttleNumber)) {
+            startedAtMap.set(shuttleNumber, activity.createdAt);
+          }
         }
       } else if (activity.action === 'mark-added') {
         const batchMatch = activity.message.match(/เพิ่มลูกที่\s*(\d+)/);
@@ -459,12 +466,18 @@ export function groupMatchesByShuttle(
           if (!sourceMap.has(shuttleNumber)) {
             sourceMap.set(shuttleNumber, 'batch');
           }
+          if (!startedAtMap.has(shuttleNumber)) {
+            startedAtMap.set(shuttleNumber, activity.createdAt);
+          }
         } else {
           const manualMatch = activity.message.match(/ลงลูก\s*(\d+)/);
           if (manualMatch) {
             const shuttleNumber = parseInt(manualMatch[1], 10);
             if (!sourceMap.has(shuttleNumber)) {
               sourceMap.set(shuttleNumber, 'manual');
+            }
+            if (!startedAtMap.has(shuttleNumber)) {
+              startedAtMap.set(shuttleNumber, activity.createdAt);
             }
           }
         }
@@ -480,6 +493,7 @@ export function groupMatchesByShuttle(
       isIncomplete: playerNames.length > 0 && playerNames.length < 4,
       isOverLimit: playerNames.length > 4,
       source: sourceMap.get(shuttleNumber) ?? 'manual',
+      startedAt: startedAtMap.get(shuttleNumber),
     }));
 }
 

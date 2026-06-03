@@ -7,7 +7,7 @@ export function getAppTheme(mode: ThemeMode) {
     palette: {
       mode,
       primary: {
-        main: '#14b8a6',
+        main: isDark ? '#8fb3ff' : '#05247a',
       },
       secondary: {
         main: '#f59e0b',
@@ -61,7 +61,7 @@ export function getAppTheme(mode: ThemeMode) {
       MuiTabs: {
         styleOverrides: {
           indicator: {
-            backgroundColor: '#14b8a6',
+            backgroundColor: isDark ? '#8fb3ff' : '#05247a',
           },
         },
       },
@@ -70,7 +70,7 @@ export function getAppTheme(mode: ThemeMode) {
           root: {
             color: isDark ? '#9ca3af' : '#5f6c7b',
             '&.Mui-selected': {
-              color: '#14b8a6',
+              color: isDark ? '#8fb3ff' : '#05247a',
             },
           },
         },

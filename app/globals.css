@@ -9,9 +9,9 @@
   --card-bg-alt: #fbfaf7;
   --border-color: #e7e2d8;
   --border-light: #d8d1c5;
-  --primary: #0f766e;
-  --primary-light: #14b8a6;
-  --primary-bg: #ecf7f5;
+  --primary: #05247a;
+  --primary-light: #123a9a;
+  --primary-bg: #edf2ff;
   --text-secondary: #5f6c7b;
   --toolbar-bg: #fffdfa;
   --tracker-bg: #f7fbfa;
@@ -26,22 +26,22 @@
   --warning-bg: #fffbeb;
   --warning-text: #d97706;
   --warning-bg-soft: #fef3c7;
-  --batch-border: #93c5fd;
-  --batch-bg: #eff6ff;
-  --batch-text: #1e40af;
+  --batch-border: #fbbf24;
+  --batch-bg: #fef9c3;
+  --batch-text: #713f12;
   --disabled-bg: #f3f4f6;
   --disabled-text: #9ca3af;
   --disabled-border: #d1d5db;
   --shuttle-icon-border: #9aa4ad;
   --shuttle-icon-text: #5f6c7b;
-  --order-bg: #f0fdfa;
-  --order-text: #0f766e;
+  --order-bg: #edf2ff;
+  --order-text: #05247a;
   --dialog-headline: #111827;
   --dialog-message: #4b5563;
   --detail-bg: #fbfaf7;
   --detail-label: #6b7280;
   --detail-value: #1f2937;
-  --detail-primary-bg: #f0fdfa;
+  --detail-primary-bg: #edf2ff;
   --detail-warning-bg: #fffbeb;
   --detail-error-bg: #fff1f2;
   --image-bg: #ffffff;
@@ -60,29 +60,29 @@
   --player-btn-border: #b9c8c5;
   --player-btn-bg: #ffffff;
   --player-btn-text: #1f2933;
-  --player-btn-hover-border: #0f766e;
-  --player-btn-hover-bg: #ecf7f5;
-  --picker-order-bg: #82f0e782;
-  --picker-order-text: #0f766e;
-  --picker-count-bg: #d9f3ee;
-  --picker-count-text: #0f766e;
+  --player-btn-hover-border: #05247a;
+  --player-btn-hover-bg: #edf2ff;
+  --picker-order-bg: #bfdbfe;
+  --picker-order-text: #05247a;
+  --picker-count-bg: #dbeafe;
+  --picker-count-text: #05247a;
   --selected-chip-bg: #c2410c;
   --selected-chip-text: #ffffff;
   --waiting-warning-hover: #fef3c7;
   --waiting-danger-hover: #ffe4e6;
   --planned-btn-danger-hover-bg: #fecaca;
   --planned-btn-warning-hover-bg: #fde68a;
-  --dialog-primary-border: #99c7c2;
+  --dialog-primary-border: #9db5ff;
   --dialog-warning-border: #facc15;
   --dialog-error-border: #fca5a5;
-  --note-primary-text: #0f766e;
+  --note-primary-text: #05247a;
   --note-warning-text: #92400e;
   --note-error-text: #991b1b;
   --dialog-title-secondary: #b45309;
   --dialog-title-warning: #d97706;
   --shuttle-danger-border: #b91c1c;
   --shuttle-warning-border: #b45309;
-  --shuttle-batch-border: #2563eb;
+  --shuttle-batch-border: #d97706;
   --app-dialog-border: #eee7dc;
 }
 
@@ -93,9 +93,9 @@
   --card-bg-alt: #2a2a2a;
   --border-color: #333333;
   --border-light: #444444;
-  --primary: #14b8a6;
-  --primary-light: #14b8a6;
-  --primary-bg: #0f2926;
+  --primary: #8fb3ff;
+  --primary-light: #bfd0ff;
+  --primary-bg: #101d44;
   --text-secondary: #9ca3af;
   --toolbar-bg: #1f1f1f;
   --tracker-bg: #1f1f1f;
@@ -110,22 +110,22 @@
   --warning-bg: #3f2a0a;
   --warning-text: #fcd34d;
   --warning-bg-soft: #4a2a0a;
-  --batch-border: #1e3a8a;
-  --batch-bg: #1a233a;
-  --batch-text: #93c5fd;
+  --batch-border: #d97706;
+  --batch-bg: #3f2f0f;
+  --batch-text: #fde68a;
   --disabled-bg: #252525;
   --disabled-text: #6b7280;
   --disabled-border: #444444;
   --shuttle-icon-border: #6b7280;
   --shuttle-icon-text: #9ca3af;
-  --order-bg: #0f2926;
-  --order-text: #14b8a6;
+  --order-bg: #101d44;
+  --order-text: #bfd0ff;
   --dialog-headline: #f3f4f6;
   --dialog-message: #9ca3af;
   --detail-bg: #2a2a2a;
   --detail-label: #9ca3af;
   --detail-value: #f3f4f6;
-  --detail-primary-bg: #0f2926;
+  --detail-primary-bg: #101d44;
   --detail-warning-bg: #3f2a0a;
   --detail-error-bg: #3f1212;
   --image-bg: #252525;
@@ -144,29 +144,29 @@
   --player-btn-border: #444444;
   --player-btn-bg: #2a2a2a;
   --player-btn-text: #e5e7eb;
-  --player-btn-hover-border: #14b8a6;
-  --player-btn-hover-bg: #0f2926;
-  --picker-order-bg: #14b8a640;
-  --picker-order-text: #14b8a6;
-  --picker-count-bg: #0f2926;
-  --picker-count-text: #14b8a6;
-  --selected-chip-bg: #14b8a6;
+  --player-btn-hover-border: #bfd0ff;
+  --player-btn-hover-bg: #101d44;
+  --picker-order-bg: #05247a99;
+  --picker-order-text: #bfdbfe;
+  --picker-count-bg: #101d44;
+  --picker-count-text: #bfd0ff;
+  --selected-chip-bg: #05247a;
   --selected-chip-text: #ffffff;
   --waiting-warning-hover: #4a2a0a;
   --waiting-danger-hover: #4a1a1a;
   --planned-btn-danger-hover-bg: #4a1a1a;
   --planned-btn-warning-hover-bg: #4a2a0a;
-  --dialog-primary-border: #14b8a6;
+  --dialog-primary-border: #8fb3ff;
   --dialog-warning-border: #fcd34d;
   --dialog-error-border: #ef4444;
-  --note-primary-text: #14b8a6;
+  --note-primary-text: #bfd0ff;
   --note-warning-text: #fcd34d;
   --note-error-text: #fca5a5;
   --dialog-title-secondary: #f59e0b;
   --dialog-title-warning: #f59e0b;
   --shuttle-danger-border: #991b1b;
   --shuttle-warning-border: #92400e;
-  --shuttle-batch-border: #1e3a8a;
+  --shuttle-batch-border: #f59e0b;
   --app-dialog-border: #333333;
 }
 
@@ -245,10 +245,6 @@ body {
   padding: 16px;
 }
 
-.controlBandMatchSetup {
-  padding: 12px 16px;
-}
-
 .quickControls {
   align-items: flex-start;
 }
@@ -256,14 +252,6 @@ body {
 .matchSetupToggle,
 .settingsToggle {
   flex-shrink: 0;
-}
-
-.controlBandMatchSetup .quickControls {
-  align-items: stretch;
-}
-
-.controlBandMatchSetup .addPlayerForm {
-  align-items: stretch;
 }
 
 .settingsChevron {
@@ -292,6 +280,29 @@ body {
   gap: 12px;
   flex: 1;
   align-items: flex-start;
+}
+
+.matchSetupAddPlayerFabWrap {
+  position: fixed;
+  right: max(20px, env(safe-area-inset-right));
+  bottom: max(30px, env(safe-area-inset-bottom));
+  z-index: 1100;
+}
+
+.matchSetupAddPlayerFab {
+  box-shadow: 0 6px 14px rgba(5, 36, 122, 0.22);
+}
+
+.addPlayerDialogPaper {
+  border-radius: 8px;
+}
+
+.addPlayerDialogContent {
+  padding-top: 8px !important;
+}
+
+.addPlayerDialogActions {
+  padding: 8px 24px 20px;
 }
 
 .roomForm {
@@ -695,7 +706,7 @@ body {
 }
 
 .ledgerSelectedRow {
-  outline: 2px solid var(--primary-light);
+  outline: 3px solid var(--primary-light);
   outline-offset: -2px;
   background: var(--primary-bg);
 }
@@ -703,6 +714,16 @@ body {
 .scoreTableWrap .MuiTableRow-root.ledgerSelectedRow,
 .scoreTableWrap .MuiTableRow-root.ledgerSelectedRow.MuiTableRow-hover:hover {
   background: var(--primary-bg) !important;
+}
+
+.scoreTableWrap .MuiTableRow-root.ledgerSelectedRow .stickyName {
+  background: var(--primary-bg) !important;
+}
+
+.scoreTableWrap .MuiTableRow-root.ledgerSelectedRow .playerNameButton {
+  border-color: var(--primary-light);
+  background: var(--primary-bg);
+  color: var(--app-text);
 }
 
 .playerPickerOrder,
@@ -987,8 +1008,8 @@ thead .stickyName {
 
 .shuttleNumberIconBatch {
   border-color: var(--shuttle-batch-border);
-  color: #ffffff;
-  background: #3b82f6;
+  color: var(--batch-text);
+  background: var(--batch-bg);
 }
 
 .playerCell {
@@ -1119,6 +1140,13 @@ thead .stickyName {
   font-weight: 700;
 }
 
+.matchStartTime {
+  margin-top: -2px;
+  margin-bottom: 4px;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
 .matchItem {
   display: grid;
   grid-template-columns: minmax(96px, auto) 1fr;
@@ -1230,6 +1258,12 @@ thead .stickyName {
   padding: 12px 0;
 }
 
+.paidPlayerTime {
+  margin-top: 2px;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
 .appFooter {
   color: var(--app-footer);
   font-size: 0.72rem;
@@ -1318,6 +1352,11 @@ thead .stickyName {
 
   .addPlayerForm {
     grid-template-columns: 1fr;
+  }
+
+  .matchSetupAddPlayerFabWrap {
+    right: max(16px, env(safe-area-inset-right));
+    bottom: max(16px, env(safe-area-inset-bottom));
   }
 
   .appHeader {
@@ -1490,7 +1529,10 @@ thead .stickyName {
 
 .appDialogImageWrap {
   display: flex;
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
+  gap: 8px;
   padding: 6px 0 2px;
 }
 
@@ -1502,6 +1544,13 @@ thead .stickyName {
   border-radius: 10px;
   object-fit: contain;
   background: var(--image-bg);
+}
+
+.appDialogImageCaption {
+  color: var(--app-text);
+  font-size: 1.05rem;
+  font-weight: 900;
+  text-align: center;
 }
 
 .appDialogNote {

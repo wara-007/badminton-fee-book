@@ -320,6 +320,23 @@ describe('badminton session calculations', () => {
     ]);
   });
 
+  it('includes paid time in paid player summaries', () => {
+    const paidAt = '2026-05-24T02:00:00.000Z';
+    const players = [
+      {
+        ...createPlayer('A'),
+        shuttleMarks: [1],
+        paid: true,
+        paidAt,
+      },
+    ];
+
+    expect(groupPaidPlayersByDay(players, DEFAULT_PRICING)[0].players[0]).toMatchObject({
+      name: 'A',
+      paidAt,
+    });
+  });
+
   it('groups matches by shuttle number and keeps duplicate marks', () => {
     const players = [
       { ...createPlayer('a'), shuttleMarks: [1, 2, 3] },
@@ -350,6 +367,28 @@ describe('badminton session calculations', () => {
         isOverLimit: false,
       },
     ]);
+  });
+
+  it('adds match start time from the related activity', () => {
+    const players = [
+      { ...createPlayer('a'), shuttleMarks: [1] },
+      { ...createPlayer('b'), shuttleMarks: [1] },
+      { ...createPlayer('c'), shuttleMarks: [1] },
+      { ...createPlayer('d'), shuttleMarks: [1] },
+    ];
+
+    expect(
+      groupMatchesByShuttle(players, [
+        createActivity(
+          'match-confirmed',
+          'ยืนยันลูก 1: a, b, c, d',
+          '2026-05-25T12:34:00.000Z',
+        ),
+      ])[0],
+    ).toMatchObject({
+      shuttleNumber: 1,
+      startedAt: '2026-05-25T12:34:00.000Z',
+    });
   });
 
   it('marks match groups with fewer than four marks as incomplete', () => {

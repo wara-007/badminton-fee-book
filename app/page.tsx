@@ -26,6 +26,7 @@ import {
   DialogContentText,
   DialogTitle,
   Divider,
+  Fab,
   IconButton,
   InputAdornment,
   Paper,
@@ -88,10 +89,12 @@ import {
   VoicePlayerMatchResult,
   matchSpokenPlayerNames
 } from "@/lib/voice-player-match";
+import { createPromptPayQrUrlFromPayload } from "@/lib/promptpay";
 
 const bahtFormatter = new Intl.NumberFormat("th-TH");
 const appVersion = packageInfo.version;
 const AUTH_STORAGE_KEY = "badminton-fee-book.auth";
+const PAYMENT_QR_RECIPIENT_NAME = "ว่าที่ ร้อยตรี ธนากร มาศิริ";
 type UserRole = "admin" | "admin2";
 type AuthSession = {
   role: UserRole;
@@ -100,6 +103,11 @@ const dateFormatter = new Intl.DateTimeFormat("th-TH", {
   day: "numeric",
   month: "short",
   year: "numeric"
+});
+const matchTimeFormatter = new Intl.DateTimeFormat("th-TH", {
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false
 });
 
 type AppDialogOptions = {
@@ -115,6 +123,7 @@ type AppDialogOptions = {
   image?: {
     src: string;
     alt: string;
+    caption?: string;
   };
   confirmLabel?: string;
   cancelLabel?: string;
@@ -175,11 +184,13 @@ export default function HomePage() {
   const [activeTab, setActiveTab] = useState(0);
   const [playerSortMode, setPlayerSortMode] = useState<"queue" | "alphabetical">("queue");
   const [matchSetupMode, setMatchSetupMode] = useState(false);
+  const [addPlayerDialogOpen, setAddPlayerDialogOpen] = useState(false);
   const [settingsExpanded, setSettingsExpanded] = useState(false);
   const [mobileSummaryExpanded, setMobileSummaryExpanded] = useState(false);
   const [editingShuttleNumber, setEditingShuttleNumber] = useState<number | null>(null);
   const [editingReturnShuttleNumber, setEditingReturnShuttleNumber] = useState<number | null>(null);
   const [ledgerSelectedPlayerId, setLedgerSelectedPlayerId] = useState<string | null>(null);
+  const [paymentQrPayload, setPaymentQrPayload] = useState("");
   const [now, setNow] = useState(() => new Date().toISOString());
   const [clockOffsetMs, setClockOffsetMs] = useState(0);
   const [hydrated, setHydrated] = useState(false);
@@ -197,10 +208,59 @@ export default function HomePage() {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clockOffsetRef = useRef(0);
   const sessionRef = useRef(session);
+  const addPlayerInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     sessionRef.current = session;
   }, [session]);
+
+  useEffect(() => {
+    if (!addPlayerDialogOpen) {
+      return;
+    }
+
+    window.setTimeout(() => {
+      addPlayerInputRef.current?.focus();
+    }, 0);
+  }, [addPlayerDialogOpen]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function decodeExistingPaymentQr() {
+      const BarcodeDetectorConstructor = (
+        window as unknown as {
+          BarcodeDetector?: new (options: { formats: string[] }) => {
+            detect: (image: HTMLImageElement) => Promise<Array<{ rawValue?: string }>>;
+          };
+        }
+      ).BarcodeDetector;
+
+      if (!BarcodeDetectorConstructor) {
+        return;
+      }
+
+      const image = new Image();
+      image.src = "/my-qr.jpg";
+      await image.decode();
+      const detector = new BarcodeDetectorConstructor({ formats: ["qr_code"] });
+      const results = await detector.detect(image);
+      const payload = results.find((result) => result.rawValue)?.rawValue ?? "";
+      if (!cancelled && payload) {
+        setPaymentQrPayload(payload);
+      }
+    }
+
+    decodeExistingPaymentQr().catch(() => {
+      if (!cancelled) {
+        setPaymentQrPayload("");
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const initialSessionId = getInitialSessionId();
@@ -629,21 +689,22 @@ export default function HomePage() {
     router.push("/");
   }
 
-  async function addPlayer(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function addPlayerFromDraft() {
     if (isEditingLocked || !canManageSession) {
-      return;
+      return false;
     }
 
     const trimmedName = playerName.trim();
     if (!trimmedName) {
-      return;
+      return false;
     }
 
     const duplicatedPlayer = session.players.find(
       (player) => player.name.trim().toLocaleLowerCase("th-TH") === trimmedName.toLocaleLowerCase("th-TH")
     );
     if (duplicatedPlayer) {
+      const shouldReturnToAddPlayerDialog = addPlayerDialogOpen;
+      setAddPlayerDialogOpen(false);
       await showAlert({
         title: "ชื่อซ้ำ",
         headline: `มีชื่อ ${duplicatedPlayer.name} อยู่แล้ว`,
@@ -652,7 +713,10 @@ export default function HomePage() {
         confirmLabel: "รับทราบ",
         color: "warning"
       });
-      return;
+      if (shouldReturnToAddPlayerDialog) {
+        setAddPlayerDialogOpen(true);
+      }
+      return false;
     }
 
     const createdAt = getTrustedNowIso();
@@ -667,7 +731,28 @@ export default function HomePage() {
       ]
     }));
     setPlayerName("");
-    setActiveTab(0);
+    if (!matchSetupMode) {
+      setActiveTab(0);
+    }
+    return true;
+  }
+
+  async function addPlayer(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await addPlayerFromDraft();
+  }
+
+  async function addPlayerFromDialog(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const added = await addPlayerFromDraft();
+    if (added) {
+      setAddPlayerDialogOpen(false);
+    }
+  }
+
+  function closeAddPlayerDialog() {
+    setAddPlayerDialogOpen(false);
+    setPlayerName("");
   }
 
   function updatePlayer(id: string, updater: (player: Player) => Player) {
@@ -1377,6 +1462,17 @@ export default function HomePage() {
       return;
     }
 
+    const playerTotal = calculatePlayerTotal(player, session.pricing);
+    const paymentQrImage = paid && paymentQrPayload
+      ? {
+        src: createPromptPayQrUrlFromPayload(paymentQrPayload, playerTotal),
+        alt: `PromptPay QR สำหรับจ่าย ${formatBaht(playerTotal)} บาท`,
+        caption: PAYMENT_QR_RECIPIENT_NAME
+      }
+      : paid
+        ? { src: "/my-qr.jpg", alt: "QR code สำหรับจ่ายเงิน" }
+        : undefined;
+
     if (!(await showConfirm({
       title: paid ? "ยืนยันการจ่ายเงิน" : "ย้ายกลับค้างจ่าย",
       headline: paid ? "" : `ย้าย ${player.name} กลับไปค้างจ่ายใช่ไหม?`,
@@ -1394,11 +1490,16 @@ export default function HomePage() {
           : []),
         {
           label: "ยอดเงิน",
-          value: `${formatBaht(calculatePlayerTotal(player, session.pricing))} บาท`,
+          value: `${formatBaht(playerTotal)} บาท`,
           tone: paid ? "primary" : "warning"
         }
       ],
-      image: paid ? { src: "/my-qr.jpg", alt: "QR code สำหรับจ่ายเงิน" } : undefined,
+      image: paymentQrImage,
+      note: paid && !paymentQrPayload
+        ? "ใช้ QR เดิมอยู่ ถ้า browser อ่าน QR เดิมได้ ระบบจะใส่ยอดเงินให้อัตโนมัติ"
+        : paid
+          ? "QR นี้ใส่ยอดของคนนี้แล้ว ให้เช็กชื่อผู้รับและยอดในแอพธนาคารก่อนยืนยัน"
+          : undefined,
       confirmLabel: paid ? "จ่ายแล้ว" : "ย้ายกลับ",
       color: paid ? "primary" : "warning"
     }))) {
@@ -1565,30 +1666,29 @@ export default function HomePage() {
               </Box>
             ) : null}
 
-            <Paper className={`controlBand${matchSetupMode ? " controlBandMatchSetup" : ""}`} elevation={0}>
+            {!matchSetupMode ? (
+            <Paper className="controlBand" elevation={0}>
               <Stack direction={{ xs: "column", sm: "row" }} spacing={2} className="quickControls">
                 <Button
-                  variant={matchSetupMode ? "contained" : "outlined"}
-                  color={matchSetupMode ? "secondary" : "primary"}
+                  variant="outlined"
+                  color="primary"
                   onClick={toggleMatchSetupMode}
                   className="matchSetupToggle"
                 >
-                  {matchSetupMode ? "ออกจากโหมดจัด Match" : "เริ่มจัด Match"}
+                  เริ่มจัด Match
                 </Button>
-                {!matchSetupMode ? (
-                  <Button
-                    variant="outlined"
-                    endIcon={
-                      <ExpandMoreIcon
-                        className={settingsExpanded ? "settingsChevron expanded" : "settingsChevron"}
-                      />
-                    }
-                    onClick={() => setSettingsExpanded((expanded) => !expanded)}
-                    className="settingsToggle"
-                  >
-                    รอบและราคา
-                  </Button>
-                ) : null}
+                <Button
+                  variant="outlined"
+                  endIcon={
+                    <ExpandMoreIcon
+                      className={settingsExpanded ? "settingsChevron expanded" : "settingsChevron"}
+                    />
+                  }
+                  onClick={() => setSettingsExpanded((expanded) => !expanded)}
+                  className="settingsToggle"
+                >
+                  รอบและราคา
+                </Button>
                 <Box component="form" onSubmit={addPlayer} className="addPlayerForm">
                   <TextField
                     label="ชื่อผู้เล่น"
@@ -1608,7 +1708,7 @@ export default function HomePage() {
                   </Button>
                 </Box>
               </Stack>
-              <Collapse in={!matchSetupMode && settingsExpanded}>
+              <Collapse in={settingsExpanded}>
                 <Box className="settingsPanel">
                   <Box component="form" onSubmit={switchSession} className="roomForm">
                     <TextField
@@ -1654,13 +1754,12 @@ export default function HomePage() {
                   />
                 </Box>
               </Collapse>
-              {!matchSetupMode ? (
-                <Stack direction="row" spacing={1} className="syncBar">
-                  <Chip label={`รอบ ${sessionId}`} size="small" color="primary" variant="outlined" />
-                  <Chip label={syncStatus} size="small" />
-                </Stack>
-              ) : null}
+              <Stack direction="row" spacing={1} className="syncBar">
+                <Chip label={`รอบ ${sessionId}`} size="small" color="primary" variant="outlined" />
+                <Chip label={syncStatus} size="small" />
+              </Stack>
             </Paper>
+            ) : null}
 
             {isEmergencySyncStatus && !matchSetupMode ? (
               <EmergencySyncPanel
@@ -1896,6 +1995,8 @@ export default function HomePage() {
                   onClearPlayData={clearPlayData}
                   onResetSession={resetSession}
                   onCopySummary={copySummary}
+                  matchSetupMode={matchSetupMode}
+                  onToggleMatchSetupMode={toggleMatchSetupMode}
                   canManageSession={canManageSession}
                 />
               )}
@@ -1944,10 +2045,15 @@ export default function HomePage() {
                 alt={dialog.image.alt}
                 className="appDialogImage"
               />
+              {dialog.image.caption ? (
+                <Typography className="appDialogImageCaption">
+                  {dialog.image.caption}
+                </Typography>
+              ) : null}
             </Box>
           ) : null}
           {dialog.note ? (
-            <Typography className={`appDialogNote appDialogNote-${dialog.color ?? "primary"}`}>
+            <Typography textAlign="center" className={`appDialogNote appDialogNote-${dialog.color ?? "primary"}`}>
               {dialog.note}
             </Typography>
           ) : null}
@@ -1968,6 +2074,55 @@ export default function HomePage() {
           </Button>
         </DialogActions>
       </Dialog>
+      <Dialog
+        open={addPlayerDialogOpen}
+        onClose={closeAddPlayerDialog}
+        fullWidth
+        maxWidth="xs"
+        PaperProps={{ className: "addPlayerDialogPaper" }}
+      >
+        <Box component="form" onSubmit={addPlayerFromDialog}>
+          <DialogTitle>เพิ่มผู้เล่น</DialogTitle>
+          <DialogContent className="addPlayerDialogContent">
+            <TextField
+              label="ชื่อผู้เล่น"
+              value={playerName}
+              onChange={(event) => setPlayerName(event.target.value)}
+              disabled={isEditingLocked || !canManageSession}
+              fullWidth
+              autoComplete="off"
+              autoFocus
+              inputRef={addPlayerInputRef}
+            />
+          </DialogContent>
+          <DialogActions className="addPlayerDialogActions">
+            <Button onClick={closeAddPlayerDialog}>ยกเลิก</Button>
+            <Button
+              type="submit"
+              variant="contained"
+              startIcon={<AddIcon />}
+              disabled={isEditingLocked || !canManageSession}
+            >
+              เพิ่มผู้เล่น
+            </Button>
+          </DialogActions>
+        </Box>
+      </Dialog>
+      {matchSetupMode ? (
+        <Tooltip title="เพิ่มผู้เล่น">
+          <span className="matchSetupAddPlayerFabWrap">
+            <Fab
+              color="primary"
+              aria-label="เพิ่มผู้เล่น"
+              className="matchSetupAddPlayerFab"
+              onClick={() => setAddPlayerDialogOpen(true)}
+              disabled={isEditingLocked || !canManageSession}
+            >
+              <AddIcon />
+            </Fab>
+          </span>
+        </Tooltip>
+      ) : null}
     </ThemeProvider>
   );
 }
@@ -2193,7 +2348,7 @@ function ScoreSheet({
                         isEditingLocked &&
                         typeof shuttleMark === "number" &&
                         shuttleMark !== editingShuttleNumber;
-                      const isDisabled = !canManageSession || isLockedOtherShuttle;
+                      const isDisabled = !checked || !canManageSession || isLockedOtherShuttle;
                       return (
                         <Checkbox
                           inputProps={{
@@ -3226,6 +3381,11 @@ function MatchSummaryPanel({
                   <Typography variant="h6" component="h3">
                     ลูกที่ {group.shuttleNumber}
                   </Typography>
+                  {group.startedAt ? (
+                    <Typography className="matchStartTime" color="text.secondary">
+                      เริ่ม {formatMatchStartTime(group.startedAt)}
+                    </Typography>
+                  ) : null}
                   <Typography className="matchNames">
                     {group.playerNames.map((name, index) => (
                       <span key={`${group.shuttleNumber}-${name}-${index}`}>
@@ -3306,6 +3466,11 @@ function PaidSummary({
                       <Box>
                         <Typography fontWeight={800}>{paidPlayer.name}</Typography>
                         <Typography color="text.secondary">{paidPlayer.shuttleCount} ลูก</Typography>
+                        {paidPlayer.paidAt ? (
+                          <Typography className="paidPlayerTime" color="text.secondary">
+                            จ่าย {formatMatchStartTime(paidPlayer.paidAt)}
+                          </Typography>
+                        ) : null}
                       </Box>
                       <Stack direction="row" spacing={1} alignItems="center">
                         <Typography fontWeight={800}>{formatBaht(paidPlayer.amount)} บาท</Typography>
@@ -3336,11 +3501,15 @@ function DataManagementPanel({
   onClearPlayData,
   onResetSession,
   onCopySummary,
+  matchSetupMode,
+  onToggleMatchSetupMode,
   canManageSession
 }: {
   onClearPlayData: () => void;
   onResetSession: () => void;
   onCopySummary: () => void;
+  matchSetupMode: boolean;
+  onToggleMatchSetupMode: () => void;
   canManageSession: boolean;
 }) {
   return (
@@ -3354,6 +3523,11 @@ function DataManagementPanel({
         </Typography>
       </Box>
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1} className="dataManagementActions">
+        {matchSetupMode ? (
+          <Button color="secondary" variant="contained" onClick={onToggleMatchSetupMode}>
+            ออกจากโหมดจัด Match
+          </Button>
+        ) : null}
         <Button variant="contained" onClick={onCopySummary} disabled={!canManageSession}>
           Export สรุป
         </Button>
@@ -3406,6 +3580,15 @@ function formatBaht(value: number): string {
 
 function formatDateKey(dateKey: string): string {
   return dateFormatter.format(new Date(`${dateKey}T00:00:00`));
+}
+
+function formatMatchStartTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return matchTimeFormatter.format(date);
 }
 
 function formatRelativeTime(createdAt: string, nowValue: string): string {
