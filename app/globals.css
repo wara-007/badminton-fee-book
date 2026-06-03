@@ -22,6 +22,9 @@
   --danger-bg: #fff7f7;
   --danger-text: #991b1b;
   --danger-bg-soft: #fee2e2;
+  --success-border: #bbf7d0;
+  --success-bg: #ecfdf5;
+  --success-text: #15803d;
   --warning-border: #fcd34d;
   --warning-bg: #fffbeb;
   --warning-text: #d97706;
@@ -106,6 +109,9 @@
   --danger-bg: #3f1212;
   --danger-text: #fca5a5;
   --danger-bg-soft: #4a1a1a;
+  --success-border: #14532d;
+  --success-bg: #1f2d23;
+  --success-text: #bbf7d0;
   --warning-border: #92400e;
   --warning-bg: #3f2a0a;
   --warning-text: #fcd34d;
@@ -1258,6 +1264,38 @@ thead .stickyName {
   padding: 12px 0;
 }
 
+.paidPlayerRight {
+  min-width: 200px;
+}
+
+.paidPlayerAmounts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 160px;
+}
+
+.paidPlayerAmountMain {
+  font-weight: 800;
+  font-size: 1.05rem;
+  line-height: 1.1;
+}
+
+.paidPlayerAmountMeta {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  line-height: 1.2;
+}
+
+.paidPlayerDiscount {
+  color: var(--success-text);
+}
+
+.paidPlayerOverpay {
+  color: var(--danger-text);
+}
+
 .paidPlayerTime {
   margin-top: 2px;
   font-size: 0.84rem;
@@ -1303,6 +1341,15 @@ thead .stickyName {
   .paidPlayerItem {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .paidPlayerRight {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .paidPlayerAmounts {
+    width: 100%;
   }
 
   .matchItem {
@@ -1551,6 +1598,12 @@ thead .stickyName {
   font-size: 1.05rem;
   font-weight: 900;
   text-align: center;
+}
+
+.paymentDialogCalculatedAmount {
+  margin-top: -6px;
+  font-size: 0.9rem;
+  font-weight: 700;
 }
 
 .appDialogNote {

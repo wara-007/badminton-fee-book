@@ -95,6 +95,7 @@ const bahtFormatter = new Intl.NumberFormat("th-TH");
 const appVersion = packageInfo.version;
 const AUTH_STORAGE_KEY = "badminton-fee-book.auth";
 const PAYMENT_QR_RECIPIENT_NAME = "ว่าที่ ร้อยตรี ธนากร มาศิริ";
+const PAYMENT_QR_PAYLOAD = "00020101021129370016A0000006770101110113006689081087853037645802TH63042E3B";
 type UserRole = "admin" | "admin2";
 type AuthSession = {
   role: UserRole;
@@ -134,6 +135,16 @@ type AppDialogState = AppDialogOptions & {
   open: boolean;
   mode: "alert" | "confirm";
   resolve?: (value: boolean) => void;
+};
+
+type PaymentDialogState = {
+  open: boolean;
+  playerId: string;
+  playerName: string;
+  shuttleCount: number;
+  calculatedAmount: number;
+  amountDraft: string;
+  resolve?: (value: { confirmed: boolean; amount: number }) => void;
 };
 
 const loginUsers: Record<UserRole, { label: string; password: string }> = {
@@ -190,7 +201,6 @@ export default function HomePage() {
   const [editingShuttleNumber, setEditingShuttleNumber] = useState<number | null>(null);
   const [editingReturnShuttleNumber, setEditingReturnShuttleNumber] = useState<number | null>(null);
   const [ledgerSelectedPlayerId, setLedgerSelectedPlayerId] = useState<string | null>(null);
-  const [paymentQrPayload, setPaymentQrPayload] = useState("");
   const [now, setNow] = useState(() => new Date().toISOString());
   const [clockOffsetMs, setClockOffsetMs] = useState(0);
   const [hydrated, setHydrated] = useState(false);
@@ -203,6 +213,14 @@ export default function HomePage() {
     mode: "alert",
     title: "",
     message: ""
+  });
+  const [paymentDialog, setPaymentDialog] = useState<PaymentDialogState>({
+    open: false,
+    playerId: "",
+    playerName: "",
+    shuttleCount: 0,
+    calculatedAmount: 0,
+    amountDraft: ""
   });
   const lastRemoteSnapshotRef = useRef("");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -223,44 +241,6 @@ export default function HomePage() {
       addPlayerInputRef.current?.focus();
     }, 0);
   }, [addPlayerDialogOpen]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function decodeExistingPaymentQr() {
-      const BarcodeDetectorConstructor = (
-        window as unknown as {
-          BarcodeDetector?: new (options: { formats: string[] }) => {
-            detect: (image: HTMLImageElement) => Promise<Array<{ rawValue?: string }>>;
-          };
-        }
-      ).BarcodeDetector;
-
-      if (!BarcodeDetectorConstructor) {
-        return;
-      }
-
-      const image = new Image();
-      image.src = "/my-qr.jpg";
-      await image.decode();
-      const detector = new BarcodeDetectorConstructor({ formats: ["qr_code"] });
-      const results = await detector.detect(image);
-      const payload = results.find((result) => result.rawValue)?.rawValue ?? "";
-      if (!cancelled && payload) {
-        setPaymentQrPayload(payload);
-      }
-    }
-
-    decodeExistingPaymentQr().catch(() => {
-      if (!cancelled) {
-        setPaymentQrPayload("");
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     const initialSessionId = getInitialSessionId();
@@ -665,6 +645,36 @@ export default function HomePage() {
     resolver?.(result);
   }
 
+  function parsePaymentAmount(value: string) {
+    const amount = Number(value);
+    return Number.isFinite(amount) && amount > 0 ? amount : 0;
+  }
+
+  function showPaymentConfirm(player: Player, calculatedAmount: number) {
+    return new Promise<{ confirmed: boolean; amount: number }>((resolve) => {
+      setPaymentDialog({
+        open: true,
+        playerId: player.id,
+        playerName: player.name,
+        shuttleCount: getPlayerShuttleCount(player),
+        calculatedAmount,
+        amountDraft: String(calculatedAmount),
+        resolve
+      });
+    });
+  }
+
+  function closePaymentDialog(confirmed: boolean) {
+    const resolver = paymentDialog.resolve;
+    const amount = parsePaymentAmount(paymentDialog.amountDraft);
+    setPaymentDialog((current) => ({
+      ...current,
+      open: false,
+      resolve: undefined
+    }));
+    resolver?.({ confirmed: confirmed && amount > 0, amount });
+  }
+
   function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const normalizedName = loginName.trim().toLocaleLowerCase("th-TH") as UserRole;
@@ -847,6 +857,7 @@ export default function HomePage() {
           shuttleMarks: [],
           paid: false,
           paidAt: undefined,
+          paidAmount: undefined,
           gameCount: 0
         }))
       }));
@@ -1463,17 +1474,15 @@ export default function HomePage() {
     }
 
     const playerTotal = calculatePlayerTotal(player, session.pricing);
-    const paymentQrImage = paid && paymentQrPayload
-      ? {
-        src: createPromptPayQrUrlFromPayload(paymentQrPayload, playerTotal),
-        alt: `PromptPay QR สำหรับจ่าย ${formatBaht(playerTotal)} บาท`,
-        caption: PAYMENT_QR_RECIPIENT_NAME
-      }
-      : paid
-        ? { src: "/my-qr.jpg", alt: "QR code สำหรับจ่ายเงิน" }
-        : undefined;
+    let paidAmount = playerTotal;
 
-    if (!(await showConfirm({
+    if (paid) {
+      const paymentResult = await showPaymentConfirm(player, playerTotal);
+      if (!paymentResult.confirmed) {
+        return;
+      }
+      paidAmount = paymentResult.amount;
+    } else if (!(await showConfirm({
       title: paid ? "ยืนยันการจ่ายเงิน" : "ย้ายกลับค้างจ่าย",
       headline: paid ? "" : `ย้าย ${player.name} กลับไปค้างจ่ายใช่ไหม?`,
       message: paid ? "" : "คนนี้จะกลับไปอยู่ในรายชื่อค้างจ่าย",
@@ -1494,12 +1503,7 @@ export default function HomePage() {
           tone: paid ? "primary" : "warning"
         }
       ],
-      image: paymentQrImage,
-      note: paid && !paymentQrPayload
-        ? "ใช้ QR เดิมอยู่ ถ้า browser อ่าน QR เดิมได้ ระบบจะใส่ยอดเงินให้อัตโนมัติ"
-        : paid
-          ? "QR นี้ใส่ยอดของคนนี้แล้ว ให้เช็กชื่อผู้รับและยอดในแอพธนาคารก่อนยืนยัน"
-          : undefined,
+      note: undefined,
       confirmLabel: paid ? "จ่ายแล้ว" : "ย้ายกลับ",
       color: paid ? "primary" : "warning"
     }))) {
@@ -1515,7 +1519,8 @@ export default function HomePage() {
               ? {
                 ...currentPlayer,
                 paid,
-                paidAt: paid ? getTrustedNowIso() : undefined
+                paidAt: paid ? getTrustedNowIso() : undefined,
+                paidAmount: paid ? paidAmount : undefined
               }
               : currentPlayer
           ),
@@ -1529,7 +1534,7 @@ export default function HomePage() {
         createActivity(
           paid ? "paid" : "unpaid",
           paid
-            ? `${player.name} จ่ายแล้ว ${formatBaht(calculatePlayerTotal(player, session.pricing))} บาท`
+            ? `${player.name} จ่ายแล้ว ${formatBaht(paidAmount)} บาท`
             : `ย้าย ${player.name} กลับไปค้างจ่าย`,
           getTrustedNowIso()
         )
@@ -1612,6 +1617,11 @@ export default function HomePage() {
       setSyncStatus("รอส่งขึ้นเซิร์ฟเวอร์");
     }
   }
+
+  const paymentDialogAmount = parsePaymentAmount(paymentDialog.amountDraft);
+  const paymentDialogQrImage = paymentDialogAmount
+    ? createPromptPayQrUrlFromPayload(PAYMENT_QR_PAYLOAD, paymentDialogAmount)
+    : "";
 
   if (!authSession) {
     return (
@@ -2007,6 +2017,80 @@ export default function HomePage() {
           </Stack>
         </Container>
       </Box>
+      <Dialog
+        open={paymentDialog.open}
+        onClose={() => closePaymentDialog(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ className: "appDialogPaper" }}
+      >
+        <DialogTitle className="appDialogTitle appDialogTitle-primary">
+          ยืนยันการจ่ายเงิน
+        </DialogTitle>
+        <DialogContent className="appDialogContent">
+          <Box className="appDialogDetails">
+            <Box className="appDialogDetail appDialogDetail-primary">
+              <Typography className="appDialogDetailLabel">ผู้เล่น</Typography>
+              <Typography className="appDialogDetailValue">{paymentDialog.playerName}</Typography>
+            </Box>
+            <Box className="appDialogDetail appDialogDetail-primary">
+              <Typography className="appDialogDetailLabel">จำนวนลูก</Typography>
+              <Typography className="appDialogDetailValue">{paymentDialog.shuttleCount} ลูก</Typography>
+            </Box>
+          </Box>
+          <TextField
+            label="ยอดเงิน"
+            type="text"
+            value={paymentDialog.amountDraft}
+            onChange={(event) => {
+              const digitsOnly = event.target.value.replace(/[^0-9]/g, "");
+              setPaymentDialog((current) => ({
+                ...current,
+                amountDraft: digitsOnly
+              }));
+            }}
+            fullWidth
+            autoComplete="off"
+            inputProps={{ inputMode: "numeric", pattern: "[0-9]*" }}
+            InputProps={{
+              endAdornment: <InputAdornment position="end">บาท</InputAdornment>
+            }}
+          />
+          {paymentDialog.calculatedAmount !== paymentDialogAmount && paymentDialogAmount > 0 ? (
+            <Typography className="paymentDialogCalculatedAmount" color="text.secondary">
+              ยอดคำนวณเดิม {formatBaht(paymentDialog.calculatedAmount)} บาท
+            </Typography>
+          ) : null}
+          {paymentDialogQrImage ? (
+            <Box className="appDialogImageWrap">
+              <Box
+                component="img"
+                src={paymentDialogQrImage}
+                alt={`PromptPay QR สำหรับจ่าย ${formatBaht(paymentDialogAmount)} บาท`}
+                className="appDialogImage"
+              />
+              <Typography className="appDialogImageCaption">
+                {PAYMENT_QR_RECIPIENT_NAME}
+              </Typography>
+            </Box>
+          ) : null}
+          <Typography textAlign="center" className="appDialogNote appDialogNote-primary">
+            QR จะเปลี่ยนตามยอดเงินที่แก้ ให้เช็กชื่อผู้รับและยอดในแอพธนาคารก่อนยืนยัน
+          </Typography>
+        </DialogContent>
+        <DialogActions className="appDialogActions">
+          <Button variant="outlined" onClick={() => closePaymentDialog(false)}>
+            ยกเลิก
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => closePaymentDialog(true)}
+            disabled={paymentDialogAmount <= 0}
+          >
+            จ่ายแล้ว
+          </Button>
+        </DialogActions>
+      </Dialog>
       <Dialog
         open={dialog.open}
         onClose={() => closeDialog(false)}
@@ -3460,6 +3544,9 @@ function PaidSummary({
                       player.name === paidPlayer.name &&
                       player.shuttleCount === paidPlayer.shuttleCount
                   );
+                  const discount = paidPlayer.calculatedAmount - paidPlayer.amount;
+                  const hasDiscount = discount > 0;
+                  const hasOverpay = discount < 0;
 
                   return (
                     <Box key={`${group.dateKey}-${paidPlayer.name}`} className="paidPlayerItem">
@@ -3472,8 +3559,25 @@ function PaidSummary({
                           </Typography>
                         ) : null}
                       </Box>
-                      <Stack direction="row" spacing={1} alignItems="center">
-                        <Typography fontWeight={800}>{formatBaht(paidPlayer.amount)} บาท</Typography>
+                      <Stack direction="row" spacing={1.5} alignItems="flex-start" className="paidPlayerRight">
+                        <Box className="paidPlayerAmounts">
+                          <Typography className="paidPlayerAmountMain">
+                            {formatBaht(paidPlayer.amount)} บาท
+                          </Typography>
+                          <Typography className="paidPlayerAmountMeta">
+                            ยอดจริง {formatBaht(paidPlayer.calculatedAmount)} บาท
+                          </Typography>
+                          {hasDiscount ? (
+                            <Typography className="paidPlayerAmountMeta paidPlayerDiscount">
+                              ลดให้ {formatBaht(discount)} บาท
+                            </Typography>
+                          ) : null}
+                          {hasOverpay ? (
+                            <Typography className="paidPlayerAmountMeta paidPlayerOverpay">
+                              จ่ายเพิ่ม {formatBaht(Math.abs(discount))} บาท
+                            </Typography>
+                          ) : null}
+                        </Box>
                         {sourcePlayer ? (
                           <Button
                             size="small"

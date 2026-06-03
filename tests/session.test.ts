@@ -303,18 +303,37 @@ describe('badminton session calculations', () => {
       { ...createPlayer('D'), shuttleCount: 3, paid: false },
     ];
 
+    const amountA = calculatePlayerTotal(players[0], DEFAULT_PRICING);
+    const amountB = calculatePlayerTotal(players[1], DEFAULT_PRICING);
+    const amountC = calculatePlayerTotal(players[2], DEFAULT_PRICING);
+
     expect(groupPaidPlayersByDay(players, DEFAULT_PRICING)).toEqual([
       {
         dateKey: '2026-05-25',
-        totalAmount: 200,
-        players: [{ name: 'C', shuttleCount: 4, amount: 200 }],
+        totalAmount: amountC,
+        players: [{
+          name: 'C',
+          shuttleCount: 4,
+          amount: amountC,
+          calculatedAmount: amountC,
+        }],
       },
       {
         dateKey: '2026-05-24',
-        totalAmount: 275,
+        totalAmount: amountA + amountB,
         players: [
-          { name: 'A', shuttleCount: 2, amount: 150 },
-          { name: 'B', shuttleCount: 1, amount: 125 },
+          {
+            name: 'A',
+            shuttleCount: 2,
+            amount: amountA,
+            calculatedAmount: amountA,
+          },
+          {
+            name: 'B',
+            shuttleCount: 1,
+            amount: amountB,
+            calculatedAmount: amountB,
+          },
         ],
       },
     ]);
@@ -331,9 +350,38 @@ describe('badminton session calculations', () => {
       },
     ];
 
-    expect(groupPaidPlayersByDay(players, DEFAULT_PRICING)[0].players[0]).toMatchObject({
+    const [paidSummary] = groupPaidPlayersByDay(players, DEFAULT_PRICING);
+
+    expect(paidSummary.players[0]).toMatchObject({
       name: 'A',
       paidAt,
+      calculatedAmount: calculatePlayerTotal(players[0], DEFAULT_PRICING),
+    });
+  });
+
+  it('uses an edited paid amount in paid summaries', () => {
+    const players = [
+      {
+        ...createPlayer('A'),
+        shuttleCount: 2,
+        paid: true,
+        paidAmount: 175,
+        paidAt: '2026-05-24T02:00:00.000Z',
+      },
+      { ...createPlayer('B'), shuttleCount: 1, paid: false },
+    ];
+
+    expect(summarizeSession(players, DEFAULT_PRICING)).toMatchObject({
+      totalAmount: 291,
+      paidAmount: 175,
+      unpaidAmount: 116,
+    });
+    const [paidSummary] = groupPaidPlayersByDay(players, DEFAULT_PRICING);
+
+    expect(paidSummary.players[0]).toMatchObject({
+      name: 'A',
+      amount: 175,
+      calculatedAmount: calculatePlayerTotal(players[0], DEFAULT_PRICING),
     });
   });
 

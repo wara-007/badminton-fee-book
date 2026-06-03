@@ -5,6 +5,7 @@ export type Player = {
   shuttleMarks?: number[];
   paid: boolean;
   paidAt?: string;
+  paidAmount?: number;
   waitingSince?: string;
   restUntil?: string;
   gameCount: number;
@@ -43,6 +44,7 @@ export type PaidPlayerSummary = {
   name: string;
   shuttleCount: number;
   amount: number;
+  calculatedAmount: number;
   paidAt?: string;
 };
 
@@ -158,6 +160,15 @@ export function renumberPlannedMatches(
 
 export function calculatePlayerTotal(player: Player, pricing: Pricing): number {
   return pricing.baseFee + getPlayerShuttleCount(player) * pricing.shuttleFee;
+}
+
+export function getPlayerPaymentAmount(player: Player, pricing: Pricing): number {
+  return player.paid &&
+    typeof player.paidAmount === 'number' &&
+    Number.isFinite(player.paidAmount) &&
+    player.paidAmount >= 0
+    ? player.paidAmount
+    : calculatePlayerTotal(player, pricing);
 }
 
 export function calculatePlayersTotal(
@@ -358,7 +369,7 @@ export function exportSessionSummary(
     `ค้าง ${summary.unpaidAmount} บาท`,
     '',
     ...session.players.map((player) => {
-      const amount = calculatePlayerTotal(player, session.pricing);
+      const amount = getPlayerPaymentAmount(player, session.pricing);
       return `${player.name} ${amount} ${paidNames.has(player.id) ? 'จ่ายแล้ว' : 'ค้าง'}`;
     }),
   ];
@@ -382,7 +393,10 @@ export function summarizeSession(
   const shuttleCountFromMarks = getBillableShuttleCount(players);
   const matchCount = groupMatchesByShuttle(players).length;
   const shuttleCount = Math.max(shuttleCountFromMarks, matchCount);
-  const paidAmount = calculatePlayersIndividualTotal(paidPlayers, pricing);
+  const paidAmount = paidPlayers.reduce(
+    (sum, player) => sum + getPlayerPaymentAmount(player, pricing),
+    0,
+  );
   const unpaidAmount = calculatePlayersIndividualTotal(unpaidPlayers, pricing);
   const sessionAmount = paidAmount + unpaidAmount;
 
@@ -414,7 +428,8 @@ export function groupPaidPlayersByDay(
       current.players.push({
         name: player.name,
         shuttleCount: getPlayerShuttleCount(player),
-        amount: calculatePlayerTotal(player, pricing),
+        amount: getPlayerPaymentAmount(player, pricing),
+        calculatedAmount: calculatePlayerTotal(player, pricing),
         paidAt: player.paidAt,
       });
       current.totalAmount = current.players.reduce(
@@ -591,6 +606,11 @@ export function normalizeSession(value: unknown): SessionState {
               paid: Boolean(player.paid),
               paidAt:
                 typeof player.paidAt === 'string' ? player.paidAt : undefined,
+              paidAmount:
+                typeof player.paidAmount === 'number' &&
+                Number.isFinite(player.paidAmount)
+                  ? Math.max(0, player.paidAmount)
+                  : undefined,
               waitingSince:
                 typeof player.waitingSince === 'string'
                   ? player.waitingSince
