@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
+import ThemeRegistry from "./theme-registry";
 import PwaRegister from "./pwa-register";
 import { ThemeContextProvider } from "@/lib/theme-context";
 import "./globals.css";
@@ -46,10 +47,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Script id="theme-init" strategy="beforeInteractive">
           {themeInitScript}
         </Script>
-        <ThemeContextProvider>
-          <PwaRegister />
-          {children}
-        </ThemeContextProvider>
+        <ThemeRegistry>
+          <ThemeContextProvider>
+            <PwaRegister />
+            {children}
+          </ThemeContextProvider>
+        </ThemeRegistry>
       </body>
     </html>
   );

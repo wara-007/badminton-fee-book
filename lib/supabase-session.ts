@@ -1,4 +1,4 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient, type PostgrestError } from '@supabase/supabase-js';
 import {
   SessionState,
   createInitialSession,
@@ -19,6 +19,8 @@ export const hasSupabaseConfig = Boolean(supabaseUrl && supabaseAnonKey);
 export const supabase: SupabaseClient | null = hasSupabaseConfig
   ? createClient(supabaseUrl as string, supabaseAnonKey as string)
   : null;
+
+let remoteNowSupported = true;
 
 export async function loadRemoteSession(
   sessionId: string,
@@ -66,12 +68,16 @@ export async function saveRemoteSession(
 }
 
 export async function loadRemoteNow(): Promise<string> {
-  if (!supabase) {
+  if (!supabase || !remoteNowSupported) {
     return new Date().toISOString();
   }
 
   const { data, error } = await supabase.rpc('current_server_time');
   if (error || typeof data !== 'string') {
+    const postgrestError = error as PostgrestError | null;
+    if (postgrestError?.code === 'PGRST100' || postgrestError?.message.includes('Not Found')) {
+      remoteNowSupported = false;
+    }
     return new Date().toISOString();
   }
 
