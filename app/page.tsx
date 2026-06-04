@@ -1940,6 +1940,26 @@ export default function HomePage() {
                     onToggleShuttleMark={(id) => setLedgerSelectedPlayerId(id)}
                     selectedPlayerId={ledgerSelectedPlayerId}
                   />
+                </>
+              ) : activeTab === 3 ? (
+                <MatchSummaryPanel
+                  matchGroups={matchGroups}
+                  searchTerm={matchSearchTerm}
+                  targetShuttleNumber={session.currentShuttleNumber}
+                  targetShuttleMarkCount={targetShuttleSummary.count}
+                  onSearchTermChange={setMatchSearchTerm}
+                  onAddMatchToNextShuttle={addMatchToNextShuttle}
+                  canManageSession={canManageSession}
+                />
+              ) : activeTab === 4 ? (
+                <>
+                  <PaidSummary
+                    players={session.players}
+                    paidGroups={visiblePaidGroups}
+                    hasSearch={Boolean(normalizedSearch)}
+                    onSetPaid={setPaid}
+                    canSetPaid={canSetPaid}
+                  />
                   <Box className="summaryGrid">
                     <SummaryStat
                       label="ลูกทั้งหมด"
@@ -1982,24 +2002,6 @@ export default function HomePage() {
                     </Box>
                   </Box>
                 </>
-              ) : activeTab === 3 ? (
-                <MatchSummaryPanel
-                  matchGroups={matchGroups}
-                  searchTerm={matchSearchTerm}
-                  targetShuttleNumber={session.currentShuttleNumber}
-                  targetShuttleMarkCount={targetShuttleSummary.count}
-                  onSearchTermChange={setMatchSearchTerm}
-                  onAddMatchToNextShuttle={addMatchToNextShuttle}
-                  canManageSession={canManageSession}
-                />
-              ) : activeTab === 4 ? (
-                <PaidSummary
-                  players={session.players}
-                  paidGroups={visiblePaidGroups}
-                  hasSearch={Boolean(normalizedSearch)}
-                  onSetPaid={setPaid}
-                  canSetPaid={canSetPaid}
-                />
               ) : (
                 <DataManagementPanel
                   onClearPlayData={clearPlayData}
@@ -3462,14 +3464,17 @@ function MatchSummaryPanel({
             >
               <Box display="flex" justifyContent="space-between" alignItems="flex-start">
                 <Box flex={1}>
+                   <Box sx={{ flexDirection: 'row' }}>
                   <Typography variant="h6" component="h3">
                     ลูกที่ {group.shuttleNumber}
-                  </Typography>
-                  {group.startedAt ? (
-                    <Typography className="matchStartTime" color="text.secondary">
-                      เริ่ม {formatMatchStartTime(group.startedAt)}
-                    </Typography>
+                      {group.startedAt ? (
+                    <span className="matchStartTime" color="text.secondary">
+                     :  เริ่ม {formatMatchStartTime(group.startedAt)}
+                    </span>
                   ) : null}
+                  </Typography>
+                
+                  </Box>
                   <Typography className="matchNames">
                     {group.playerNames.map((name, index) => (
                       <span key={`${group.shuttleNumber}-${name}-${index}`}>
@@ -3551,13 +3556,13 @@ function PaidSummary({
                   return (
                     <Box key={`${group.dateKey}-${paidPlayer.name}`} className="paidPlayerItem">
                       <Box>
-                        <Typography fontWeight={800}>{paidPlayer.name}</Typography>
-                        <Typography color="text.secondary">{paidPlayer.shuttleCount} ลูก</Typography>
-                        {paidPlayer.paidAt ? (
+                         {paidPlayer.paidAt ? (
                           <Typography className="paidPlayerTime" color="text.secondary">
-                            จ่าย {formatMatchStartTime(paidPlayer.paidAt)}
+                            เวลา {formatMatchStartTime(paidPlayer.paidAt)}
                           </Typography>
                         ) : null}
+                        <Typography fontWeight={800}>{paidPlayer.name}</Typography>
+                        <Typography color="text.secondary">{paidPlayer.shuttleCount} ลูก</Typography>
                       </Box>
                       <Stack direction="row" spacing={1.5} alignItems="flex-start" className="paidPlayerRight">
                         <Box className="paidPlayerAmounts">

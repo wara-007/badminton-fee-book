@@ -439,9 +439,14 @@ export function groupPaidPlayersByDay(
       groups.set(dateKey, current);
     });
 
-  return Array.from(groups.values()).sort((first, second) =>
-    second.dateKey.localeCompare(first.dateKey),
-  );
+  return Array.from(groups.values())
+    .map((group) => ({
+      ...group,
+      players: [...group.players].sort((first, second) =>
+        (second.paidAt ?? '').localeCompare(first.paidAt ?? ''),
+      ),
+    }))
+    .sort((first, second) => second.dateKey.localeCompare(first.dateKey));
 }
 
 export function groupMatchesByShuttle(
