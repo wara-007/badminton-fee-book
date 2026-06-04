@@ -927,6 +927,13 @@ body {
   background: var(--planned-btn-warning-hover-bg);
 }
 
+.plannedPlayerButton.plannedPlayerButtonDisabled.Mui-disabled {
+  border-color: var(--disabled-border);
+  color: var(--disabled-text);
+  background: var(--disabled-bg);
+  opacity: 1;
+}
+
 .emptyPlayerPicker {
   grid-column: 1 / -1;
   min-height: 96px;

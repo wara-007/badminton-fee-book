@@ -107,8 +107,8 @@ export const DEFAULT_PRICING: Pricing = {
 export const DEFAULT_SHUTTLE_COLUMNS = 6;
 export const DEFAULT_PLANNED_MATCH_COUNT = 6;
 export const REST_MINUTES = 20;
-export const WAIT_WARNING_MINUTES = 15;
-export const WAIT_DANGER_MINUTES = 20;
+export const WAIT_WARNING_MINUTES = 20;
+export const WAIT_DANGER_MINUTES = 35;
 
 export const STORAGE_KEY = 'badminton-fee-book.session';
 

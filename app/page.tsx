@@ -568,10 +568,6 @@ export default function HomePage() {
     () => new Set(session.plannedMatches.flatMap((match) => match.playerIds)),
     [session.plannedMatches]
   );
-  const availablePlannedPlayers = useMemo(
-    () => activePlayers.filter((player) => !plannedPlayerIds.has(player.id)),
-    [activePlayers, plannedPlayerIds]
-  );
   const shuttleColumns = useMemo(() => {
     if (searchedLedgerShuttleNumber !== null) {
       const matchingColumns = new Set<number>();
@@ -1888,7 +1884,8 @@ export default function HomePage() {
                   plannedMatches={session.plannedMatches}
                   selectedMatchId={selectedPlannedMatch?.id ?? ""}
                   activePlayers={activePlayers}
-                  availablePlayers={availablePlannedPlayers}
+                  availablePlayers={activePlayers}
+                  plannedPlayerIds={plannedPlayerIds}
                   playerSortMode={playerSortMode}
                   onPlayerSortModeChange={setPlayerSortMode}
                   currentShuttleNumber={session.currentShuttleNumber}
@@ -3054,6 +3051,7 @@ function PlannedMatchPanel({
   selectedMatchId,
   activePlayers,
   availablePlayers,
+  plannedPlayerIds,
   playerSortMode,
   onPlayerSortModeChange,
   currentShuttleNumber,
@@ -3069,6 +3067,7 @@ function PlannedMatchPanel({
   selectedMatchId: string;
   activePlayers: Player[];
   availablePlayers: Player[];
+  plannedPlayerIds: ReadonlySet<string>;
   playerSortMode: "queue" | "alphabetical";
   onPlayerSortModeChange: (sortMode: "queue" | "alphabetical") => void;
   currentShuttleNumber: number;
@@ -3138,17 +3137,21 @@ function PlannedMatchPanel({
       target.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }, []);
-  const renderPlannedPlayerButton = (player: Player, className = "plannedPlayerButton") => (
-    <Button
-      key={player.id}
-      className={className}
-      variant="outlined"
-      disabled={!canManageSession || !selectedMatch || selectedMatchFull}
-      onClick={() => onAddPlayer(player.id)}
-    >
-      <span className="playerPickerName">{player.name}</span>
-    </Button>
-  );
+  const renderPlannedPlayerButton = (player: Player, className = "plannedPlayerButton") => {
+    const isAlreadyPlanned = plannedPlayerIds.has(player.id);
+
+    return (
+      <Button
+        key={player.id}
+        className={`${className}${isAlreadyPlanned ? " plannedPlayerButtonDisabled" : ""}`}
+        variant="outlined"
+        disabled={!canManageSession || !selectedMatch || selectedMatchFull || isAlreadyPlanned}
+        onClick={() => onAddPlayer(player.id)}
+      >
+        <span className="playerPickerName">{player.name}</span>
+      </Button>
+    );
+  };
 
   return (
     <Box
@@ -3269,7 +3272,7 @@ function PlannedMatchPanel({
             </ToggleButton>
           </ToggleButtonGroup>
           <CurrentShuttleVoicePicker
-            players={availablePlayers}
+            players={availablePlayers.filter((player) => !plannedPlayerIds.has(player.id))}
             initiallySelectedIds={[]}
             disabled={!canManageSession || !selectedMatch || selectedMatchFull}
             maxSelections={Math.max(0, 4 - (selectedMatch?.playerIds.length ?? 0))}
@@ -3282,7 +3285,7 @@ function PlannedMatchPanel({
             <Box className="emptyPlayerPicker">
               {activePlayers.length === 0
                 ? "ยังไม่มีผู้เล่นกำลังตี"
-                : "รายชื่อที่เลือกได้ถูกจัดไว้ครบแล้ว"}
+                : "ยังไม่มีรายชื่อให้เลือก"}
             </Box>
           ) : (
             <>
@@ -3345,7 +3348,7 @@ function PlannedMatchPanel({
                   {playerGroups.danger.length > 0 && (
                     <Box className="plannedPlayerSection">
                       <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                        วิกฤต (รอ 20 นาทีขึ้นไป) ({playerGroups.danger.length})
+                        วิกฤต (หลังลงล่าสุด 55 นาทีขึ้นไป) ({playerGroups.danger.length})
                       </Typography>
                       <Box className="plannedPlayerGrid">
                         {playerGroups.danger.map((player) =>
@@ -3360,7 +3363,7 @@ function PlannedMatchPanel({
                   {playerGroups.warning.length > 0 && (
                     <Box className="plannedPlayerSection">
                       <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                        เตือน (รอ 15-19 นาที) ({playerGroups.warning.length})
+                        เตือน (หลังลงล่าสุด 40-54 นาที) ({playerGroups.warning.length})
                       </Typography>
                       <Box className="plannedPlayerGrid">
                         {playerGroups.warning.map((player) =>
@@ -3375,7 +3378,7 @@ function PlannedMatchPanel({
                   {playerGroups.normal.length > 0 && (
                     <Box className="plannedPlayerSection">
                       <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                        ปกติ (รอน้อยกว่า 15 นาที) ({playerGroups.normal.length})
+                        ปกติ (หลังลงล่าสุด 20-39 นาที) ({playerGroups.normal.length})
                       </Typography>
                       <Box className="plannedPlayerGrid">
                         {playerGroups.normal.map((player) => renderPlannedPlayerButton(player))}
@@ -3385,7 +3388,7 @@ function PlannedMatchPanel({
                   {playerGroups.resting.length > 0 && (
                     <Box className="plannedPlayerSection">
                       <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                        พักเล่น ({playerGroups.resting.length})
+                        พัก/เพิ่งตี (หลังลงล่าสุดไม่ถึง 20 นาที) ({playerGroups.resting.length})
                       </Typography>
                       <Box className="plannedPlayerGrid">
                         {playerGroups.resting.map((player) => renderPlannedPlayerButton(player))}

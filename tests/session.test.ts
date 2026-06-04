@@ -65,13 +65,13 @@ describe('badminton session calculations', () => {
       waitingSince: '2026-05-25T10:00:00.000Z',
     };
 
-    expect(getPlayerWaitStatus(player, '2026-05-25T10:14:59.000Z')).toBe(
+    expect(getPlayerWaitStatus(player, '2026-05-25T10:19:59.000Z')).toBe(
       'normal',
     );
-    expect(getPlayerWaitStatus(player, '2026-05-25T10:15:00.000Z')).toBe(
+    expect(getPlayerWaitStatus(player, '2026-05-25T10:20:00.000Z')).toBe(
       'warning',
     );
-    expect(getPlayerWaitStatus(player, '2026-05-25T10:20:00.000Z')).toBe(
+    expect(getPlayerWaitStatus(player, '2026-05-25T10:35:00.000Z')).toBe(
       'danger',
     );
 
@@ -83,13 +83,13 @@ describe('badminton session calculations', () => {
     expect(getPlayerWaitStatus(restedPlayer, '2026-05-25T10:19:59.000Z')).toBe(
       'normal',
     );
-    expect(getPlayerWaitStatus(restedPlayer, '2026-05-25T10:34:59.000Z')).toBe(
+    expect(getPlayerWaitStatus(restedPlayer, '2026-05-25T10:39:59.000Z')).toBe(
       'normal',
     );
-    expect(getPlayerWaitStatus(restedPlayer, '2026-05-25T10:35:00.000Z')).toBe(
+    expect(getPlayerWaitStatus(restedPlayer, '2026-05-25T10:40:00.000Z')).toBe(
       'warning',
     );
-    expect(getPlayerWaitStatus(restedPlayer, '2026-05-25T10:40:00.000Z')).toBe(
+    expect(getPlayerWaitStatus(restedPlayer, '2026-05-25T10:55:00.000Z')).toBe(
       'danger',
     );
   });
@@ -119,13 +119,13 @@ describe('badminton session calculations', () => {
 
   it('returns priority players with danger before warning', () => {
     const players = [
-      { ...createPlayer('ปกติ'), waitingSince: '2026-05-25T10:18:00.000Z' },
-      { ...createPlayer('แดง'), waitingSince: '2026-05-25T10:00:00.000Z' },
-      { ...createPlayer('เหลือง'), waitingSince: '2026-05-25T10:04:00.000Z' },
+      { ...createPlayer('ปกติ'), waitingSince: '2026-05-25T10:45:00.000Z' },
+      { ...createPlayer('แดง'), waitingSince: '2026-05-25T10:20:00.000Z' },
+      { ...createPlayer('เหลือง'), waitingSince: '2026-05-25T10:35:00.000Z' },
     ];
 
     expect(
-      getPriorityPlayers(players, '2026-05-25T10:20:00.000Z').map(
+      getPriorityPlayers(players, '2026-05-25T11:00:00.000Z').map(
         (player) => player.name,
       ),
     ).toEqual(['แดง', 'เหลือง']);
