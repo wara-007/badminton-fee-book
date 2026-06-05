@@ -282,10 +282,37 @@ body {
 
 .addPlayerForm {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) auto;
+  grid-template-columns: minmax(180px, 1fr) auto auto;
   gap: 12px;
   flex: 1;
   align-items: flex-start;
+}
+
+.playerSkillPicker {
+  display: grid;
+  gap: 4px;
+}
+
+.playerSkillPickerLabel {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.playerSkillBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--border-light);
+  border-radius: 999px;
+  background: var(--detail-primary-bg);
+  color: var(--note-primary-text);
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1;
 }
 
 .matchSetupAddPlayerFabWrap {
@@ -304,6 +331,8 @@ body {
 }
 
 .addPlayerDialogContent {
+  display: grid;
+  gap: 12px;
   padding-top: 8px !important;
 }
 
@@ -835,6 +864,12 @@ body {
   align-items: center;
 }
 
+.plannedMatchNameChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .plannedMatchActions {
   justify-content: flex-end;
 }
@@ -888,6 +923,7 @@ body {
 
 .plannedPlayerButton {
   position: relative;
+  gap: 6px;
   justify-content: center;
   min-height: 44px;
   border-radius: 6px;
@@ -898,6 +934,32 @@ body {
   font-size: 1rem !important;
   padding: 5px !important;
   line-height: 1 !important;
+}
+
+.plannedSuggestionPreview {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--dialog-primary-border);
+  border-radius: 8px;
+  background: var(--detail-primary-bg);
+}
+
+.plannedSuggestionTitle,
+.plannedSuggestionEmpty {
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.plannedSuggestionPlayerButton {
+  min-height: 32px;
+  border-radius: 999px;
+  font-weight: 800;
+  text-transform: none;
+}
+
+.plannedSuggestionEmpty {
+  padding: 8px 0 0;
 }
 
 .plannedPlayerButton:hover {
@@ -1128,6 +1190,58 @@ thead .stickyName {
 
 .dataManagementActions {
   align-items: flex-start;
+}
+
+.playerSkillManagementPanel {
+  display: grid;
+  gap: 14px;
+}
+
+.playerSkillManagementHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.playerSkillSearchField {
+  width: min(260px, 100%);
+  flex-shrink: 0;
+}
+
+.playerSkillList {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.playerSkillRow {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--surface-color);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.playerSkillRow:last-child {
+  border-bottom: 0;
+}
+
+.playerSkillRowName {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+  font-weight: 800;
+}
+
+.playerSkillRowName > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .matchSummaryPanel {
@@ -1467,6 +1581,20 @@ thead .stickyName {
 
   .plannedPlayerGrid {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .playerSkillManagementHeader,
+  .playerSkillRow {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .playerSkillManagementHeader {
+    display: grid;
+  }
+
+  .playerSkillSearchField {
+    width: 100%;
   }
 
   .searchField {
