@@ -1,8 +1,11 @@
+export type PlayerSkillLevel = 'bg' | 'n' | 's' | 'p-' | 'p';
+
 export type Player = {
   id: string;
   name: string;
   shuttleCount: number;
   shuttleMarks?: number[];
+  skillLevel: PlayerSkillLevel;
   paid: boolean;
   paidAt?: string;
   paidAmount?: number;
@@ -69,6 +72,11 @@ export type MatchOverlapWarning = {
   overlapCount: number;
 };
 
+export type PlannedMatchSuggestion = {
+  players: Player[];
+  missingCount: number;
+};
+
 export type ShuttleMarkEntry = {
   playerId: string;
   playerName: string;
@@ -109,6 +117,8 @@ export const DEFAULT_PLANNED_MATCH_COUNT = 6;
 export const REST_MINUTES = 20;
 export const WAIT_WARNING_MINUTES = 20;
 export const WAIT_DANGER_MINUTES = 35;
+export const PLAYER_SKILL_LEVELS: PlayerSkillLevel[] = ['bg', 'n', 's', 'p-', 'p'];
+export const DEFAULT_PLAYER_SKILL_LEVEL: PlayerSkillLevel = 'n';
 
 export const STORAGE_KEY = 'badminton-fee-book.session';
 
@@ -123,6 +133,7 @@ export function createPlayer(name: string): Player {
     name: name.trim(),
     shuttleCount: 0,
     shuttleMarks: [],
+    skillLevel: DEFAULT_PLAYER_SKILL_LEVEL,
     paid: false,
     waitingSince: new Date().toISOString(),
     gameCount: 0,
@@ -169,6 +180,27 @@ export function getPlayerPaymentAmount(player: Player, pricing: Pricing): number
     player.paidAmount >= 0
     ? player.paidAmount
     : calculatePlayerTotal(player, pricing);
+}
+
+export function normalizePlayerSkillLevel(value: unknown): PlayerSkillLevel {
+  return typeof value === 'string' &&
+    PLAYER_SKILL_LEVELS.includes(value as PlayerSkillLevel)
+    ? (value as PlayerSkillLevel)
+    : DEFAULT_PLAYER_SKILL_LEVEL;
+}
+
+export function getPlayerSkillIndex(player: Player): number {
+  const skillLevel = normalizePlayerSkillLevel(player.skillLevel);
+  return PLAYER_SKILL_LEVELS.indexOf(skillLevel);
+}
+
+export function canSharePlannedMatch(players: Player[]): boolean {
+  if (players.length <= 1) {
+    return true;
+  }
+
+  const skillIndexes = players.map(getPlayerSkillIndex);
+  return Math.max(...skillIndexes) - Math.min(...skillIndexes) <= 1;
 }
 
 export function calculatePlayersTotal(
@@ -349,6 +381,120 @@ export function getPriorityPlayers(
     .filter(({ status }) => status !== 'normal')
     .sort((first, second) => rank[first.status] - rank[second.status])
     .map(({ player }) => player);
+}
+
+export function getPlannedMatchSuggestion({
+  players,
+  plannedMatches,
+  targetMatchId,
+  now,
+  suggestionIndex = 0,
+}: {
+  players: Player[];
+  plannedMatches: PlannedMatch[];
+  targetMatchId: string;
+  now: string | Date;
+  suggestionIndex?: number;
+}): PlannedMatchSuggestion | null {
+  const targetMatch = plannedMatches.find((match) => match.id === targetMatchId);
+  if (!targetMatch || targetMatch.playerIds.length >= 4) {
+    return null;
+  }
+
+  const playerById = new Map(players.map((player) => [player.id, player]));
+  const existingPlayers = targetMatch.playerIds
+    .map((playerId) => playerById.get(playerId))
+    .filter((player): player is Player => Boolean(player));
+  if (existingPlayers.length !== targetMatch.playerIds.length) {
+    return null;
+  }
+
+  const missingCount = 4 - existingPlayers.length;
+  const plannedPlayerIds = new Set(plannedMatches.flatMap((match) => match.playerIds));
+  targetMatch.playerIds.forEach((playerId) => plannedPlayerIds.delete(playerId));
+  const waitRank: Record<PlayerWaitStatus, number> = {
+    danger: 0,
+    warning: 1,
+    normal: 2,
+  };
+  const orderedCandidates = players
+    .filter((player) => !player.paid)
+    .filter((player) => !targetMatch.playerIds.includes(player.id))
+    .filter((player) => !plannedPlayerIds.has(player.id))
+    .sort((first, second) => {
+      const firstStatus = getPlayerWaitStatus(first, now);
+      const secondStatus = getPlayerWaitStatus(second, now);
+      return (
+        waitRank[firstStatus] - waitRank[secondStatus] ||
+        first.gameCount - second.gameCount ||
+        first.name.localeCompare(second.name, 'th-TH', { sensitivity: 'base' })
+      );
+    });
+  const normalizedSuggestionIndex = Math.max(0, Math.floor(suggestionIndex));
+  const candidateOffset =
+    orderedCandidates.length > 0
+      ? (normalizedSuggestionIndex * missingCount) % orderedCandidates.length
+      : 0;
+  const rotatedCandidates = [
+    ...orderedCandidates.slice(candidateOffset),
+    ...orderedCandidates.slice(0, candidateOffset),
+  ];
+
+  const combinations = findPlannedMatchCandidateCombinations(
+    rotatedCandidates,
+    missingCount,
+    existingPlayers,
+  );
+  const selected = combinations[0] ?? null;
+
+  return selected ? { players: selected, missingCount } : null;
+}
+
+function findPlannedMatchCandidateCombinations(
+  candidates: Player[],
+  missingCount: number,
+  existingPlayers: Player[],
+): Player[][] {
+  if (missingCount <= 0) {
+    return [[]];
+  }
+
+  const results: Player[][] = [];
+
+  function search(startIndex: number, selected: Player[]) {
+    if (selected.length === missingCount) {
+      if (canUsePlannedMatchSuggestion(existingPlayers, selected, missingCount)) {
+        results.push(selected);
+      }
+      return;
+    }
+
+    for (let index = startIndex; index < candidates.length; index += 1) {
+      const nextSelected = [...selected, candidates[index]];
+      if (canSharePlannedMatch([...existingPlayers, ...nextSelected])) {
+        search(index + 1, nextSelected);
+      }
+    }
+  }
+
+  search(0, []);
+  return results;
+}
+
+function canUsePlannedMatchSuggestion(
+  existingPlayers: Player[],
+  selectedPlayers: Player[],
+  missingCount: number,
+): boolean {
+  if (!canSharePlannedMatch([...existingPlayers, ...selectedPlayers])) {
+    return false;
+  }
+
+  if (missingCount === 2 && selectedPlayers.length === 2) {
+    return selectedPlayers[0].skillLevel === selectedPlayers[1].skillLevel;
+  }
+
+  return true;
 }
 
 export function exportSessionSummary(
@@ -608,6 +754,7 @@ export function normalizeSession(value: unknown): SessionState {
               id: String(player.id),
               name: String(player.name),
               shuttleCount: Math.max(0, Number(player.shuttleCount) || 0),
+              skillLevel: normalizePlayerSkillLevel(player.skillLevel),
               paid: Boolean(player.paid),
               paidAt:
                 typeof player.paidAt === 'string' ? player.paidAt : undefined,

@@ -12,6 +12,7 @@ import {
   createPlayer,
   exportSessionSummary,
   findMatchOverlapWarning,
+  getPlannedMatchSuggestion,
   getBillableShuttleCount,
   getNextOpenShuttleNumber,
   getPriorityPlayers,
@@ -553,6 +554,181 @@ describe('badminton session calculations', () => {
     expect(session.plannedMatches).toHaveLength(6);
     expect(session.plannedMatches[0].playerIds).toEqual(['a']);
     expect(session.plannedMatches[1].playerIds).toEqual([]);
+  });
+
+  it('defaults missing skill levels to n when normalizing players', () => {
+    const session = normalizeSession({
+      players: [{ ...createPlayer('A'), id: 'a', paid: false }],
+      pricing: DEFAULT_PRICING,
+      currentShuttleNumber: 1,
+      plannedMatches: createDefaultPlannedMatches(),
+      activityLog: [],
+      updatedAt: '2026-05-25T10:00:00.000Z',
+    });
+
+    expect(session.players[0].skillLevel).toBe('n');
+  });
+
+  it('suggests only players within one skill step for a planned match', () => {
+    const players = [
+      { ...createPlayer('N1'), id: 'n1', skillLevel: 'n' as const },
+      { ...createPlayer('N2'), id: 'n2', skillLevel: 'n' as const },
+      { ...createPlayer('S1'), id: 's1', skillLevel: 's' as const },
+      { ...createPlayer('S2'), id: 's2', skillLevel: 's' as const },
+      { ...createPlayer('P-'), id: 'p-', skillLevel: 'p-' as const },
+    ];
+
+    expect(
+      getPlannedMatchSuggestion({
+        players,
+        plannedMatches: createDefaultPlannedMatches(),
+        targetMatchId: 'match-1',
+        now: '2026-05-25T11:00:00.000Z',
+      })?.players.map((player) => player.id),
+    ).toEqual(['n1', 'n2', 's1', 's2']);
+  });
+
+  it('suggests only missing players and validates existing planned players', () => {
+    const players = [
+      { ...createPlayer('BG'), id: 'bg', skillLevel: 'bg' as const },
+      { ...createPlayer('N1'), id: 'n1', skillLevel: 'n' as const },
+      { ...createPlayer('N2'), id: 'n2', skillLevel: 'n' as const },
+      { ...createPlayer('S1'), id: 's1', skillLevel: 's' as const },
+      { ...createPlayer('S2'), id: 's2', skillLevel: 's' as const },
+    ];
+    const plannedMatches = [
+      { ...createDefaultPlannedMatches()[0], playerIds: ['n1', 'n2'] },
+      ...createDefaultPlannedMatches().slice(1),
+    ];
+
+    expect(
+      getPlannedMatchSuggestion({
+        players,
+        plannedMatches,
+        targetMatchId: 'match-1',
+        now: '2026-05-25T11:00:00.000Z',
+      })?.players.map((player) => player.id),
+    ).toEqual(['s1', 's2']);
+  });
+
+  it('fills two missing planned match slots with a same-skill pair', () => {
+    const players = [
+      { ...createPlayer('S locked 1'), id: 'locked-1', skillLevel: 's' as const },
+      { ...createPlayer('S locked 2'), id: 'locked-2', skillLevel: 's' as const },
+      { ...createPlayer('N single'), id: 'n-single', skillLevel: 'n' as const },
+      { ...createPlayer('S single'), id: 's-single', skillLevel: 's' as const },
+      { ...createPlayer('N pair 1'), id: 'n-pair-1', skillLevel: 'n' as const },
+      { ...createPlayer('N pair 2'), id: 'n-pair-2', skillLevel: 'n' as const },
+    ];
+    const plannedMatches = [
+      { ...createDefaultPlannedMatches()[0], playerIds: ['locked-1', 'locked-2'] },
+      ...createDefaultPlannedMatches().slice(1),
+    ];
+
+    expect(
+      getPlannedMatchSuggestion({
+        players,
+        plannedMatches,
+        targetMatchId: 'match-1',
+        now: '2026-05-25T11:00:00.000Z',
+      })?.players.map((player) => player.id),
+    ).toEqual(['n-pair-1', 'n-pair-2']);
+  });
+
+  it('does not fill two missing planned match slots with mixed skill levels', () => {
+    const players = [
+      { ...createPlayer('S locked 1'), id: 'locked-1', skillLevel: 's' as const },
+      { ...createPlayer('S locked 2'), id: 'locked-2', skillLevel: 's' as const },
+      { ...createPlayer('N single'), id: 'n-single', skillLevel: 'n' as const },
+      { ...createPlayer('S single'), id: 's-single', skillLevel: 's' as const },
+    ];
+    const plannedMatches = [
+      { ...createDefaultPlannedMatches()[0], playerIds: ['locked-1', 'locked-2'] },
+      ...createDefaultPlannedMatches().slice(1),
+    ];
+
+    expect(
+      getPlannedMatchSuggestion({
+        players,
+        plannedMatches,
+        targetMatchId: 'match-1',
+        now: '2026-05-25T11:00:00.000Z',
+      }),
+    ).toBeNull();
+  });
+
+  it('rotates planned match suggestions by a whole missing-player set', () => {
+    const players = [
+      { ...createPlayer('N1'), id: 'n1', skillLevel: 'n' as const },
+      { ...createPlayer('N2'), id: 'n2', skillLevel: 'n' as const },
+      { ...createPlayer('N3'), id: 'n3', skillLevel: 'n' as const },
+      { ...createPlayer('N4'), id: 'n4', skillLevel: 'n' as const },
+      { ...createPlayer('N5'), id: 'n5', skillLevel: 'n' as const },
+      { ...createPlayer('N6'), id: 'n6', skillLevel: 'n' as const },
+      { ...createPlayer('N7'), id: 'n7', skillLevel: 'n' as const },
+      { ...createPlayer('N8'), id: 'n8', skillLevel: 'n' as const },
+    ];
+
+    expect(
+      getPlannedMatchSuggestion({
+        players,
+        plannedMatches: createDefaultPlannedMatches(),
+        targetMatchId: 'match-1',
+        now: '2026-05-25T11:00:00.000Z',
+        suggestionIndex: 0,
+      })?.players.map((player) => player.id),
+    ).toEqual(['n1', 'n2', 'n3', 'n4']);
+    expect(
+      getPlannedMatchSuggestion({
+        players,
+        plannedMatches: createDefaultPlannedMatches(),
+        targetMatchId: 'match-1',
+        now: '2026-05-25T11:00:00.000Z',
+        suggestionIndex: 1,
+      })?.players.map((player) => player.id),
+    ).toEqual(['n5', 'n6', 'n7', 'n8']);
+  });
+
+  it('orders match suggestions by wait status and then fewer games', () => {
+    const players = [
+      {
+        ...createPlayer('Warning low games'),
+        id: 'warning-low',
+        skillLevel: 'n' as const,
+        waitingSince: '2026-05-25T10:30:00.000Z',
+        gameCount: 1,
+      },
+      {
+        ...createPlayer('Danger high games'),
+        id: 'danger-high',
+        skillLevel: 'n' as const,
+        waitingSince: '2026-05-25T10:00:00.000Z',
+        gameCount: 5,
+      },
+      {
+        ...createPlayer('Danger low games'),
+        id: 'danger-low',
+        skillLevel: 'n' as const,
+        waitingSince: '2026-05-25T10:00:00.000Z',
+        gameCount: 0,
+      },
+      {
+        ...createPlayer('Normal'),
+        id: 'normal',
+        skillLevel: 'n' as const,
+        waitingSince: '2026-05-25T10:50:00.000Z',
+        gameCount: 0,
+      },
+    ];
+
+    expect(
+      getPlannedMatchSuggestion({
+        players,
+        plannedMatches: createDefaultPlannedMatches(),
+        targetMatchId: 'match-1',
+        now: '2026-05-25T11:00:00.000Z',
+      })?.players.map((player) => player.id),
+    ).toEqual(['danger-low', 'danger-high', 'warning-low', 'normal']);
   });
 
   it('renumbers planned matches after their order changes', () => {

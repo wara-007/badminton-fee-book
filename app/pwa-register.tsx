@@ -18,18 +18,36 @@ export default function PwaRegister() {
     }
 
     const registerServiceWorker = () => {
-      navigator.serviceWorker.register("/sw.js").catch(() => {
+      navigator.serviceWorker.register("/sw.js").then((registration) => {
+        void registration.update();
+      }).catch(() => {
         // A failed registration should not block using the score sheet.
       });
     };
 
+    let refreshing = false;
+    const handleControllerChange = () => {
+      if (refreshing) {
+        return;
+      }
+      refreshing = true;
+      window.location.reload();
+    };
+
+    navigator.serviceWorker.addEventListener("controllerchange", handleControllerChange);
+
     if (document.readyState === "complete") {
       registerServiceWorker();
-      return;
+      return () => {
+        navigator.serviceWorker.removeEventListener("controllerchange", handleControllerChange);
+      };
     }
 
     window.addEventListener("load", registerServiceWorker);
-    return () => window.removeEventListener("load", registerServiceWorker);
+    return () => {
+      window.removeEventListener("load", registerServiceWorker);
+      navigator.serviceWorker.removeEventListener("controllerchange", handleControllerChange);
+    };
   }, []);
 
   return null;

@@ -9,7 +9,35 @@ type SessionRow = {
   id: string;
   state: SessionState;
   updated_at: string;
+  revision: number;
+  closed_at?: string | null;
 };
+
+export type RemoteSession = {
+  session: SessionState;
+  revision: number;
+  closedAt: string | null;
+};
+
+export type RemoteSaveResult = RemoteSession;
+
+type RemoteSaveRpcResult = {
+  saved: boolean;
+  revision: number;
+  state: SessionState;
+  updated_at: string;
+  closed_at: string | null;
+};
+
+export class RemoteSaveConflictError extends Error {
+  remote: RemoteSaveResult;
+
+  constructor(remote: RemoteSaveResult) {
+    super('Remote session changed before this save completed.');
+    this.name = 'RemoteSaveConflictError';
+    this.remote = remote;
+  }
+}
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -22,18 +50,46 @@ export const supabase: SupabaseClient | null = hasSupabaseConfig
 
 let remoteNowSupported = true;
 
+function normalizeRemoteRow(row: Pick<SessionRow, 'state' | 'updated_at'>): SessionState {
+  const normalized = normalizeSession(row.state);
+  const rowUpdatedAt = new Date(row.updated_at).getTime();
+
+  if (Number.isNaN(rowUpdatedAt)) {
+    return normalized;
+  }
+
+  return {
+    ...normalized,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function parseRemoteSaveResult(result: RemoteSaveRpcResult): RemoteSaveResult {
+  const remote = {
+    session: normalizeRemoteRow(result),
+    revision: result.revision,
+    closedAt: result.closed_at ?? null,
+  };
+
+  if (!result.saved) {
+    throw new RemoteSaveConflictError(remote);
+  }
+
+  return remote;
+}
+
 export async function loadRemoteSession(
   sessionId: string,
-): Promise<SessionState> {
+): Promise<RemoteSession> {
   if (!supabase) {
-    return createInitialSession();
+    return { session: createInitialSession(), revision: 0, closedAt: null };
   }
 
   const { data, error } = await supabase
     .from('badminton_sessions')
-    .select('state')
+    .select('state, updated_at, revision, closed_at')
     .eq('id', sessionId)
-    .maybeSingle<Pick<SessionRow, 'state'>>();
+    .maybeSingle<Pick<SessionRow, 'state' | 'updated_at' | 'revision' | 'closed_at'>>();
 
   if (error) {
     throw error;
@@ -41,30 +97,50 @@ export async function loadRemoteSession(
 
   if (!data) {
     const initialSession = createInitialSession();
-    await saveRemoteSession(sessionId, initialSession);
-    return initialSession;
+    return saveRemoteSession(sessionId, initialSession, 0);
   }
 
-  return normalizeSession(data.state);
+  return {
+    session: normalizeRemoteRow(data),
+    revision: data.revision,
+    closedAt: data.closed_at ?? null,
+  };
 }
 
 export async function saveRemoteSession(
   sessionId: string,
   session: SessionState,
-): Promise<void> {
+  expectedRevision = 0,
+): Promise<RemoteSaveResult> {
   if (!supabase) {
-    return;
+    return { session, revision: expectedRevision, closedAt: null };
   }
 
-  const { error } = await supabase.from('badminton_sessions').upsert({
-    id: sessionId,
-    state: session,
-    updated_at: new Date().toISOString(),
+  const { data, error } = await supabase.rpc('save_badminton_session', {
+    p_id: sessionId,
+    p_state: session,
+    p_expected_revision: expectedRevision,
   });
 
   if (error) {
     throw error;
   }
+
+  return parseRemoteSaveResult(data as RemoteSaveRpcResult);
+}
+
+export async function closeRemoteSession(sessionId: string): Promise<string> {
+  if (!supabase) {
+    return new Date().toISOString();
+  }
+
+  const { data, error } = await supabase.rpc('close_badminton_session', {
+    p_id: sessionId,
+  });
+  if (error) {
+    throw error;
+  }
+  return String(data);
 }
 
 export async function loadRemoteNow(): Promise<string> {
@@ -121,7 +197,7 @@ export async function deleteRemoteSession(sessionId: string): Promise<void> {
 
 export function subscribeRemoteSession(
   sessionId: string,
-  onSession: (session: SessionState) => void,
+  onSession: (remote: RemoteSession) => void,
 ) {
   if (!supabase) {
     return () => undefined;
@@ -140,7 +216,11 @@ export function subscribeRemoteSession(
       (payload) => {
         const nextRow = payload.new as SessionRow | null;
         if (nextRow?.state) {
-          onSession(normalizeSession(nextRow.state));
+          onSession({
+            session: normalizeRemoteRow(nextRow),
+            revision: nextRow.revision,
+            closedAt: nextRow.closed_at ?? null,
+          });
         }
       },
     )

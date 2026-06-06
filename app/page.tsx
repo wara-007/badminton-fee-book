@@ -52,7 +52,10 @@ import { useRouter } from "next/navigation";
 import { CSSProperties, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Player,
+  PlayerSkillLevel,
   PlannedMatch,
+  DEFAULT_PLAYER_SKILL_LEVEL,
+  PLAYER_SKILL_LEVELS,
   REST_MINUTES,
   SessionState,
   appendActivity,
@@ -62,6 +65,7 @@ import {
   createPlayer,
   exportSessionSummary,
   findMatchOverlapWarning,
+  getPlannedMatchSuggestion,
   getPlayerShuttleCount,
   getPlayerShuttleMarks,
   getPlayerWaitStatus,
@@ -77,6 +81,8 @@ import {
   summarizeSession
 } from "@/lib/session";
 import {
+  RemoteSaveConflictError,
+  closeRemoteSession,
   hasSupabaseConfig,
   loadRemoteNow,
   loadRemoteSession,
@@ -96,6 +102,13 @@ const appVersion = packageInfo.version;
 const AUTH_STORAGE_KEY = "badminton-fee-book.auth";
 const PAYMENT_QR_RECIPIENT_NAME = "ว่าที่ ร้อยตรี ธนากร มาศิริ";
 const PAYMENT_QR_PAYLOAD = "00020101021129370016A0000006770101110113006689081087853037645802TH63042E3B";
+const PLAYER_SKILL_LABELS: Record<PlayerSkillLevel, string> = {
+  bg: "BG",
+  n: "N",
+  s: "S",
+  "p-": "P-",
+  p: "P"
+};
 type UserRole = "admin" | "admin2";
 type AuthSession = {
   role: UserRole;
@@ -187,6 +200,7 @@ export default function HomePage() {
   const [roomDraft, setRoomDraft] = useState("main");
   const [session, setSession] = useState<SessionState>(() => createInitialSession());
   const [playerName, setPlayerName] = useState("");
+  const [playerSkillLevel, setPlayerSkillLevel] = useState<PlayerSkillLevel>(DEFAULT_PLAYER_SKILL_LEVEL);
   const [searchTerm, setSearchTerm] = useState("");
   const [ledgerSearchName, setLedgerSearchName] = useState("");
   const [ledgerSearchShuttle, setLedgerSearchShuttle] = useState("");
@@ -206,6 +220,7 @@ export default function HomePage() {
   const [hydrated, setHydrated] = useState(false);
   const [roomReady, setRoomReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState(hasSupabaseConfig ? "กำลังเชื่อมต่อ" : "โหมดเครื่องนี้");
+  const [closedAt, setClosedAt] = useState<string | null>(null);
   const [pendingSyncSnapshot, setPendingSyncSnapshot] = useState<string | null>(null);
   const [lastLocalSavedAt, setLastLocalSavedAt] = useState<string | null>(null);
   const [dialog, setDialog] = useState<AppDialogState>({
@@ -223,6 +238,7 @@ export default function HomePage() {
     amountDraft: ""
   });
   const lastRemoteSnapshotRef = useRef("");
+  const remoteRevisionRef = useRef(0);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clockOffsetRef = useRef(0);
   const sessionRef = useRef(session);
@@ -302,30 +318,23 @@ export default function HomePage() {
       if (hasSupabaseConfig) {
         setSyncStatus("กำลังเชื่อมต่อ");
         try {
-          const remoteSession = await loadRemoteSession(sessionId);
+          const remote = await loadRemoteSession(sessionId);
           if (cancelled) {
             return;
           }
+          remoteRevisionRef.current = remote.revision;
+          setClosedAt(remote.closedAt);
+          const remoteSession = remote.session;
           const normalizedRemoteSession = normalizeSession(remoteSession);
           const remoteSnapshot = serializeSession(normalizedRemoteSession);
           const pendingSnapshot = localStorage.getItem(getPendingSyncKey(sessionId));
-          const pendingSession = pendingSnapshot
-            ? parseSessionSnapshot(pendingSnapshot, normalizedRemoteSession)
-            : null;
-          const workingSession = pendingSession && isSessionNewerThan(pendingSession, normalizedRemoteSession)
-            ? pendingSession
-            : normalizedRemoteSession;
-          const workingSnapshot = serializeSession(workingSession);
-          const hasPendingSync = pendingSnapshot !== null && workingSession === pendingSession;
           lastRemoteSnapshotRef.current = remoteSnapshot;
-          setSession(workingSession);
-          localStorage.setItem(getStorageKey(sessionId), workingSnapshot);
+          setSession(normalizedRemoteSession);
           setLastLocalSavedAt(new Date().toISOString());
-          if (hasPendingSync) {
-            setPendingSyncSnapshot(workingSnapshot);
-            setSyncStatus("รอส่งขึ้นเซิร์ฟเวอร์");
+          if (pendingSnapshot) {
+            setPendingSyncSnapshot(pendingSnapshot);
+            setSyncStatus("ข้อมูลชนกัน กรุณาตรวจสอบ");
           } else {
-            localStorage.removeItem(getPendingSyncKey(sessionId));
             setPendingSyncSnapshot(null);
             setSyncStatus("ซิงก์แล้ว");
           }
@@ -333,9 +342,11 @@ export default function HomePage() {
           if (cancelled) {
             return;
           }
-          const localSession = loadLocalSession(sessionId);
-          setSession(localSession);
-          setPendingSyncSnapshot(localStorage.getItem(getPendingSyncKey(sessionId)));
+          const pendingSnapshot = localStorage.getItem(getPendingSyncKey(sessionId));
+          if (pendingSnapshot) {
+            setSession(parseSessionSnapshot(pendingSnapshot, createInitialSession()));
+          }
+          setPendingSyncSnapshot(pendingSnapshot);
           setLastLocalSavedAt(new Date().toISOString());
           setSyncStatus("ใช้ข้อมูลเครื่องนี้");
         }
@@ -362,22 +373,66 @@ export default function HomePage() {
       return undefined;
     }
 
-    return subscribeRemoteSession(sessionId, (remoteSession) => {
+    let refreshing = false;
+    const refreshFromRemote = async () => {
+      if (refreshing || document.visibilityState === "hidden") {
+        return;
+      }
+      refreshing = true;
+      try {
+        const remote = await loadRemoteSession(sessionId);
+        const normalizedRemoteSession = normalizeSession(remote.session);
+        const snapshot = serializeSession(normalizedRemoteSession);
+        remoteRevisionRef.current = remote.revision;
+        setClosedAt(remote.closedAt);
+        lastRemoteSnapshotRef.current = snapshot;
+        setSession(normalizedRemoteSession);
+        setSyncStatus(
+          localStorage.getItem(getPendingSyncKey(sessionId))
+            ? "ข้อมูลชนกัน กรุณาตรวจสอบ"
+            : "ซิงก์แล้ว"
+        );
+      } catch {
+        setSyncStatus("ใช้ข้อมูลเครื่องนี้");
+      } finally {
+        refreshing = false;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshFromRemote();
+      }
+    };
+
+    window.addEventListener("focus", refreshFromRemote);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("focus", refreshFromRemote);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [hydrated, sessionId]);
+
+  useEffect(() => {
+    if (!hasSupabaseConfig || !hydrated) {
+      return undefined;
+    }
+
+    return subscribeRemoteSession(sessionId, (remote) => {
+      remoteRevisionRef.current = remote.revision;
+      setClosedAt(remote.closedAt);
+      const remoteSession = remote.session;
       const normalizedRemoteSession = normalizeSession(remoteSession);
       const snapshot = serializeSession(normalizedRemoteSession);
       if (snapshot === lastRemoteSnapshotRef.current) {
         return;
       }
-      const currentSession = normalizeSession(sessionRef.current);
-      const currentSnapshot = serializeSession(currentSession);
+      const currentSnapshot = serializeSession(normalizeSession(sessionRef.current));
       if (snapshot === currentSnapshot) {
         lastRemoteSnapshotRef.current = snapshot;
         localStorage.removeItem(getPendingSyncKey(sessionId));
         setPendingSyncSnapshot(null);
         setSyncStatus("ซิงก์แล้ว");
-        return;
-      }
-      if (!isSessionNewerThan(normalizedRemoteSession, currentSession)) {
         return;
       }
       if (saveTimerRef.current) {
@@ -386,9 +441,9 @@ export default function HomePage() {
       }
       lastRemoteSnapshotRef.current = snapshot;
       setSession(normalizedRemoteSession);
-      localStorage.setItem(getStorageKey(sessionId), snapshot);
-      localStorage.removeItem(getPendingSyncKey(sessionId));
-      setPendingSyncSnapshot(null);
+      if (!localStorage.getItem(getPendingSyncKey(sessionId))) {
+        setPendingSyncSnapshot(null);
+      }
       setLastLocalSavedAt(new Date().toISOString());
       setSyncStatus("ซิงก์แล้ว");
     });
@@ -401,10 +456,18 @@ export default function HomePage() {
 
     const normalizedSession = normalizeSession(session);
     const snapshot = serializeSession(normalizedSession);
-    persistLocalSnapshot(sessionId, snapshot);
     setLastLocalSavedAt(new Date().toISOString());
 
     if (!hasSupabaseConfig || snapshot === lastRemoteSnapshotRef.current) {
+      return;
+    }
+
+    const currentDraftSummary = getShuttleMarkSummary(
+      normalizedSession.players,
+      normalizedSession.currentShuttleNumber
+    );
+    if (currentDraftSummary.count > 0 && !currentDraftSummary.isComplete) {
+      setSyncStatus(`รอยืนยันลูก ${normalizedSession.currentShuttleNumber}`);
       return;
     }
 
@@ -424,17 +487,25 @@ export default function HomePage() {
         setSyncStatus("ซิงก์แล้ว");
         return;
       }
-      saveRemoteSession(sessionId, normalizedSession)
-        .then(() => {
-          lastRemoteSnapshotRef.current = snapshot;
+      saveRemoteSession(sessionId, normalizedSession, remoteRevisionRef.current)
+        .then((remote) => {
+          const remoteSnapshot = serializeSession(remote.session);
+          remoteRevisionRef.current = remote.revision;
+          setClosedAt(remote.closedAt);
+          lastRemoteSnapshotRef.current = remoteSnapshot;
+          setSession(remote.session);
           localStorage.removeItem(getPendingSyncKey(sessionId));
           setPendingSyncSnapshot(null);
           setSyncStatus("ซิงก์แล้ว");
         })
-        .catch(() => {
+        .catch((error: unknown) => {
           localStorage.setItem(getPendingSyncKey(sessionId), snapshot);
           setPendingSyncSnapshot(snapshot);
-          setSyncStatus("รอส่งขึ้นเซิร์ฟเวอร์");
+          setSyncStatus(
+            error instanceof RemoteSaveConflictError
+              ? "ข้อมูลชนกัน กรุณาตรวจสอบ"
+              : "รอส่งขึ้นเซิร์ฟเวอร์"
+          );
         });
     }, 250);
 
@@ -475,14 +546,15 @@ export default function HomePage() {
     [activeShuttleNumber, session.players]
   );
   const userRole = authSession?.role ?? null;
-  const canManageSession = userRole === "admin";
-  const canSetPaid = userRole === "admin" || userRole === "admin2";
+  const canManageSession = userRole === "admin" && !closedAt;
+  const canSetPaid = (userRole === "admin" || userRole === "admin2") && !closedAt;
   const isEditingMode = editingShuttleNumber !== null;
   const isEditingLocked = isEditingMode && !currentShuttleSummary.isComplete;
   const isEmergencySyncStatus =
     syncStatus === "ใช้ข้อมูลเครื่องนี้" ||
     syncStatus === "รอส่งขึ้นเซิร์ฟเวอร์" ||
-    syncStatus === "ซิงก์ไม่สำเร็จ";
+    syncStatus === "ซิงก์ไม่สำเร็จ" ||
+    syncStatus === "ข้อมูลชนกัน กรุณาตรวจสอบ";
   const activePlayers = useMemo(
     () => session.players.filter((player) => !player.paid),
     [session.players]
@@ -732,11 +804,13 @@ export default function HomePage() {
         ...current.players,
         {
           ...createPlayer(trimmedName),
+          skillLevel: playerSkillLevel,
           waitingSince: createdAt
         }
       ]
     }));
     setPlayerName("");
+    setPlayerSkillLevel(DEFAULT_PLAYER_SKILL_LEVEL);
     if (!matchSetupMode) {
       setActiveTab(0);
     }
@@ -759,6 +833,7 @@ export default function HomePage() {
   function closeAddPlayerDialog() {
     setAddPlayerDialogOpen(false);
     setPlayerName("");
+    setPlayerSkillLevel(DEFAULT_PLAYER_SKILL_LEVEL);
   }
 
   function updatePlayer(id: string, updater: (player: Player) => Player) {
@@ -1032,6 +1107,38 @@ export default function HomePage() {
           ? {
             ...match,
             playerIds: [...match.playerIds, playerId]
+          }
+          : match
+      )
+    }));
+  }
+
+  function addPlayersToPlannedMatch(matchId: string, playerIds: string[]) {
+    if (isEditingLocked || !canManageSession || playerIds.length === 0) {
+      return;
+    }
+
+    const targetMatch = session.plannedMatches.find((match) => match.id === matchId);
+    if (!targetMatch) {
+      return;
+    }
+
+    const uniquePlayerIds = Array.from(new Set(playerIds)).filter(
+      (playerId) => activePlayers.some((player) => player.id === playerId) && !plannedPlayerIds.has(playerId)
+    );
+    const openSlots = Math.max(0, 4 - targetMatch.playerIds.length);
+    const nextPlayerIds = uniquePlayerIds.slice(0, openSlots);
+    if (nextPlayerIds.length === 0) {
+      return;
+    }
+
+    updateSession((current) => ({
+      ...current,
+      plannedMatches: current.plannedMatches.map((match) =>
+        match.id === targetMatch.id
+          ? {
+            ...match,
+            playerIds: [...match.playerIds, ...nextPlayerIds]
           }
           : match
       )
@@ -1604,13 +1711,52 @@ export default function HomePage() {
     setSyncStatus("กำลังบันทึก");
 
     try {
-      await saveRemoteSession(sessionId, normalizedSession);
-      lastRemoteSnapshotRef.current = normalizedSnapshot;
+      const remote = await saveRemoteSession(sessionId, normalizedSession, remoteRevisionRef.current);
+      const remoteSnapshot = serializeSession(remote.session);
+      remoteRevisionRef.current = remote.revision;
+      setClosedAt(remote.closedAt);
+      lastRemoteSnapshotRef.current = remoteSnapshot;
+      setSession(remote.session);
+      persistLocalSnapshot(sessionId, remoteSnapshot);
       localStorage.removeItem(getPendingSyncKey(sessionId));
       setPendingSyncSnapshot(null);
       setSyncStatus("ซิงก์แล้ว");
+    } catch (error) {
+      setSyncStatus(
+        error instanceof RemoteSaveConflictError
+          ? "ข้อมูลชนกัน กรุณาตรวจสอบ"
+          : "รอส่งขึ้นเซิร์ฟเวอร์"
+      );
+    }
+  }
+
+  async function finishSession() {
+    if (!canManageSession || !hasSupabaseConfig) {
+      return;
+    }
+
+    const confirmed = await showConfirm({
+      title: "จบรอบ",
+      headline: `จบรอบ ${sessionId} ใช่ไหม?`,
+      message: "หลังจบรอบ ทุกเครื่องจะดูข้อมูลได้อย่างเดียวและแก้ไขเพิ่มเติมไม่ได้",
+      note: "ตรวจยอดและรายชื่อให้เรียบร้อยก่อนจบรอบ",
+      confirmLabel: "จบรอบ",
+      color: "warning"
+    });
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setClosedAt(await closeRemoteSession(sessionId));
+      setSyncStatus("จบรอบแล้ว");
     } catch {
-      setSyncStatus("รอส่งขึ้นเซิร์ฟเวอร์");
+      await showAlert({
+        title: "จบรอบไม่สำเร็จ",
+        message: "ยังล็อกรอบไม่ได้ กรุณาลองใหม่อีกครั้ง",
+        confirmLabel: "รับทราบ",
+        color: "error"
+      });
     }
   }
 
@@ -1704,6 +1850,11 @@ export default function HomePage() {
                     fullWidth
                     autoComplete="off"
                   />
+                  <PlayerSkillLevelPicker
+                    value={playerSkillLevel}
+                    onChange={setPlayerSkillLevel}
+                    disabled={isEditingLocked || !canManageSession}
+                  />
                   <Button
                     type="submit"
                     variant="contained"
@@ -1762,6 +1913,7 @@ export default function HomePage() {
               </Collapse>
               <Stack direction="row" spacing={1} className="syncBar">
                 <Chip label={`รอบ ${sessionId}`} size="small" color="primary" variant="outlined" />
+                {closedAt ? <Chip label="ดูอย่างเดียว" size="small" color="warning" /> : null}
                 <Chip label={syncStatus} size="small" />
               </Stack>
             </Paper>
@@ -1893,6 +2045,7 @@ export default function HomePage() {
                   now={now}
                   onSelectMatch={setSelectedPlannedMatchId}
                   onAddPlayer={addPlayerToPlannedMatch}
+                  onAddPlayers={addPlayersToPlannedMatch}
                   onRemovePlayer={removePlayerFromPlannedMatch}
                   onCancelMatch={cancelPlannedMatch}
                   onConfirmMatch={confirmPlannedMatch}
@@ -2001,9 +2154,16 @@ export default function HomePage() {
                 </>
               ) : (
                 <DataManagementPanel
+                  players={session.players}
                   onClearPlayData={clearPlayData}
                   onResetSession={resetSession}
                   onCopySummary={copySummary}
+                  onFinishSession={finishSession}
+                  onUpdatePlayerSkillLevel={(id, skillLevel) =>
+                    updatePlayer(id, (player) => ({ ...player, skillLevel }))
+                  }
+                  sessionClosed={Boolean(closedAt)}
+                  canFinishSession={userRole === "admin" && hasSupabaseConfig}
                   matchSetupMode={matchSetupMode}
                   onToggleMatchSetupMode={toggleMatchSetupMode}
                   canManageSession={canManageSession}
@@ -2176,6 +2336,11 @@ export default function HomePage() {
               autoComplete="off"
               autoFocus
               inputRef={addPlayerInputRef}
+            />
+            <PlayerSkillLevelPicker
+              value={playerSkillLevel}
+              onChange={setPlayerSkillLevel}
+              disabled={isEditingLocked || !canManageSession}
             />
           </DialogContent>
           <DialogActions className="addPlayerDialogActions">
@@ -2513,6 +2678,59 @@ function getWaitingRowClass(player: Player, now: string): string {
     return "waitingWarningRow";
   }
   return "";
+}
+
+function PlayerSkillLevelPicker({
+  value,
+  onChange,
+  disabled
+}: {
+  value: PlayerSkillLevel;
+  onChange: (value: PlayerSkillLevel) => void;
+  disabled: boolean;
+}) {
+  return (
+    <Box className="playerSkillPicker">
+      <PlayerSkillLevelToggle value={value} onChange={onChange} disabled={disabled} />
+    </Box>
+  );
+}
+
+function PlayerSkillLevelToggle({
+  value,
+  onChange,
+  disabled,
+  label = "เลือกระดับมือผู้เล่น"
+}: {
+  value: PlayerSkillLevel;
+  onChange: (value: PlayerSkillLevel) => void;
+  disabled: boolean;
+  label?: string;
+}) {
+  return (
+    <ToggleButtonGroup
+      value={value}
+      exclusive
+      size="small"
+      onChange={(_, nextValue: PlayerSkillLevel | null) => {
+        if (nextValue) {
+          onChange(nextValue);
+        }
+      }}
+      disabled={disabled}
+      aria-label={label}
+    >
+      {PLAYER_SKILL_LEVELS.map((skillLevel) => (
+        <ToggleButton key={skillLevel} value={skillLevel} aria-label={`ระดับ ${PLAYER_SKILL_LABELS[skillLevel]}`}>
+          {PLAYER_SKILL_LABELS[skillLevel]}
+        </ToggleButton>
+      ))}
+    </ToggleButtonGroup>
+  );
+}
+
+function PlayerSkillBadge({ skillLevel }: { skillLevel: PlayerSkillLevel }) {
+  return <span className="playerSkillBadge">{PLAYER_SKILL_LABELS[skillLevel]}</span>;
 }
 
 function CurrentShuttlePicker({
@@ -3059,6 +3277,7 @@ function PlannedMatchPanel({
   now,
   onSelectMatch,
   onAddPlayer,
+  onAddPlayers,
   onRemovePlayer,
   onCancelMatch,
   onConfirmMatch
@@ -3075,6 +3294,7 @@ function PlannedMatchPanel({
   now: string;
   onSelectMatch: (id: string) => void;
   onAddPlayer: (id: string) => void;
+  onAddPlayers: (matchId: string, ids: string[]) => void;
   onRemovePlayer: (matchId: string, playerId: string) => void;
   onCancelMatch: (matchId: string) => void;
   onConfirmMatch: (matchId: string) => void;
@@ -3085,6 +3305,7 @@ function PlannedMatchPanel({
   );
   const selectedMatch = plannedMatches.find((match) => match.id === selectedMatchId);
   const selectedMatchFull = (selectedMatch?.playerIds.length ?? 0) >= 4;
+  const [suggestionIndexes, setSuggestionIndexes] = useState<Record<string, number>>({});
   const enableAlphabetGrouping = playerSortMode === "alphabetical";
   const sortedPlannedMatches = useMemo(() => {
     return [...plannedMatches].sort((a, b) => {
@@ -3137,6 +3358,22 @@ function PlannedMatchPanel({
       target.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }, []);
+  useEffect(() => {
+    setSuggestionIndexes((current) => {
+      const nextIndexes = Object.fromEntries(
+        Object.entries(current).filter(([matchId]) =>
+          plannedMatches.some((match) => match.id === matchId && match.playerIds.length < 4)
+        )
+      );
+      return Object.keys(nextIndexes).length === Object.keys(current).length ? current : nextIndexes;
+    });
+  }, [plannedMatches]);
+  function shufflePlannedMatch(matchId: string) {
+    setSuggestionIndexes((current) => ({
+      ...current,
+      [matchId]: (current[matchId] ?? -1) + 1
+    }));
+  }
   const renderPlannedPlayerButton = (player: Player, className = "plannedPlayerButton") => {
     const isAlreadyPlanned = plannedPlayerIds.has(player.id);
 
@@ -3149,6 +3386,7 @@ function PlannedMatchPanel({
         onClick={() => onAddPlayer(player.id)}
       >
         <span className="playerPickerName">{player.name}</span>
+        <PlayerSkillBadge skillLevel={player.skillLevel} />
       </Button>
     );
   };
@@ -3175,6 +3413,17 @@ function PlannedMatchPanel({
               .map((playerId) => playerById.get(playerId))
               .filter((player): player is Player => Boolean(player));
             const isReady = players.length === 4;
+            const suggestionIndex = suggestionIndexes[match.id];
+            const suggestion =
+              typeof suggestionIndex === "number"
+                ? getPlannedMatchSuggestion({
+                  players: activePlayers,
+                  plannedMatches,
+                  targetMatchId: match.id,
+                  now,
+                  suggestionIndex
+                })
+                : null;
 
             return (
               <Paper
@@ -3208,7 +3457,12 @@ function PlannedMatchPanel({
                     players.map((player, index) => (
                       <Chip
                         key={`${match.id}-${player.id}`}
-                        label={`${index + 1}. ${player.name}`}
+                        label={
+                          <span className="plannedMatchNameChip">
+                            {index + 1}. {player.name}
+                            <PlayerSkillBadge skillLevel={player.skillLevel} />
+                          </span>
+                        }
                         color="primary"
                         variant={isSelected ? "filled" : "outlined"}
                         onDelete={
@@ -3221,6 +3475,14 @@ function PlannedMatchPanel({
                   )}
                 </Box>
                 <Stack direction="row" spacing={1} className="plannedMatchActions">
+                  <Button
+                    variant="outlined"
+                    startIcon={<SportsTennisIcon />}
+                    disabled={!canManageSession || isReady}
+                    onClick={() => shufflePlannedMatch(match.id)}
+                  >
+                    สุ่ม
+                  </Button>
                   <Button
                     variant="contained"
                     disabled={!canManageSession || !isReady}
@@ -3237,6 +3499,61 @@ function PlannedMatchPanel({
                     ยกเลิก
                   </Button>
                 </Stack>
+                {typeof suggestionIndex === "number" ? (
+                  suggestion ? (
+                    <Box className="plannedSuggestionPreview">
+                      <Box className="plannedSuggestionHeader">
+                        <Typography className="plannedSuggestionTitle">
+                          สุ่มเพิ่ม {suggestion.players.length} คน
+                        </Typography>
+                        <Button
+                          size="small"
+                          variant="contained"
+                          onClick={() => {
+                            onAddPlayers(match.id, suggestion.players.map((player) => player.id));
+                            setSuggestionIndexes((current) => {
+                              const next = { ...current };
+                              delete next[match.id];
+                              return next;
+                            });
+                          }}
+                        >
+                          เพิ่มทั้งหมด
+                        </Button>
+                      </Box>
+                      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                        {suggestion.players.map((player) => (
+                          <Button
+                            key={`suggestion-${match.id}-${player.id}`}
+                            className="plannedSuggestionPlayerButton"
+                            size="small"
+                            variant="outlined"
+                            aria-label={`เพิ่ม ${player.name}`}
+                            onClick={() => {
+                              onAddPlayers(match.id, [player.id]);
+                              setSuggestionIndexes((current) => {
+                                const nextIndex = (current[match.id] ?? 0) + 1;
+                                return {
+                                  ...current,
+                                  [match.id]: nextIndex
+                                };
+                              });
+                            }}
+                          >
+                            <span className="plannedMatchNameChip">
+                              {player.name}
+                              <PlayerSkillBadge skillLevel={player.skillLevel} />
+                            </span>
+                          </Button>
+                        ))}
+                      </Stack>
+                    </Box>
+                  ) : (
+                    <Typography className="plannedSuggestionEmpty" color="text.secondary">
+                      ยังไม่มีชุดที่ระดับมือใกล้กันพอ
+                    </Typography>
+                  )
+                ) : null}
               </Paper>
             );
           })}
@@ -3610,20 +3927,42 @@ function PaidSummary({
 }
 
 function DataManagementPanel({
+  players,
   onClearPlayData,
   onResetSession,
   onCopySummary,
+  onFinishSession,
+  onUpdatePlayerSkillLevel,
+  sessionClosed,
+  canFinishSession,
   matchSetupMode,
   onToggleMatchSetupMode,
   canManageSession
 }: {
+  players: Player[];
   onClearPlayData: () => void;
   onResetSession: () => void;
   onCopySummary: () => void;
+  onFinishSession: () => void;
+  onUpdatePlayerSkillLevel: (id: string, skillLevel: PlayerSkillLevel) => void;
+  sessionClosed: boolean;
+  canFinishSession: boolean;
   matchSetupMode: boolean;
   onToggleMatchSetupMode: () => void;
   canManageSession: boolean;
 }) {
+  const [skillSearchTerm, setSkillSearchTerm] = useState("");
+  const normalizedSkillSearch = skillSearchTerm.trim().toLocaleLowerCase("th-TH");
+  const visiblePlayers = useMemo(() => {
+    const sortedPlayers = [...players].sort((a, b) => a.name.localeCompare(b.name, "th"));
+    if (!normalizedSkillSearch) {
+      return sortedPlayers;
+    }
+    return sortedPlayers.filter((player) =>
+      player.name.toLocaleLowerCase("th-TH").includes(normalizedSkillSearch)
+    );
+  }, [normalizedSkillSearch, players]);
+
   return (
     <Box className="dataManagementPanel" role="region" aria-label="จัดการข้อมูล">
       <Box>
@@ -3655,7 +3994,59 @@ function DataManagementPanel({
         >
           รีเซ็ตรอบ
         </Button>
+        <Button
+          color="warning"
+          variant="outlined"
+          startIcon={<CheckCircleIcon />}
+          onClick={onFinishSession}
+          disabled={!canFinishSession || sessionClosed}
+        >
+          {sessionClosed ? "จบรอบแล้ว" : "จบรอบ"}
+        </Button>
       </Stack>
+      <Divider />
+      <Box className="playerSkillManagementPanel" role="region" aria-label="ระดับมือผู้เล่น">
+        <Box className="playerSkillManagementHeader">
+          <Box>
+            <Typography variant="h6" component="h3">
+              ระดับมือผู้เล่น
+            </Typography>
+            <Typography color="text.secondary">
+              แก้ระดับมือแล้วระบบแนะนำ Match จะใช้ค่าล่าสุดทันที
+            </Typography>
+          </Box>
+          <TextField
+            className="playerSkillSearchField"
+            label="ค้นหาชื่อ"
+            value={skillSearchTerm}
+            onChange={(event) => setSkillSearchTerm(event.target.value)}
+            size="small"
+            autoComplete="off"
+          />
+        </Box>
+        {players.length === 0 ? (
+          <Typography color="text.secondary">ยังไม่มีผู้เล่นในรอบนี้</Typography>
+        ) : visiblePlayers.length === 0 ? (
+          <Typography color="text.secondary">ไม่พบชื่อที่ค้นหา</Typography>
+        ) : (
+          <Box className="playerSkillList">
+            {visiblePlayers.map((player) => (
+              <Box key={player.id} className="playerSkillRow" role="group" aria-label={`${player.name} ระดับมือ`}>
+                <Box className="playerSkillRowName">
+                  <Typography component="span">{player.name}</Typography>
+                  <PlayerSkillBadge skillLevel={player.skillLevel} />
+                </Box>
+                <PlayerSkillLevelToggle
+                  value={player.skillLevel}
+                  onChange={(skillLevel) => onUpdatePlayerSkillLevel(player.id, skillLevel)}
+                  disabled={!canManageSession}
+                  label={`ตั้งระดับมือ ${player.name}`}
+                />
+              </Box>
+            ))}
+          </Box>
+        )}
+      </Box>
     </Box>
   );
 }

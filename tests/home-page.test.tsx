@@ -117,6 +117,140 @@ describe("Badminton fee book page", () => {
     expect(screen.getAllByRole("row", { name: /A/ })).toHaveLength(1);
   });
 
+  it("adds a player with a skill level and shows the badge in planned match names", async () => {
+    const user = userEvent.setup();
+
+    render(<HomePage />);
+
+    await user.type(screen.getByLabelText("ชื่อผู้เล่น"), "Skill A");
+    await user.click(screen.getByRole("button", { name: "ระดับ S" }));
+    await user.click(screen.getByRole("button", { name: "เพิ่มผู้เล่น" }));
+    await user.click(screen.getByRole("tab", { name: "จัด Match ล่วงหน้า" }));
+    await user.click(screen.getByRole("button", { name: /Match 1/ }));
+    await user.click(screen.getByRole("button", { name: /Skill A/ }));
+
+    const selectedMatch = screen.getByText("1. Skill A").closest(".plannedMatchNames");
+    expect(selectedMatch).not.toBeNull();
+    expect(within(selectedMatch as HTMLElement).getByText("S")).toBeInTheDocument();
+  });
+
+  it("updates player skill level from data management", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(
+      "badminton-fee-book.session.main",
+      JSON.stringify({
+        players: [
+          { id: "skill-a", name: "Skill A", shuttleCount: 0, shuttleMarks: [], skillLevel: "n", paid: false },
+          { id: "skill-b", name: "Skill B", shuttleCount: 0, shuttleMarks: [], skillLevel: "s", paid: false }
+        ],
+        pricing: { baseFee: 100, shuttleFee: 25 },
+        currentShuttleNumber: 1,
+        plannedMatches: [{ id: "match-1", label: "Match 1", playerIds: [], confirmed: false }],
+        activityLog: [],
+        updatedAt: "2026-05-25T11:00:00.000Z"
+      })
+    );
+
+    render(<HomePage />);
+
+    await user.click(await screen.findByRole("tab", { name: "จัดการข้อมูล" }));
+
+    const skillSection = screen.getByRole("region", { name: "ระดับมือผู้เล่น" });
+    await user.type(within(skillSection).getByLabelText("ค้นหาชื่อ"), "Skill A");
+
+    const row = within(skillSection).getByRole("group", { name: "Skill A ระดับมือ" });
+    expect(within(skillSection).queryByRole("group", { name: "Skill B ระดับมือ" })).not.toBeInTheDocument();
+
+    await user.click(within(row).getByRole("button", { name: "ระดับ P-" }));
+    expect(within(row).getByRole("button", { name: "ระดับ P-" })).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(screen.getByRole("tab", { name: "จัด Match ล่วงหน้า" }));
+    await user.click(screen.getByRole("button", { name: /Match 1/ }));
+    await user.click(screen.getByRole("button", { name: /Skill A/ }));
+
+    const selectedMatch = screen.getByText("1. Skill A").closest(".plannedMatchNames");
+    expect(selectedMatch).not.toBeNull();
+    expect(within(selectedMatch as HTMLElement).getByText("P-")).toBeInTheDocument();
+  });
+
+  it("previews and fills a suggested planned match from the match card", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(
+      "badminton-fee-book.session.main",
+      JSON.stringify({
+        players: [
+          { id: "a", name: "A", shuttleCount: 0, shuttleMarks: [], skillLevel: "n", paid: false, waitingSince: "2026-05-25T10:00:00.000Z", gameCount: 2 },
+          { id: "b", name: "B", shuttleCount: 0, shuttleMarks: [], skillLevel: "n", paid: false, waitingSince: "2026-05-25T10:00:00.000Z", gameCount: 0 },
+          { id: "c", name: "C", shuttleCount: 0, shuttleMarks: [], skillLevel: "s", paid: false, waitingSince: "2026-05-25T10:30:00.000Z", gameCount: 0 },
+          { id: "d", name: "D", shuttleCount: 0, shuttleMarks: [], skillLevel: "s", paid: false, waitingSince: "2026-05-25T10:50:00.000Z", gameCount: 0 },
+          { id: "e", name: "E", shuttleCount: 0, shuttleMarks: [], skillLevel: "p-", paid: false, waitingSince: "2026-05-25T10:00:00.000Z", gameCount: 0 }
+        ],
+        pricing: { baseFee: 100, shuttleFee: 25 },
+        currentShuttleNumber: 1,
+        plannedMatches: [
+          { id: "match-1", label: "Match 1", playerIds: [], confirmed: false },
+          { id: "match-2", label: "Match 2", playerIds: [], confirmed: false }
+        ],
+        activityLog: [],
+        updatedAt: "2026-05-25T11:00:00.000Z"
+      })
+    );
+
+    render(<HomePage />);
+
+    await user.click(await screen.findByRole("tab", { name: "จัด Match ล่วงหน้า" }));
+    await user.click(screen.getAllByRole("button", { name: "สุ่ม" })[0]);
+
+    expect(screen.getByText("สุ่มเพิ่ม 4 คน")).toBeInTheDocument();
+    expect(screen.getAllByText("B").length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole("button", { name: "เพิ่มทั้งหมด" }));
+
+    const selectedMatch = screen.getByText("1. B").closest(".plannedMatchNames");
+    expect(selectedMatch).not.toBeNull();
+    expect(within(selectedMatch as HTMLElement).getByText("3. D")).toBeInTheDocument();
+    expect(within(selectedMatch as HTMLElement).getByText("4. A")).toBeInTheDocument();
+  });
+
+  it("adds one suggested player at a time from a planned match card", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(
+      "badminton-fee-book.session.main",
+      JSON.stringify({
+        players: [
+          { id: "a", name: "A", shuttleCount: 0, shuttleMarks: [], skillLevel: "s", paid: false, waitingSince: "2026-05-25T10:00:00.000Z", gameCount: 0 },
+          { id: "b", name: "B", shuttleCount: 0, shuttleMarks: [], skillLevel: "s", paid: false, waitingSince: "2026-05-25T10:00:00.000Z", gameCount: 0 },
+          { id: "c", name: "C", shuttleCount: 0, shuttleMarks: [], skillLevel: "n", paid: false, waitingSince: "2026-05-25T10:00:00.000Z", gameCount: 0 },
+          { id: "d", name: "D", shuttleCount: 0, shuttleMarks: [], skillLevel: "n", paid: false, waitingSince: "2026-05-25T10:00:00.000Z", gameCount: 0 }
+        ],
+        pricing: { baseFee: 100, shuttleFee: 25 },
+        currentShuttleNumber: 1,
+        plannedMatches: [
+          { id: "match-1", label: "Match 1", playerIds: ["a", "b"], confirmed: false },
+          { id: "match-2", label: "Match 2", playerIds: [], confirmed: false }
+        ],
+        activityLog: [],
+        updatedAt: "2026-05-25T11:00:00.000Z"
+      })
+    );
+
+    render(<HomePage />);
+
+    await user.click(await screen.findByRole("tab", { name: "จัด Match ล่วงหน้า" }));
+    await user.click(screen.getAllByRole("button", { name: "สุ่ม" })[0]);
+    await user.click(screen.getByLabelText("เพิ่ม C"));
+
+    const selectedMatch = screen.getByText("1. A").closest(".plannedMatchNames");
+    expect(selectedMatch).not.toBeNull();
+    expect(within(selectedMatch as HTMLElement).getByText("3. C")).toBeInTheDocument();
+    expect(screen.getByText("สุ่มเพิ่ม 1 คน")).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("เพิ่ม D"));
+
+    expect(within(selectedMatch as HTMLElement).getByText("4. D")).toBeInTheDocument();
+    expect(screen.queryByText(/สุ่มเพิ่ม/)).not.toBeInTheDocument();
+  });
+
   it("toggles the compact mobile summary group", async () => {
     const user = userEvent.setup();
 

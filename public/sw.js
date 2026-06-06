@@ -1,4 +1,4 @@
-const CACHE_NAME = "badminton-fee-book-v2";
+const CACHE_NAME = "badminton-fee-book-v3";
 const STATIC_ASSETS = [
   "/icon-192.png",
   "/icon-512.png",
@@ -36,20 +36,20 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (request.mode === "navigate") {
-    event.respondWith(fetch(request));
+    event.respondWith(
+      fetch(request, { cache: "no-store" }).catch(() => caches.match(request))
+    );
     return;
   }
 
-  if (url.pathname.startsWith("/_next/static/") || STATIC_ASSETS.includes(url.pathname)) {
+  if (STATIC_ASSETS.includes(url.pathname)) {
     event.respondWith(
-      caches.match(request).then(
-        (cached) =>
-          cached ??
-          fetch(request).then((response) => {
-            const copy = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
-            return response;
-          })
+      fetch(request, { cache: "no-cache" }).then((response) => {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+        return response;
+      }).catch(
+        () => caches.match(request)
       )
     );
   }
