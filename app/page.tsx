@@ -1850,11 +1850,6 @@ export default function HomePage() {
                     fullWidth
                     autoComplete="off"
                   />
-                  <PlayerSkillLevelPicker
-                    value={playerSkillLevel}
-                    onChange={setPlayerSkillLevel}
-                    disabled={isEditingLocked || !canManageSession}
-                  />
                   <Button
                     type="submit"
                     variant="contained"
@@ -2045,7 +2040,6 @@ export default function HomePage() {
                   now={now}
                   onSelectMatch={setSelectedPlannedMatchId}
                   onAddPlayer={addPlayerToPlannedMatch}
-                  onAddPlayers={addPlayersToPlannedMatch}
                   onRemovePlayer={removePlayerFromPlannedMatch}
                   onCancelMatch={cancelPlannedMatch}
                   onConfirmMatch={confirmPlannedMatch}
@@ -2154,14 +2148,10 @@ export default function HomePage() {
                 </>
               ) : (
                 <DataManagementPanel
-                  players={session.players}
                   onClearPlayData={clearPlayData}
                   onResetSession={resetSession}
                   onCopySummary={copySummary}
                   onFinishSession={finishSession}
-                  onUpdatePlayerSkillLevel={(id, skillLevel) =>
-                    updatePlayer(id, (player) => ({ ...player, skillLevel }))
-                  }
                   sessionClosed={Boolean(closedAt)}
                   canFinishSession={userRole === "admin" && hasSupabaseConfig}
                   matchSetupMode={matchSetupMode}
@@ -2336,11 +2326,6 @@ export default function HomePage() {
               autoComplete="off"
               autoFocus
               inputRef={addPlayerInputRef}
-            />
-            <PlayerSkillLevelPicker
-              value={playerSkillLevel}
-              onChange={setPlayerSkillLevel}
-              disabled={isEditingLocked || !canManageSession}
             />
           </DialogContent>
           <DialogActions className="addPlayerDialogActions">
@@ -3277,7 +3262,6 @@ function PlannedMatchPanel({
   now,
   onSelectMatch,
   onAddPlayer,
-  onAddPlayers,
   onRemovePlayer,
   onCancelMatch,
   onConfirmMatch
@@ -3294,7 +3278,6 @@ function PlannedMatchPanel({
   now: string;
   onSelectMatch: (id: string) => void;
   onAddPlayer: (id: string) => void;
-  onAddPlayers: (matchId: string, ids: string[]) => void;
   onRemovePlayer: (matchId: string, playerId: string) => void;
   onCancelMatch: (matchId: string) => void;
   onConfirmMatch: (matchId: string) => void;
@@ -3305,7 +3288,6 @@ function PlannedMatchPanel({
   );
   const selectedMatch = plannedMatches.find((match) => match.id === selectedMatchId);
   const selectedMatchFull = (selectedMatch?.playerIds.length ?? 0) >= 4;
-  const [suggestionIndexes, setSuggestionIndexes] = useState<Record<string, number>>({});
   const enableAlphabetGrouping = playerSortMode === "alphabetical";
   const sortedPlannedMatches = useMemo(() => {
     return [...plannedMatches].sort((a, b) => {
@@ -3358,22 +3340,6 @@ function PlannedMatchPanel({
       target.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }, []);
-  useEffect(() => {
-    setSuggestionIndexes((current) => {
-      const nextIndexes = Object.fromEntries(
-        Object.entries(current).filter(([matchId]) =>
-          plannedMatches.some((match) => match.id === matchId && match.playerIds.length < 4)
-        )
-      );
-      return Object.keys(nextIndexes).length === Object.keys(current).length ? current : nextIndexes;
-    });
-  }, [plannedMatches]);
-  function shufflePlannedMatch(matchId: string) {
-    setSuggestionIndexes((current) => ({
-      ...current,
-      [matchId]: (current[matchId] ?? -1) + 1
-    }));
-  }
   const renderPlannedPlayerButton = (player: Player, className = "plannedPlayerButton") => {
     const isAlreadyPlanned = plannedPlayerIds.has(player.id);
 
@@ -3386,7 +3352,6 @@ function PlannedMatchPanel({
         onClick={() => onAddPlayer(player.id)}
       >
         <span className="playerPickerName">{player.name}</span>
-        <PlayerSkillBadge skillLevel={player.skillLevel} />
       </Button>
     );
   };
@@ -3413,18 +3378,6 @@ function PlannedMatchPanel({
               .map((playerId) => playerById.get(playerId))
               .filter((player): player is Player => Boolean(player));
             const isReady = players.length === 4;
-            const suggestionIndex = suggestionIndexes[match.id];
-            const suggestion =
-              typeof suggestionIndex === "number"
-                ? getPlannedMatchSuggestion({
-                  players: activePlayers,
-                  plannedMatches,
-                  targetMatchId: match.id,
-                  now,
-                  suggestionIndex
-                })
-                : null;
-
             return (
               <Paper
                 key={match.id}
@@ -3460,7 +3413,6 @@ function PlannedMatchPanel({
                         label={
                           <span className="plannedMatchNameChip">
                             {index + 1}. {player.name}
-                            <PlayerSkillBadge skillLevel={player.skillLevel} />
                           </span>
                         }
                         color="primary"
@@ -3475,14 +3427,6 @@ function PlannedMatchPanel({
                   )}
                 </Box>
                 <Stack direction="row" spacing={1} className="plannedMatchActions">
-                  <Button
-                    variant="outlined"
-                    startIcon={<SportsTennisIcon />}
-                    disabled={!canManageSession || isReady}
-                    onClick={() => shufflePlannedMatch(match.id)}
-                  >
-                    สุ่ม
-                  </Button>
                   <Button
                     variant="contained"
                     disabled={!canManageSession || !isReady}
@@ -3499,61 +3443,6 @@ function PlannedMatchPanel({
                     ยกเลิก
                   </Button>
                 </Stack>
-                {typeof suggestionIndex === "number" ? (
-                  suggestion ? (
-                    <Box className="plannedSuggestionPreview">
-                      <Box className="plannedSuggestionHeader">
-                        <Typography className="plannedSuggestionTitle">
-                          สุ่มเพิ่ม {suggestion.players.length} คน
-                        </Typography>
-                        <Button
-                          size="small"
-                          variant="contained"
-                          onClick={() => {
-                            onAddPlayers(match.id, suggestion.players.map((player) => player.id));
-                            setSuggestionIndexes((current) => {
-                              const next = { ...current };
-                              delete next[match.id];
-                              return next;
-                            });
-                          }}
-                        >
-                          เพิ่มทั้งหมด
-                        </Button>
-                      </Box>
-                      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                        {suggestion.players.map((player) => (
-                          <Button
-                            key={`suggestion-${match.id}-${player.id}`}
-                            className="plannedSuggestionPlayerButton"
-                            size="small"
-                            variant="outlined"
-                            aria-label={`เพิ่ม ${player.name}`}
-                            onClick={() => {
-                              onAddPlayers(match.id, [player.id]);
-                              setSuggestionIndexes((current) => {
-                                const nextIndex = (current[match.id] ?? 0) + 1;
-                                return {
-                                  ...current,
-                                  [match.id]: nextIndex
-                                };
-                              });
-                            }}
-                          >
-                            <span className="plannedMatchNameChip">
-                              {player.name}
-                              <PlayerSkillBadge skillLevel={player.skillLevel} />
-                            </span>
-                          </Button>
-                        ))}
-                      </Stack>
-                    </Box>
-                  ) : (
-                    <Typography className="plannedSuggestionEmpty" color="text.secondary">
-                      ยังไม่มีชุดที่ระดับมือใกล้กันพอ
-                    </Typography>
-                  )
-                ) : null}
               </Paper>
             );
           })}
@@ -3927,42 +3816,26 @@ function PaidSummary({
 }
 
 function DataManagementPanel({
-  players,
   onClearPlayData,
   onResetSession,
   onCopySummary,
   onFinishSession,
-  onUpdatePlayerSkillLevel,
   sessionClosed,
   canFinishSession,
   matchSetupMode,
   onToggleMatchSetupMode,
   canManageSession
 }: {
-  players: Player[];
   onClearPlayData: () => void;
   onResetSession: () => void;
   onCopySummary: () => void;
   onFinishSession: () => void;
-  onUpdatePlayerSkillLevel: (id: string, skillLevel: PlayerSkillLevel) => void;
   sessionClosed: boolean;
   canFinishSession: boolean;
   matchSetupMode: boolean;
   onToggleMatchSetupMode: () => void;
   canManageSession: boolean;
 }) {
-  const [skillSearchTerm, setSkillSearchTerm] = useState("");
-  const normalizedSkillSearch = skillSearchTerm.trim().toLocaleLowerCase("th-TH");
-  const visiblePlayers = useMemo(() => {
-    const sortedPlayers = [...players].sort((a, b) => a.name.localeCompare(b.name, "th"));
-    if (!normalizedSkillSearch) {
-      return sortedPlayers;
-    }
-    return sortedPlayers.filter((player) =>
-      player.name.toLocaleLowerCase("th-TH").includes(normalizedSkillSearch)
-    );
-  }, [normalizedSkillSearch, players]);
-
   return (
     <Box className="dataManagementPanel" role="region" aria-label="จัดการข้อมูล">
       <Box>
@@ -4004,49 +3877,6 @@ function DataManagementPanel({
           {sessionClosed ? "จบรอบแล้ว" : "จบรอบ"}
         </Button>
       </Stack>
-      <Divider />
-      <Box className="playerSkillManagementPanel" role="region" aria-label="ระดับมือผู้เล่น">
-        <Box className="playerSkillManagementHeader">
-          <Box>
-            <Typography variant="h6" component="h3">
-              ระดับมือผู้เล่น
-            </Typography>
-            <Typography color="text.secondary">
-              แก้ระดับมือแล้วระบบแนะนำ Match จะใช้ค่าล่าสุดทันที
-            </Typography>
-          </Box>
-          <TextField
-            className="playerSkillSearchField"
-            label="ค้นหาชื่อ"
-            value={skillSearchTerm}
-            onChange={(event) => setSkillSearchTerm(event.target.value)}
-            size="small"
-            autoComplete="off"
-          />
-        </Box>
-        {players.length === 0 ? (
-          <Typography color="text.secondary">ยังไม่มีผู้เล่นในรอบนี้</Typography>
-        ) : visiblePlayers.length === 0 ? (
-          <Typography color="text.secondary">ไม่พบชื่อที่ค้นหา</Typography>
-        ) : (
-          <Box className="playerSkillList">
-            {visiblePlayers.map((player) => (
-              <Box key={player.id} className="playerSkillRow" role="group" aria-label={`${player.name} ระดับมือ`}>
-                <Box className="playerSkillRowName">
-                  <Typography component="span">{player.name}</Typography>
-                  <PlayerSkillBadge skillLevel={player.skillLevel} />
-                </Box>
-                <PlayerSkillLevelToggle
-                  value={player.skillLevel}
-                  onChange={(skillLevel) => onUpdatePlayerSkillLevel(player.id, skillLevel)}
-                  disabled={!canManageSession}
-                  label={`ตั้งระดับมือ ${player.name}`}
-                />
-              </Box>
-            ))}
-          </Box>
-        )}
-      </Box>
     </Box>
   );
 }
