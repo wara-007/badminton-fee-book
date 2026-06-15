@@ -425,7 +425,7 @@ describe("Badminton fee book page", () => {
     }
   });
 
-  it("shows priority players and recent activity after marking a shuttle", async () => {
+  it("shows priority players without recent activity history", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(false);
     const user = userEvent.setup();
     const now = Date.now();
@@ -468,9 +468,7 @@ describe("Badminton fee book page", () => {
       })
     );
 
-    expect(screen.getByRole("region", { name: "ประวัติการแก้ไขล่าสุด" })).toHaveTextContent(
-      "ติ๊ก B ลงลูก 1"
-    );
+    expect(screen.queryByRole("region", { name: "ประวัติการแก้ไขล่าสุด" })).not.toBeInTheDocument();
   });
 
   it("warns when the checked shuttle marks are not complete sets of four", async () => {

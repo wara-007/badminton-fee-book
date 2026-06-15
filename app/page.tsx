@@ -50,6 +50,7 @@ import {
 import { getAppTheme } from "@/lib/theme";
 import { useThemeMode } from "@/lib/theme-context";
 import { useRouter } from "next/navigation";
+import { getRemoteRefreshRetryDelay, hasUnsyncedLocalChanges } from "@/lib/remote-refresh";
 import { CSSProperties, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Player,
@@ -278,6 +279,15 @@ export default function HomePage() {
     if (!hasSupabaseConfig || !hydrated || refreshingRemote || document.visibilityState === "hidden") {
       return false;
     }
+    const currentSnapshot = serializeSession(normalizeSession(sessionRef.current));
+    if (hasUnsyncedLocalChanges({
+      currentSnapshot,
+      lastRemoteSnapshot: lastRemoteSnapshotRef.current,
+      hasPendingSnapshot: Boolean(localStorage.getItem(getPendingSyncKey(sessionId))),
+      hasScheduledSave: Boolean(saveTimerRef.current)
+    })) {
+      return true;
+    }
     setRefreshingRemote(true);
     setSyncStatus("กำลังโหลดข้อมูลล่าสุด");
     try {
@@ -428,33 +438,35 @@ export default function HomePage() {
     }
 
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
-    const refreshWithRetry = async () => {
+    const refreshWithRetry = async (attempt = 0) => {
       const refreshed = await refreshFromRemote();
       if (!refreshed) {
-        if (!retryTimer && navigator.onLine) {
+        const retryDelay = getRemoteRefreshRetryDelay(attempt + 1);
+        if (!retryTimer && navigator.onLine && retryDelay !== null) {
           retryTimer = setTimeout(() => {
             retryTimer = null;
-            void refreshWithRetry();
-          }, 3000);
+            void refreshWithRetry(attempt + 1);
+          }, retryDelay);
         }
       }
     };
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        void refreshWithRetry();
+        void refreshWithRetry(0);
       }
     };
 
-    window.addEventListener("focus", refreshWithRetry);
-    window.addEventListener("online", refreshWithRetry);
+    const handleRefreshTrigger = () => void refreshWithRetry(0);
+    window.addEventListener("focus", handleRefreshTrigger);
+    window.addEventListener("online", handleRefreshTrigger);
     document.addEventListener("visibilitychange", handleVisibilityChange);
     const refreshInterval = window.setInterval(() => {
-      void refreshWithRetry();
+      void refreshWithRetry(0);
     }, 30000);
     return () => {
-      window.removeEventListener("focus", refreshWithRetry);
-      window.removeEventListener("online", refreshWithRetry);
+      window.removeEventListener("focus", handleRefreshTrigger);
+      window.removeEventListener("online", handleRefreshTrigger);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.clearInterval(refreshInterval);
       if (retryTimer) {
@@ -483,6 +495,15 @@ export default function HomePage() {
         localStorage.removeItem(getPendingSyncKey(sessionId));
         setPendingSyncSnapshot(null);
         setSyncStatus("ซิงก์แล้ว");
+        return;
+      }
+      if (hasUnsyncedLocalChanges({
+        currentSnapshot,
+        lastRemoteSnapshot: lastRemoteSnapshotRef.current,
+        hasPendingSnapshot: Boolean(localStorage.getItem(getPendingSyncKey(sessionId))),
+        hasScheduledSave: Boolean(saveTimerRef.current)
+      })) {
+        setSyncStatus("ข้อมูลชนกัน กรุณาตรวจสอบ");
         return;
       }
       if (saveTimerRef.current) {
@@ -2188,7 +2209,6 @@ export default function HomePage() {
                     onRemovePlayer={removeActiveShuttlePlayer}
                   />
                   <PriorityPlayers players={priorityPlayers} now={now} />
-                  <RecentActivity activityLog={session.activityLog} now={now} />
                 </Box>
               ) : activeTab === 1 ? (
                 <PlannedMatchPanel
@@ -3495,36 +3515,6 @@ function PriorityPlayers({ players, now }: { players: Player[]; now: string }) {
           />
         ))}
       </Stack>
-    </Box>
-  );
-}
-
-function RecentActivity({
-  activityLog,
-  now
-}: {
-  activityLog: SessionState["activityLog"];
-  now: string;
-}) {
-  return (
-    <Box className="activityPanel" role="region" aria-label="ประวัติการแก้ไขล่าสุด">
-      <Typography variant="h6" component="h2">
-        ประวัติการแก้ไขล่าสุด
-      </Typography>
-      {activityLog.length === 0 ? (
-        <Typography color="text.secondary">ยังไม่มีประวัติ</Typography>
-      ) : (
-        <Stack spacing={1}>
-          {activityLog.slice(0, 8).map((activity) => (
-            <Box key={activity.id} className="activityItem">
-              <Typography>{activity.message}</Typography>
-              <Typography color="text.secondary" fontSize={13}>
-                {formatRelativeTime(activity.createdAt, now)}
-              </Typography>
-            </Box>
-          ))}
-        </Stack>
-      )}
     </Box>
   );
 }

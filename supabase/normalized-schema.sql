@@ -80,16 +80,7 @@ create table if not exists public.badminton_planned_match_players (
   unique (match_id, player_id)
 );
 
-create table if not exists public.badminton_activity_logs (
-  id text primary key,
-  room_id text not null references public.badminton_rooms(id) on delete cascade,
-  action text not null,
-  message text not null,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists badminton_activity_logs_room_created_idx
-on public.badminton_activity_logs (room_id, created_at desc);
+drop table if exists public.badminton_activity_logs;
 
 alter table public.badminton_sessions_backup enable row level security;
 alter table public.badminton_rooms enable row level security;
@@ -97,7 +88,6 @@ alter table public.badminton_players enable row level security;
 alter table public.badminton_shuttle_marks enable row level security;
 alter table public.badminton_planned_matches enable row level security;
 alter table public.badminton_planned_match_players enable row level security;
-alter table public.badminton_activity_logs enable row level security;
 
 revoke all on public.badminton_sessions_backup from anon;
 revoke insert, update, delete on public.badminton_rooms from anon;
@@ -105,7 +95,6 @@ revoke insert, update, delete on public.badminton_players from anon;
 revoke insert, update, delete on public.badminton_shuttle_marks from anon;
 revoke insert, update, delete on public.badminton_planned_matches from anon;
 revoke insert, update, delete on public.badminton_planned_match_players from anon;
-revoke insert, update, delete on public.badminton_activity_logs from anon;
 
 drop policy if exists "Public read badminton rooms" on public.badminton_rooms;
 create policy "Public read badminton rooms" on public.badminton_rooms for select to anon using (true);
@@ -117,5 +106,3 @@ drop policy if exists "Public read badminton planned matches" on public.badminto
 create policy "Public read badminton planned matches" on public.badminton_planned_matches for select to anon using (true);
 drop policy if exists "Public read badminton planned match players" on public.badminton_planned_match_players;
 create policy "Public read badminton planned match players" on public.badminton_planned_match_players for select to anon using (true);
-drop policy if exists "Public read badminton activity logs" on public.badminton_activity_logs;
-create policy "Public read badminton activity logs" on public.badminton_activity_logs for select to anon using (true);

@@ -12,16 +12,7 @@ add column if not exists revision bigint not null default 1;
 alter table public.badminton_sessions
 add column if not exists closed_at timestamptz;
 
-create table if not exists public.badminton_session_history (
-  history_id bigint generated always as identity primary key,
-  session_id text not null,
-  revision bigint not null,
-  state jsonb not null,
-  saved_at timestamptz not null default now()
-);
-
-create index if not exists badminton_session_history_session_revision_idx
-on public.badminton_session_history (session_id, revision desc);
+drop table if exists public.badminton_session_history;
 
 create or replace function public.set_badminton_session_updated_at()
 returns trigger
@@ -91,16 +82,6 @@ begin
         'updated_at', current_row.updated_at,
         'closed_at', current_row.closed_at
       );
-    end if;
-
-    if not exists (
-      select 1
-      from public.badminton_session_history
-      where session_id = current_row.id
-        and saved_at >= now() - interval '10 minutes'
-    ) then
-      insert into public.badminton_session_history (session_id, revision, state, saved_at)
-      values (current_row.id, current_row.revision, current_row.state, current_row.updated_at);
     end if;
 
     update public.badminton_sessions
@@ -190,9 +171,6 @@ begin
     get diagnostics normalized_deleted_count = row_count;
   end if;
 
-  delete from public.badminton_session_history
-  where session_id = p_id;
-
   delete from public.badminton_sessions
   where id = p_id;
 
@@ -205,9 +183,6 @@ $$;
 
 revoke all on function public.delete_badminton_session(text) from public;
 grant execute on function public.delete_badminton_session(text) to anon;
-
-alter table public.badminton_session_history enable row level security;
-revoke all on table public.badminton_session_history from anon;
 
 alter table public.badminton_sessions enable row level security;
 

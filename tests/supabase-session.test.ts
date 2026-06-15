@@ -1,7 +1,32 @@
 import { describe, expect, it } from "vitest";
-import { RemoteSaveConflictError, parseRemoteSaveResult } from "@/lib/supabase-session";
+import {
+  RemoteSaveConflictError,
+  parseRemoteSaveResult,
+  prepareSessionForRemote
+} from "@/lib/supabase-session";
 
 describe("Supabase session revision saves", () => {
+  it("keeps match metadata but removes general activity history before remote saves", () => {
+    const session = {
+      players: [],
+      pricing: { baseFee: 90, shuttleFee: 26 },
+      currentShuttleNumber: 1,
+      plannedMatches: [],
+      activityLog: [
+        { id: "1", action: "paid" as const, message: "A paid", createdAt: "2026-06-15T00:00:00.000Z" },
+        { id: "2", action: "mark-added" as const, message: "A ลงลูก 1", createdAt: "2026-06-15T00:01:00.000Z" },
+        { id: "3", action: "match-confirmed" as const, message: "ยืนยันลูก 2", createdAt: "2026-06-15T00:02:00.000Z" }
+      ],
+      updatedAt: "2026-06-15T00:03:00.000Z"
+    };
+
+    expect(prepareSessionForRemote(session).activityLog.map((activity) => activity.action)).toEqual([
+      "mark-added",
+      "match-confirmed"
+    ]);
+    expect(session.activityLog).toHaveLength(3);
+  });
+
   it("returns the saved revision and canonical server state", () => {
     const result = parseRemoteSaveResult({
       saved: true,

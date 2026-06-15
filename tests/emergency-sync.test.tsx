@@ -58,6 +58,22 @@ describe("Emergency continue mode", () => {
     expect(pendingSnapshot).toContain('"name":"A"');
   });
 
+  it("does not overwrite pending local changes when an automatic refresh runs", async () => {
+    const user = userEvent.setup();
+    supabaseMock.saveRemoteSession.mockRejectedValue(new Error("offline"));
+
+    await renderHomePage();
+
+    await user.type(await screen.findByLabelText("ชื่อผู้เล่น"), "A");
+    await user.click(screen.getByRole("button", { name: "เพิ่มผู้เล่น" }));
+    await screen.findByText("รอส่งขึ้นเซิร์ฟเวอร์");
+
+    window.dispatchEvent(new Event("focus"));
+
+    await waitFor(() => expect(screen.getByRole("row", { name: /A/ })).toBeInTheDocument());
+    expect(supabaseMock.loadRemoteSession).toHaveBeenCalledTimes(1);
+  });
+
   it("exports the latest local state as JSON while sync is pending", async () => {
     const user = userEvent.setup();
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);

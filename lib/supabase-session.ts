@@ -50,6 +50,15 @@ export const supabase: SupabaseClient | null = hasSupabaseConfig
 
 let remoteNowSupported = true;
 
+export function prepareSessionForRemote(session: SessionState): SessionState {
+  return {
+    ...session,
+    activityLog: session.activityLog.filter(
+      (activity) => activity.action === 'mark-added' || activity.action === 'match-confirmed',
+    ),
+  };
+}
+
 function normalizeRemoteRow(row: Pick<SessionRow, 'state' | 'updated_at'>): SessionState {
   const normalized = normalizeSession(row.state);
   const rowUpdatedAt = new Date(row.updated_at).getTime();
@@ -118,7 +127,7 @@ export async function saveRemoteSession(
 
   const { data, error } = await supabase.rpc('save_badminton_session', {
     p_id: sessionId,
-    p_state: session,
+    p_state: prepareSessionForRemote(session),
     p_expected_revision: expectedRevision,
   });
 

@@ -51,8 +51,6 @@
   --sync-bg: #fffbeb;
   --sync-border: #f59e0b;
   --sync-text: #92400e;
-  --activity-border: #eee7dc;
-  --activity-bg: #fbfaf7;
   --app-footer: #8a949e;
   --chip-danger-text: #991b1b;
   --chip-danger-border: #fecaca;
@@ -138,8 +136,6 @@
   --sync-bg: #3f2a0a;
   --sync-border: #92400e;
   --sync-text: #fcd34d;
-  --activity-border: #3a3a3a;
-  --activity-bg: #2a2a2a;
   --app-footer: #6b7280;
   --chip-danger-text: #fca5a5;
   --chip-danger-border: #7f1d1d;
@@ -419,29 +415,12 @@ body {
   word-break: break-word;
 }
 
-.priorityPanel,
-.activityPanel {
+.priorityPanel {
   display: grid;
   gap: 10px;
   padding: 14px 18px;
   border-bottom: 1px solid var(--border-color);
   background: var(--card-bg);
-}
-
-.activityPanel {
-  border-top: 1px solid var(--border-color);
-  border-bottom: 0;
-}
-
-.activityItem {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--activity-border);
-  border-radius: 8px;
-  background: var(--activity-bg);
 }
 
 .syncBar {
