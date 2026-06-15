@@ -18,4 +18,22 @@ describe("remote session notifications", () => {
 
     expect(getRemoteSessionNotification(current, remote)).toBe("ยืนยัน Match ลูก 1 จากอีกเครื่อง");
   });
+
+  it("reports every player in a batch payment", () => {
+    const current = createInitialSession();
+    current.players = [
+      { id: "a", name: "A", shuttleCount: 0, skillLevel: "n", paid: false, gameCount: 0 },
+      { id: "b", name: "B", shuttleCount: 0, skillLevel: "n", paid: false, gameCount: 0 }
+    ];
+    const remote = structuredClone(current);
+    remote.players = remote.players.map((player, index) => ({
+      ...player,
+      paid: true,
+      paidAmount: index === 0 ? 100 : 120
+    }));
+
+    expect(getRemoteSessionNotification(current, remote)).toBe(
+      "จ่ายแล้ว 2 คน: A 100 บาท, B 120 บาท จากอีกเครื่อง"
+    );
+  });
 });

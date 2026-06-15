@@ -16,6 +16,35 @@ NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 ```
 
+## Normalized Storage Staged Migration
+
+Do not delete or disable `public.badminton_sessions` during the initial rollout.
+It remains the rollback source until two-device verification passes.
+
+1. Stop active use of the app temporarily.
+2. Run `supabase/archive-existing-normalized.sql` to preserve any previous
+   normalized rollout in `badminton_normalized_archive`.
+3. Run `supabase/normalized-schema.sql`.
+4. Run `supabase/migrate-legacy-sessions.sql`.
+5. Run `supabase/reconcile-normalized-sessions.sql`.
+6. Confirm mismatch and invalid-relation results are empty and room counts match.
+   Duplicate player IDs across different rooms are valid.
+7. Run `supabase/normalized-rpcs.sql`.
+8. Deploy the client and verify every flow in a temporary room:
+   add/edit/delete player, shuttle marks, planned matches, individual and batch
+   payment, pricing, clear/reset, close/delete room, and concurrent devices.
+
+After the SQL and temporary-room checks pass, normalized tables are the
+production source of truth. Keep `badminton_sessions` unchanged for rollback.
+Do not run `migrate-legacy-sessions.sql` again after cutover because older
+clients may continue writing stale legacy rows. Reconcile from legacy only
+before the normalized client is deployed.
+
+Rollback: deploy the legacy client and restore the required room snapshot from
+normalized tables or an approved backup first. Do not assume the unchanged
+legacy row contains changes made after cutover.
+Legacy activity logs are also retained during the staged rollout.
+
 Restart `npm run dev`.
 
 ## Vercel

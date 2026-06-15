@@ -94,11 +94,9 @@ export async function loadRemoteSession(
     return { session: createInitialSession(), revision: 0, closedAt: null };
   }
 
-  const { data, error } = await supabase
-    .from('badminton_sessions')
-    .select('state, updated_at, revision, closed_at')
-    .eq('id', sessionId)
-    .maybeSingle<Pick<SessionRow, 'state' | 'updated_at' | 'revision' | 'closed_at'>>();
+  const { data, error } = await supabase.rpc('load_normalized_badminton_session', {
+    p_id: sessionId,
+  });
 
   if (error) {
     throw error;
@@ -110,9 +108,9 @@ export async function loadRemoteSession(
   }
 
   return {
-    session: normalizeRemoteRow(data),
-    revision: data.revision,
-    closedAt: data.closed_at ?? null,
+    session: normalizeRemoteRow(data as RemoteSaveRpcResult),
+    revision: Number((data as RemoteSaveRpcResult).revision),
+    closedAt: (data as RemoteSaveRpcResult).closed_at ?? null,
   };
 }
 
@@ -125,7 +123,7 @@ export async function saveRemoteSession(
     return { session, revision: expectedRevision, closedAt: null };
   }
 
-  const { data, error } = await supabase.rpc('save_badminton_session', {
+  const { data, error } = await supabase.rpc('save_normalized_badminton_session', {
     p_id: sessionId,
     p_state: prepareSessionForRemote(session),
     p_expected_revision: expectedRevision,
@@ -143,8 +141,8 @@ export async function closeRemoteSession(sessionId: string): Promise<string> {
     return new Date().toISOString();
   }
 
-  const { data, error } = await supabase.rpc('close_badminton_session', {
-    p_id: sessionId,
+  const { data, error } = await supabase.rpc('close_normalized_badminton_room', {
+    p_room_id: sessionId,
   });
   if (error) {
     throw error;
@@ -177,7 +175,7 @@ export async function listRemoteSessions(): Promise<
   }
 
   const { data, error } = await supabase
-    .from('badminton_sessions')
+    .from('badminton_rooms')
     .select('id, updated_at')
     .order('updated_at', { ascending: false })
     .limit(50);
@@ -194,8 +192,8 @@ export async function deleteRemoteSession(sessionId: string): Promise<void> {
     return;
   }
 
-  const { data, error } = await supabase.rpc('delete_badminton_session', {
-    p_id: sessionId,
+  const { data, error } = await supabase.rpc('delete_normalized_badminton_room', {
+    p_room_id: sessionId,
   });
 
   if (error) {
@@ -222,17 +220,13 @@ export function subscribeRemoteSession(
       {
         event: '*',
         schema: 'public',
-        table: 'badminton_sessions',
+        table: 'badminton_rooms',
         filter: `id=eq.${sessionId}`,
       },
       (payload) => {
         const nextRow = payload.new as SessionRow | null;
-        if (nextRow?.state) {
-          onSession({
-            session: normalizeRemoteRow(nextRow),
-            revision: nextRow.revision,
-            closedAt: nextRow.closed_at ?? null,
-          });
+        if (nextRow?.id) {
+          void loadRemoteSession(sessionId).then(onSession);
         }
       },
     )

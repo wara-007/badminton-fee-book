@@ -23,15 +23,17 @@ create table if not exists public.badminton_rooms (
   base_fee numeric not null default 90 check (base_fee >= 0),
   shuttle_fee numeric not null default 26 check (shuttle_fee >= 0),
   current_shuttle_number integer not null default 1 check (current_shuttle_number > 0),
+  revision bigint not null default 1,
   closed_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 create table if not exists public.badminton_players (
-  id uuid primary key,
+  id text not null,
   room_id text not null references public.badminton_rooms(id) on delete cascade,
   name text not null,
+  position integer not null check (position > 0),
   skill_level text not null default 'n' check (skill_level in ('bg', 'n', 's', 'p-', 'p')),
   paid boolean not null default false,
   paid_at timestamptz,
@@ -40,7 +42,8 @@ create table if not exists public.badminton_players (
   rest_until timestamptz,
   game_count integer not null default 0 check (game_count >= 0),
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  primary key (room_id, id)
 );
 
 create unique index if not exists badminton_players_room_name_idx
@@ -49,14 +52,18 @@ on public.badminton_players (room_id, lower(name));
 create index if not exists badminton_players_room_idx
 on public.badminton_players (room_id);
 
+create unique index if not exists badminton_players_room_position_idx
+on public.badminton_players (room_id, position);
+
 create table if not exists public.badminton_shuttle_marks (
   id bigint generated always as identity primary key,
   room_id text not null references public.badminton_rooms(id) on delete cascade,
-  player_id uuid not null references public.badminton_players(id) on delete cascade,
+  player_id text not null,
   shuttle_number integer not null check (shuttle_number > 0),
   position integer not null check (position > 0),
   created_at timestamptz not null default now(),
-  unique (room_id, shuttle_number, position)
+  foreign key (room_id, player_id)
+    references public.badminton_players(room_id, id) on delete cascade
 );
 
 create index if not exists badminton_shuttle_marks_room_player_idx
@@ -69,18 +76,24 @@ create table if not exists public.badminton_planned_matches (
   position integer not null check (position > 0),
   confirmed boolean not null default false,
   updated_at timestamptz not null default now(),
-  unique (room_id, position)
+  unique (room_id, position),
+  unique (room_id, id)
 );
 
 create table if not exists public.badminton_planned_match_players (
-  match_id text not null references public.badminton_planned_matches(id) on delete cascade,
-  player_id uuid not null references public.badminton_players(id) on delete cascade,
+  match_id text not null,
+  room_id text not null,
+  player_id text not null,
   position integer not null check (position > 0),
   primary key (match_id, position),
-  unique (match_id, player_id)
+  unique (match_id, player_id),
+  foreign key (room_id, match_id)
+    references public.badminton_planned_matches(room_id, id) on delete cascade,
+  foreign key (room_id, player_id)
+    references public.badminton_players(room_id, id) on delete cascade
 );
 
-drop table if exists public.badminton_activity_logs;
+-- Keep legacy activity logs during staged rollout for rollback and auditing.
 
 alter table public.badminton_sessions_backup enable row level security;
 alter table public.badminton_rooms enable row level security;
@@ -106,3 +119,10 @@ drop policy if exists "Public read badminton planned matches" on public.badminto
 create policy "Public read badminton planned matches" on public.badminton_planned_matches for select to anon using (true);
 drop policy if exists "Public read badminton planned match players" on public.badminton_planned_match_players;
 create policy "Public read badminton planned match players" on public.badminton_planned_match_players for select to anon using (true);
+
+do $$
+begin
+  alter publication supabase_realtime add table public.badminton_rooms;
+exception
+  when duplicate_object then null;
+end $$;

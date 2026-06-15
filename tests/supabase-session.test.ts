@@ -39,7 +39,8 @@ describe("Supabase session revision saves", () => {
         activityLog: [],
         updatedAt: "2026-06-05T18:00:00.000Z"
       },
-      updated_at: "2026-06-05T18:00:01.000Z"
+      updated_at: "2026-06-05T18:00:01.000Z",
+      closed_at: null
     });
 
     expect(result.revision).toBe(8);
@@ -59,7 +60,8 @@ describe("Supabase session revision saves", () => {
           activityLog: [],
           updatedAt: "2026-06-05T18:05:00.000Z"
         },
-        updated_at: "2026-06-05T18:05:01.000Z"
+        updated_at: "2026-06-05T18:05:01.000Z",
+        closed_at: null
       })
     ).toThrow(RemoteSaveConflictError);
   });

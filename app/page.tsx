@@ -51,7 +51,7 @@ import {
 import { getAppTheme } from "@/lib/theme";
 import { useThemeMode } from "@/lib/theme-context";
 import { useRouter } from "next/navigation";
-import { getRemoteRefreshRetryDelay, hasUnsyncedLocalChanges } from "@/lib/remote-refresh";
+import { getRemoteRefreshRetryDelay, hasUnsyncedLocalChanges, mergeRemoteChangesAgainstBase } from "@/lib/remote-refresh";
 import { getRemoteSessionNotification } from "@/lib/remote-notification";
 import { CSSProperties, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -484,7 +484,6 @@ export default function HomePage() {
     }
 
     return subscribeRemoteSession(sessionId, (remote) => {
-      remoteRevisionRef.current = remote.revision;
       setClosedAt(remote.closedAt);
       const remoteSession = remote.session;
       const normalizedRemoteSession = normalizeSession(remoteSession);
@@ -494,6 +493,7 @@ export default function HomePage() {
       }
       const currentSnapshot = serializeSession(normalizeSession(sessionRef.current));
       if (snapshot === currentSnapshot) {
+        remoteRevisionRef.current = remote.revision;
         lastRemoteSnapshotRef.current = snapshot;
         localStorage.removeItem(getPendingSyncKey(sessionId));
         setPendingSyncSnapshot(null);
@@ -507,14 +507,32 @@ export default function HomePage() {
         hasPendingSnapshot: Boolean(localStorage.getItem(getPendingSyncKey(sessionId))),
         hasScheduledSave: Boolean(saveTimerRef.current)
       })) {
+        const notification = getRemoteSessionNotification(sessionRef.current, normalizedRemoteSession);
+        const mergedSession = lastRemoteSnapshotRef.current
+          ? mergeRemoteChangesAgainstBase(
+            parseSessionSnapshot(lastRemoteSnapshotRef.current, sessionRef.current),
+            sessionRef.current,
+            normalizedRemoteSession
+          )
+          : null;
+        if (mergedSession) {
+          remoteRevisionRef.current = remote.revision;
+          lastRemoteSnapshotRef.current = snapshot;
+          setRemoteNotification(notification);
+          setSession(mergedSession);
+          setSyncStatus("กำลังบันทึก");
+          return;
+        }
         setSyncStatus("ข้อมูลชนกัน กรุณาตรวจสอบ");
         return;
       }
+      remoteRevisionRef.current = remote.revision;
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
       }
       lastRemoteSnapshotRef.current = snapshot;
+      setRemoteNotification(getRemoteSessionNotification(sessionRef.current, normalizedRemoteSession));
       setSession(normalizedRemoteSession);
       if (!localStorage.getItem(getPendingSyncKey(sessionId))) {
         setPendingSyncSnapshot(null);
@@ -2684,10 +2702,14 @@ function EmergencySyncPanel({
   return (
     <Paper className="emergencySyncPanel" elevation={0} role="status">
       <Box className="emergencySyncText">
-        <Typography fontWeight={900}>ระบบกำลังออฟไลน์</Typography>
+        <Typography fontWeight={900}>
+          {status === "ข้อมูลชนกัน กรุณาตรวจสอบ" ? "พบข้อมูลจากอีกเครื่อง" : "ระบบกำลังออฟไลน์"}
+        </Typography>
         <Typography color="text.secondary">
           {status === "รอส่งขึ้นเซิร์ฟเวอร์"
             ? "ข้อมูลล่าสุดอยู่ในเครื่องนี้แล้ว และรอส่งขึ้นเซิร์ฟเวอร์อีกครั้ง"
+            : status === "ข้อมูลชนกัน กรุณาตรวจสอบ"
+              ? "เครื่องนี้มีข้อมูลที่ยังไม่ซิงก์ จึงยังไม่รับข้อมูลจากอีกเครื่องมาทับ"
             : "ตอนนี้ใช้ข้อมูลจากเครื่องนี้ ถ้าเซิร์ฟเวอร์กลับมาแล้วค่อยลองซิงก์ใหม่"}
         </Typography>
         <Typography className="emergencySyncNote">{detailText}</Typography>

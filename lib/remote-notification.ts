@@ -5,6 +5,8 @@ export function getRemoteSessionNotification(
   remote: SessionState,
 ): string | null {
   const currentPlayers = new Map(current.players.map((player) => [player.id, player]));
+  const paidPlayers: string[] = [];
+  const unpaidPlayers: string[] = [];
 
   for (const player of remote.players) {
     const previous = currentPlayers.get(player.id);
@@ -12,11 +14,22 @@ export function getRemoteSessionNotification(
       return `เพิ่ม ${player.name} เข้ารอบจากอีกเครื่อง`;
     }
     if (!previous.paid && player.paid) {
-      return `${player.name} จ่ายแล้ว ${player.paidAmount ?? 0} บาท จากอีกเครื่อง`;
+      paidPlayers.push(`${player.name} ${player.paidAmount ?? 0} บาท`);
     }
     if (previous.paid && !player.paid) {
-      return `ย้าย ${player.name} กลับไปค้างจ่ายจากอีกเครื่อง`;
+      unpaidPlayers.push(player.name);
     }
+  }
+
+  if (paidPlayers.length > 0) {
+    return paidPlayers.length === 1
+      ? `${paidPlayers[0].replace(/ (\d+(?:\.\d+)?) บาท$/, " จ่ายแล้ว $1 บาท")} จากอีกเครื่อง`
+      : `จ่ายแล้ว ${paidPlayers.length} คน: ${paidPlayers.join(", ")} จากอีกเครื่อง`;
+  }
+  if (unpaidPlayers.length > 0) {
+    return unpaidPlayers.length === 1
+      ? `ย้าย ${unpaidPlayers[0]} กลับไปค้างจ่ายจากอีกเครื่อง`
+      : `ย้ายกลับค้างจ่าย ${unpaidPlayers.length} คน: ${unpaidPlayers.join(", ")} จากอีกเครื่อง`;
   }
 
   for (const player of current.players) {
