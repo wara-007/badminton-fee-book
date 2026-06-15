@@ -31,6 +31,7 @@ import {
   IconButton,
   InputAdornment,
   Paper,
+  Snackbar,
   Stack,
   Tab,
   Table,
@@ -51,6 +52,7 @@ import { getAppTheme } from "@/lib/theme";
 import { useThemeMode } from "@/lib/theme-context";
 import { useRouter } from "next/navigation";
 import { getRemoteRefreshRetryDelay, hasUnsyncedLocalChanges } from "@/lib/remote-refresh";
+import { getRemoteSessionNotification } from "@/lib/remote-notification";
 import { CSSProperties, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Player,
@@ -239,6 +241,8 @@ export default function HomePage() {
   const [closedAt, setClosedAt] = useState<string | null>(null);
   const [pendingSyncSnapshot, setPendingSyncSnapshot] = useState<string | null>(null);
   const [lastLocalSavedAt, setLastLocalSavedAt] = useState<string | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [remoteNotification, setRemoteNotification] = useState<string | null>(null);
   const [dialog, setDialog] = useState<AppDialogState>({
     open: false,
     mode: "alert",
@@ -297,7 +301,9 @@ export default function HomePage() {
       remoteRevisionRef.current = remote.revision;
       setClosedAt(remote.closedAt);
       lastRemoteSnapshotRef.current = snapshot;
+      setRemoteNotification(getRemoteSessionNotification(sessionRef.current, normalizedRemoteSession));
       setSession(normalizedRemoteSession);
+      setLastSyncedAt(new Date().toISOString());
       setSyncStatus(
         localStorage.getItem(getPendingSyncKey(sessionId))
           ? "ข้อมูลชนกัน กรุณาตรวจสอบ"
@@ -401,6 +407,7 @@ export default function HomePage() {
           } else {
             setPendingSyncSnapshot(null);
             setSyncStatus("ซิงก์แล้ว");
+            setLastSyncedAt(new Date().toISOString());
           }
         } catch {
           if (cancelled) {
@@ -461,14 +468,10 @@ export default function HomePage() {
     window.addEventListener("focus", handleRefreshTrigger);
     window.addEventListener("online", handleRefreshTrigger);
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    const refreshInterval = window.setInterval(() => {
-      void refreshWithRetry(0);
-    }, 30000);
     return () => {
       window.removeEventListener("focus", handleRefreshTrigger);
       window.removeEventListener("online", handleRefreshTrigger);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.clearInterval(refreshInterval);
       if (retryTimer) {
         clearTimeout(retryTimer);
       }
@@ -495,6 +498,7 @@ export default function HomePage() {
         localStorage.removeItem(getPendingSyncKey(sessionId));
         setPendingSyncSnapshot(null);
         setSyncStatus("ซิงก์แล้ว");
+        setLastSyncedAt(new Date().toISOString());
         return;
       }
       if (hasUnsyncedLocalChanges({
@@ -517,6 +521,7 @@ export default function HomePage() {
       }
       setLastLocalSavedAt(new Date().toISOString());
       setSyncStatus("ซิงก์แล้ว");
+      setLastSyncedAt(new Date().toISOString());
     });
   }, [hydrated, sessionId]);
 
@@ -568,6 +573,7 @@ export default function HomePage() {
           localStorage.removeItem(getPendingSyncKey(sessionId));
           setPendingSyncSnapshot(null);
           setSyncStatus("ซิงก์แล้ว");
+          setLastSyncedAt(new Date().toISOString());
         })
         .catch((error: unknown) => {
           localStorage.setItem(getPendingSyncKey(sessionId), snapshot);
@@ -1954,10 +1960,17 @@ export default function HomePage() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Box component="main" className="appShell">
+        <Snackbar
+          open={Boolean(remoteNotification)}
+          autoHideDuration={5000}
+          message={remoteNotification}
+          onClose={() => setRemoteNotification(null)}
+        />
         {isStandalonePwa && hasSupabaseConfig ? (
           <Box className="pwaRefreshBar">
             <Typography component="span" className="pwaRefreshStatus">
               {syncStatus}
+              {lastSyncedAt ? ` · อัปเดตล่าสุด ${formatMatchStartTime(lastSyncedAt)}` : ""}
             </Typography>
             <Button
               size="small"
@@ -2094,7 +2107,10 @@ export default function HomePage() {
               <Stack direction="row" spacing={1} className="syncBar">
                 <Chip label={`รอบ ${sessionId}`} size="small" color="primary" variant="outlined" />
                 {closedAt ? <Chip label="ดูอย่างเดียว" size="small" color="warning" /> : null}
-                <Chip label={syncStatus} size="small" />
+                <Chip
+                  label={`${syncStatus}${lastSyncedAt ? ` · อัปเดตล่าสุด ${formatMatchStartTime(lastSyncedAt)}` : ""}`}
+                  size="small"
+                />
               </Stack>
             </Paper>
             ) : null}
