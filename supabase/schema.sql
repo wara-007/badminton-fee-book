@@ -156,6 +156,56 @@ grant execute on function public.save_badminton_session(text, jsonb, bigint) to 
 revoke all on function public.close_badminton_session(text) from public;
 grant execute on function public.close_badminton_session(text) to anon;
 
+-- The legacy delete function returned void, so it must be dropped before
+-- recreating it with a boolean result.
+drop function if exists public.delete_badminton_session(text);
+
+create function public.delete_badminton_session(p_id text)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  deleted_count integer;
+  normalized_deleted_count integer := 0;
+  activity_logs_deleted_count integer := 0;
+begin
+  if p_id = 'main' then
+    raise exception 'The main room cannot be deleted';
+  end if;
+
+  -- Delete logs explicitly as older normalized schemas may not have had a
+  -- cascading room foreign key.
+  if to_regclass('public.badminton_activity_logs') is not null then
+    execute 'delete from public.badminton_activity_logs where room_id = $1'
+    using p_id;
+    get diagnostics activity_logs_deleted_count = row_count;
+  end if;
+
+  -- Current normalized tables cascade all remaining children from rooms.
+  if to_regclass('public.badminton_rooms') is not null then
+    execute 'delete from public.badminton_rooms where id = $1'
+    using p_id;
+    get diagnostics normalized_deleted_count = row_count;
+  end if;
+
+  delete from public.badminton_session_history
+  where session_id = p_id;
+
+  delete from public.badminton_sessions
+  where id = p_id;
+
+  get diagnostics deleted_count = row_count;
+  return deleted_count > 0
+    or normalized_deleted_count > 0
+    or activity_logs_deleted_count > 0;
+end;
+$$;
+
+revoke all on function public.delete_badminton_session(text) from public;
+grant execute on function public.delete_badminton_session(text) to anon;
+
 alter table public.badminton_session_history enable row level security;
 revoke all on table public.badminton_session_history from anon;
 
@@ -174,7 +224,6 @@ revoke insert, update on table public.badminton_sessions from anon;
 
 drop policy if exists "Public delete badminton sessions" on public.badminton_sessions;
 revoke delete on table public.badminton_sessions from anon;
-drop function if exists public.delete_badminton_session(text);
 
 do $$
 begin

@@ -9,6 +9,7 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import LightModeIcon from "@mui/icons-material/LightMode";
 import MicIcon from "@mui/icons-material/Mic";
 import RemoveIcon from "@mui/icons-material/Remove";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import SportsTennisIcon from "@mui/icons-material/SportsTennis";
@@ -160,6 +161,14 @@ type PaymentDialogState = {
   resolve?: (value: { confirmed: boolean; amount: number }) => void;
 };
 
+type BatchPaymentItem = {
+  playerId: string;
+  playerName: string;
+  shuttleCount: number;
+  calculatedAmount: number;
+  amountDraft: string;
+};
+
 const loginUsers: Record<UserRole, { label: string; password: string }> = {
   admin: {
     label: "admin",
@@ -215,11 +224,17 @@ export default function HomePage() {
   const [editingShuttleNumber, setEditingShuttleNumber] = useState<number | null>(null);
   const [editingReturnShuttleNumber, setEditingReturnShuttleNumber] = useState<number | null>(null);
   const [ledgerSelectedPlayerId, setLedgerSelectedPlayerId] = useState<string | null>(null);
+  const [batchPaymentMode, setBatchPaymentMode] = useState(false);
+  const [batchSelectedPlayerIds, setBatchSelectedPlayerIds] = useState<string[]>([]);
+  const [batchPaymentItems, setBatchPaymentItems] = useState<BatchPaymentItem[]>([]);
+  const [batchPaymentDialogOpen, setBatchPaymentDialogOpen] = useState(false);
   const [now, setNow] = useState(() => new Date().toISOString());
   const [clockOffsetMs, setClockOffsetMs] = useState(0);
   const [hydrated, setHydrated] = useState(false);
   const [roomReady, setRoomReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState(hasSupabaseConfig ? "กำลังเชื่อมต่อ" : "โหมดเครื่องนี้");
+  const [refreshingRemote, setRefreshingRemote] = useState(false);
+  const [isStandalonePwa, setIsStandalonePwa] = useState(false);
   const [closedAt, setClosedAt] = useState<string | null>(null);
   const [pendingSyncSnapshot, setPendingSyncSnapshot] = useState<string | null>(null);
   const [lastLocalSavedAt, setLastLocalSavedAt] = useState<string | null>(null);
@@ -247,6 +262,45 @@ export default function HomePage() {
   useEffect(() => {
     sessionRef.current = session;
   }, [session]);
+
+  useEffect(() => {
+    const displayMode = window.matchMedia("(display-mode: standalone)");
+    const updateStandaloneMode = () => {
+      const iosStandalone = Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+      setIsStandalonePwa(displayMode.matches || iosStandalone);
+    };
+    updateStandaloneMode();
+    displayMode.addEventListener("change", updateStandaloneMode);
+    return () => displayMode.removeEventListener("change", updateStandaloneMode);
+  }, []);
+
+  const refreshFromRemote = useCallback(async () => {
+    if (!hasSupabaseConfig || !hydrated || refreshingRemote || document.visibilityState === "hidden") {
+      return false;
+    }
+    setRefreshingRemote(true);
+    setSyncStatus("กำลังโหลดข้อมูลล่าสุด");
+    try {
+      const remote = await loadRemoteSession(sessionId);
+      const normalizedRemoteSession = normalizeSession(remote.session);
+      const snapshot = serializeSession(normalizedRemoteSession);
+      remoteRevisionRef.current = remote.revision;
+      setClosedAt(remote.closedAt);
+      lastRemoteSnapshotRef.current = snapshot;
+      setSession(normalizedRemoteSession);
+      setSyncStatus(
+        localStorage.getItem(getPendingSyncKey(sessionId))
+          ? "ข้อมูลชนกัน กรุณาตรวจสอบ"
+          : "ซิงก์แล้ว"
+      );
+      return true;
+    } catch {
+      setSyncStatus("ใช้ข้อมูลเครื่องนี้");
+      return false;
+    } finally {
+      setRefreshingRemote(false);
+    }
+  }, [hydrated, refreshingRemote, sessionId]);
 
   useEffect(() => {
     if (!addPlayerDialogOpen) {
@@ -373,45 +427,41 @@ export default function HomePage() {
       return undefined;
     }
 
-    let refreshing = false;
-    const refreshFromRemote = async () => {
-      if (refreshing || document.visibilityState === "hidden") {
-        return;
-      }
-      refreshing = true;
-      try {
-        const remote = await loadRemoteSession(sessionId);
-        const normalizedRemoteSession = normalizeSession(remote.session);
-        const snapshot = serializeSession(normalizedRemoteSession);
-        remoteRevisionRef.current = remote.revision;
-        setClosedAt(remote.closedAt);
-        lastRemoteSnapshotRef.current = snapshot;
-        setSession(normalizedRemoteSession);
-        setSyncStatus(
-          localStorage.getItem(getPendingSyncKey(sessionId))
-            ? "ข้อมูลชนกัน กรุณาตรวจสอบ"
-            : "ซิงก์แล้ว"
-        );
-      } catch {
-        setSyncStatus("ใช้ข้อมูลเครื่องนี้");
-      } finally {
-        refreshing = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    const refreshWithRetry = async () => {
+      const refreshed = await refreshFromRemote();
+      if (!refreshed) {
+        if (!retryTimer && navigator.onLine) {
+          retryTimer = setTimeout(() => {
+            retryTimer = null;
+            void refreshWithRetry();
+          }, 3000);
+        }
       }
     };
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        void refreshFromRemote();
+        void refreshWithRetry();
       }
     };
 
-    window.addEventListener("focus", refreshFromRemote);
+    window.addEventListener("focus", refreshWithRetry);
+    window.addEventListener("online", refreshWithRetry);
     document.addEventListener("visibilitychange", handleVisibilityChange);
+    const refreshInterval = window.setInterval(() => {
+      void refreshWithRetry();
+    }, 30000);
     return () => {
-      window.removeEventListener("focus", refreshFromRemote);
+      window.removeEventListener("focus", refreshWithRetry);
+      window.removeEventListener("online", refreshWithRetry);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.clearInterval(refreshInterval);
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+      }
     };
-  }, [hydrated, sessionId]);
+  }, [hydrated, refreshFromRemote, sessionId]);
 
   useEffect(() => {
     if (!hasSupabaseConfig || !hydrated) {
@@ -590,6 +640,14 @@ export default function HomePage() {
         getPlayerShuttleMarks(player).includes(searchedLedgerShuttleNumber))
     );
   }, [activePlayers, normalizedLedgerSearchName, searchedLedgerShuttleNumber]);
+  const batchSelectedPlayers = useMemo(
+    () => activePlayers.filter((player) => batchSelectedPlayerIds.includes(player.id)),
+    [activePlayers, batchSelectedPlayerIds]
+  );
+  const batchSelectedTotal = batchSelectedPlayers.reduce(
+    (sum, player) => sum + calculatePlayerTotal(player, session.pricing),
+    0
+  );
   const paidGroups = useMemo(
     () => groupPaidPlayersByDay(session.players, session.pricing),
     [session.players, session.pricing]
@@ -1645,6 +1703,87 @@ export default function HomePage() {
     );
   }
 
+  function toggleBatchPaymentMode() {
+    setBatchPaymentMode((current) => !current);
+    setBatchSelectedPlayerIds([]);
+  }
+
+  function toggleBatchPaymentPlayer(playerId: string) {
+    setBatchSelectedPlayerIds((current) =>
+      current.includes(playerId)
+        ? current.filter((currentId) => currentId !== playerId)
+        : [...current, playerId]
+    );
+  }
+
+  function openBatchPaymentDialog() {
+    setBatchPaymentItems(
+      batchSelectedPlayers.map((player) => {
+        const calculatedAmount = calculatePlayerTotal(player, session.pricing);
+        return {
+          playerId: player.id,
+          playerName: player.name,
+          shuttleCount: getPlayerShuttleCount(player),
+          calculatedAmount,
+          amountDraft: String(calculatedAmount)
+        };
+      })
+    );
+    setBatchPaymentDialogOpen(true);
+  }
+
+  function distributeBatchPaymentTotal(value: string) {
+    const total = parsePaymentAmount(value);
+    const calculatedTotal = batchPaymentItems.reduce((sum, item) => sum + item.calculatedAmount, 0);
+    let distributed = 0;
+    setBatchPaymentItems((current) =>
+      current.map((item, index) => {
+        const amount =
+          index === current.length - 1
+            ? total - distributed
+            : Math.round(total * (item.calculatedAmount / calculatedTotal));
+        distributed += amount;
+        return { ...item, amountDraft: String(Math.max(0, amount)) };
+      })
+    );
+  }
+
+  function confirmBatchPayment() {
+    const paidAt = getTrustedNowIso();
+    const paymentAmounts = new Map(
+      batchPaymentItems.map((item) => [item.playerId, parsePaymentAmount(item.amountDraft)])
+    );
+    const selectedIds = new Set(batchPaymentItems.map((item) => item.playerId));
+    updateSession((current) => {
+      let nextSession: SessionState = {
+        ...current,
+        players: current.players.map((player) =>
+          selectedIds.has(player.id)
+            ? { ...player, paid: true, paidAt, paidAmount: paymentAmounts.get(player.id) }
+            : player
+        ),
+        plannedMatches: current.plannedMatches.map((match) => ({
+          ...match,
+          playerIds: match.playerIds.filter((playerId) => !selectedIds.has(playerId))
+        }))
+      };
+      batchPaymentItems.forEach((item) => {
+        nextSession = appendActivity(
+          nextSession,
+          createActivity(
+            "paid",
+            `${item.playerName} จ่ายแล้ว ${formatBaht(paymentAmounts.get(item.playerId) ?? 0)} บาท`,
+            paidAt
+          )
+        );
+      });
+      return nextSession;
+    });
+    setBatchPaymentDialogOpen(false);
+    setBatchPaymentMode(false);
+    setBatchSelectedPlayerIds([]);
+  }
+
   async function copySummary() {
     if (!canManageSession) {
       return;
@@ -1764,6 +1903,15 @@ export default function HomePage() {
   const paymentDialogQrImage = paymentDialogAmount
     ? createPromptPayQrUrlFromPayload(PAYMENT_QR_PAYLOAD, paymentDialogAmount)
     : "";
+  const batchCalculatedTotal = batchPaymentItems.reduce((sum, item) => sum + item.calculatedAmount, 0);
+  const batchPaymentTotal = batchPaymentItems.reduce(
+    (sum, item) => sum + parsePaymentAmount(item.amountDraft),
+    0
+  );
+  const batchPaymentDifference = batchPaymentTotal - batchCalculatedTotal;
+  const batchPaymentQrImage = batchPaymentTotal
+    ? createPromptPayQrUrlFromPayload(PAYMENT_QR_PAYLOAD, batchPaymentTotal)
+    : "";
 
   if (!authSession) {
     return (
@@ -1785,6 +1933,22 @@ export default function HomePage() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Box component="main" className="appShell">
+        {isStandalonePwa && hasSupabaseConfig ? (
+          <Box className="pwaRefreshBar">
+            <Typography component="span" className="pwaRefreshStatus">
+              {syncStatus}
+            </Typography>
+            <Button
+              size="small"
+              variant="contained"
+              startIcon={<RefreshIcon className={refreshingRemote ? "refreshIconSpinning" : ""} />}
+              onClick={() => void refreshFromRemote()}
+              disabled={refreshingRemote}
+            >
+              รีเฟรชข้อมูล
+            </Button>
+          </Box>
+        ) : null}
         <Container maxWidth="xl" className="appContainer">
           <Stack spacing={3}>
             {!matchSetupMode ? (
@@ -2062,6 +2226,13 @@ export default function HomePage() {
                       className="ledgerShuttleSearchField"
                       inputProps={{ min: 1 }}
                     />
+                    <Button
+                      variant={batchPaymentMode ? "outlined" : "contained"}
+                      onClick={toggleBatchPaymentMode}
+                      disabled={!canSetPaid}
+                    >
+                      {batchPaymentMode ? "ยกเลิกเลือก" : "เลือกคิดเงินรวม"}
+                    </Button>
                   </Box>
                   <ScoreSheet
                     activePlayers={visibleLedgerPlayers}
@@ -2083,7 +2254,23 @@ export default function HomePage() {
                     onSetPaid={setPaid}
                     onToggleShuttleMark={(id) => setLedgerSelectedPlayerId(id)}
                     selectedPlayerId={ledgerSelectedPlayerId}
+                    batchPaymentMode={batchPaymentMode}
+                    batchSelectedPlayerIds={batchSelectedPlayerIds}
+                    onToggleBatchPaymentPlayer={toggleBatchPaymentPlayer}
                   />
+                  {batchPaymentMode ? (
+                    <Paper className="batchPaymentBar" elevation={4}>
+                      <Typography fontWeight={800}>เลือกแล้ว {batchSelectedPlayers.length} คน</Typography>
+                      <Typography>ยอดรวม {formatBaht(batchSelectedTotal)} บาท</Typography>
+                      <Button
+                        variant="contained"
+                        disabled={batchSelectedPlayers.length < 2}
+                        onClick={openBatchPaymentDialog}
+                      >
+                        คิดเงินรวม
+                      </Button>
+                    </Paper>
+                  ) : null}
                 </>
               ) : activeTab === 3 ? (
                 <MatchSummaryPanel
@@ -2237,6 +2424,83 @@ export default function HomePage() {
             disabled={paymentDialogAmount <= 0}
           >
             จ่ายแล้ว
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog
+        open={batchPaymentDialogOpen}
+        onClose={() => setBatchPaymentDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ className: "appDialogPaper" }}
+      >
+        <DialogTitle className="appDialogTitle appDialogTitle-primary">
+          ยืนยันการจ่ายเงินรวม
+        </DialogTitle>
+        <DialogContent className="appDialogContent">
+          <Stack spacing={2}>
+            {batchPaymentItems.map((item) => (
+              <Box key={item.playerId} className="batchPaymentItem">
+                <Box>
+                  <Typography fontWeight={800}>{item.playerName}</Typography>
+                  <Typography color="text.secondary">
+                    {item.shuttleCount} ลูก · ยอดคำนวณ {formatBaht(item.calculatedAmount)} บาท
+                  </Typography>
+                </Box>
+                <TextField
+                  label={`ยอดรับจริง ${item.playerName}`}
+                  value={item.amountDraft}
+                  onChange={(event) => {
+                    const amountDraft = event.target.value.replace(/[^0-9]/g, "");
+                    setBatchPaymentItems((current) =>
+                      current.map((currentItem) =>
+                        currentItem.playerId === item.playerId
+                          ? { ...currentItem, amountDraft }
+                          : currentItem
+                      )
+                    );
+                  }}
+                  inputProps={{ inputMode: "numeric", pattern: "[0-9]*" }}
+                  InputProps={{ endAdornment: <InputAdornment position="end">บาท</InputAdornment> }}
+                />
+              </Box>
+            ))}
+            <Divider />
+            <Typography>ยอดคำนวณรวม {formatBaht(batchCalculatedTotal)} บาท</Typography>
+            <TextField
+              label="ยอดรับจริงรวม"
+              value={String(batchPaymentTotal)}
+              onChange={(event) => distributeBatchPaymentTotal(event.target.value.replace(/[^0-9]/g, ""))}
+              inputProps={{ inputMode: "numeric", pattern: "[0-9]*" }}
+              InputProps={{ endAdornment: <InputAdornment position="end">บาท</InputAdornment> }}
+            />
+            {batchPaymentDifference !== 0 ? (
+              <Typography color={batchPaymentDifference < 0 ? "warning.main" : "primary.main"}>
+                {batchPaymentDifference < 0 ? "ส่วนลดรวม" : "จ่ายเพิ่มรวม"}{" "}
+                {formatBaht(Math.abs(batchPaymentDifference))} บาท
+              </Typography>
+            ) : null}
+            {batchPaymentQrImage ? (
+              <Box className="appDialogImageWrap">
+                <Box
+                  component="img"
+                  src={batchPaymentQrImage}
+                  alt={`PromptPay QR สำหรับจ่าย ${formatBaht(batchPaymentTotal)} บาท`}
+                  className="appDialogImage"
+                />
+                <Typography className="appDialogImageCaption">{PAYMENT_QR_RECIPIENT_NAME}</Typography>
+              </Box>
+            ) : null}
+          </Stack>
+        </DialogContent>
+        <DialogActions className="appDialogActions">
+          <Button variant="outlined" onClick={() => setBatchPaymentDialogOpen(false)}>ยกเลิก</Button>
+          <Button
+            variant="contained"
+            disabled={batchPaymentItems.some((item) => parsePaymentAmount(item.amountDraft) <= 0)}
+            onClick={confirmBatchPayment}
+          >
+            จ่ายแล้วทั้งหมด
           </Button>
         </DialogActions>
       </Dialog>
@@ -2485,7 +2749,10 @@ function ScoreSheet({
   onRemovePlayer,
   onSetPaid,
   onToggleShuttleMark,
-  selectedPlayerId
+  selectedPlayerId,
+  batchPaymentMode,
+  batchSelectedPlayerIds,
+  onToggleBatchPaymentPlayer
 }: {
   activePlayers: Player[];
   allPlayerCount: number;
@@ -2506,12 +2773,16 @@ function ScoreSheet({
   onSetPaid: (id: string, paid: boolean) => void;
   onToggleShuttleMark: (id: string, column: number) => void;
   selectedPlayerId?: string | null;
+  batchPaymentMode: boolean;
+  batchSelectedPlayerIds: string[];
+  onToggleBatchPaymentPlayer: (id: string) => void;
 }) {
   return (
     <TableContainer className="scoreTableWrap">
       <Table stickyHeader size="small" aria-label="ตารางค่าตีแบด">
         <TableHead>
           <TableRow>
+            {batchPaymentMode ? <TableCell align="center">เลือก</TableCell> : null}
             <TableCell className="stickyName">ชื่อ</TableCell>
             {shuttleColumns.map((column) => (
               <TableCell key={column} align="center" className="shuttleHeader">
@@ -2528,7 +2799,7 @@ function ScoreSheet({
         <TableBody>
           {activePlayers.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={shuttleColumns.length + 6} className="emptyCell">
+              <TableCell colSpan={shuttleColumns.length + 6 + (batchPaymentMode ? 1 : 0)} className="emptyCell">
                 {hasSearch
                   ? "ไม่พบชื่อที่ค้นหา"
                   : allPlayerCount === 0
@@ -2546,6 +2817,15 @@ function ScoreSheet({
                   selectedPlayerId === player.id ? " ledgerSelectedRow" : ""
                 }`}
               >
+                {batchPaymentMode ? (
+                  <TableCell align="center">
+                    <Checkbox
+                      inputProps={{ "aria-label": `เลือก ${player.name} คิดเงินรวม` }}
+                      checked={batchSelectedPlayerIds.includes(player.id)}
+                      onChange={() => onToggleBatchPaymentPlayer(player.id)}
+                    />
+                  </TableCell>
+                ) : null}
                 <TableCell className="stickyName playerCell">
                   <Button
                     className="playerNameButton"
@@ -2627,7 +2907,7 @@ function ScoreSheet({
                   <Checkbox
                     inputProps={{ "aria-label": `${player.name} จ่ายแล้ว` }}
                     checked={player.paid}
-                    disabled={isEditingLocked || !canSetPaid}
+                    disabled={batchPaymentMode || isEditingLocked || !canSetPaid}
                     onChange={(event) => onSetPaid(player.id, event.target.checked)}
                   />
                 </TableCell>

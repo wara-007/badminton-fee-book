@@ -17,8 +17,15 @@ export default function PwaRegister() {
       return;
     }
 
+    let registration: ServiceWorkerRegistration | null = null;
+    const updateServiceWorker = () => {
+      if (document.visibilityState === "visible") {
+        void registration?.update();
+      }
+    };
     const registerServiceWorker = () => {
-      navigator.serviceWorker.register("/sw.js").then((registration) => {
+      navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).then((nextRegistration) => {
+        registration = nextRegistration;
         void registration.update();
       }).catch(() => {
         // A failed registration should not block using the score sheet.
@@ -35,11 +42,15 @@ export default function PwaRegister() {
     };
 
     navigator.serviceWorker.addEventListener("controllerchange", handleControllerChange);
+    window.addEventListener("online", updateServiceWorker);
+    document.addEventListener("visibilitychange", updateServiceWorker);
 
     if (document.readyState === "complete") {
       registerServiceWorker();
       return () => {
         navigator.serviceWorker.removeEventListener("controllerchange", handleControllerChange);
+        window.removeEventListener("online", updateServiceWorker);
+        document.removeEventListener("visibilitychange", updateServiceWorker);
       };
     }
 
@@ -47,6 +58,8 @@ export default function PwaRegister() {
     return () => {
       window.removeEventListener("load", registerServiceWorker);
       navigator.serviceWorker.removeEventListener("controllerchange", handleControllerChange);
+      window.removeEventListener("online", updateServiceWorker);
+      document.removeEventListener("visibilitychange", updateServiceWorker);
     };
   }, []);
 

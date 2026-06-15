@@ -1176,6 +1176,80 @@ describe("Badminton fee book page", () => {
     expect(within(row).getByRole("checkbox", { name: "A จ่ายแล้ว" })).not.toBeChecked();
   });
 
+  it("selects multiple ledger players and records edited payment amounts together", async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: () => ({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn()
+      })
+    });
+
+    render(<HomePage />);
+
+    await user.type(screen.getByLabelText("ชื่อผู้เล่น"), "A");
+    await user.click(screen.getByRole("button", { name: "เพิ่มผู้เล่น" }));
+    await user.type(screen.getByLabelText("ชื่อผู้เล่น"), "B");
+    await user.click(screen.getByRole("button", { name: "เพิ่มผู้เล่น" }));
+    await user.click(screen.getByRole("tab", { name: "สมุดจด" }));
+    await user.click(screen.getByRole("button", { name: "เลือกคิดเงินรวม" }));
+
+    await user.click(screen.getByRole("checkbox", { name: "เลือก A คิดเงินรวม" }));
+    await user.click(screen.getByRole("checkbox", { name: "เลือก B คิดเงินรวม" }));
+
+    expect(screen.getByText("เลือกแล้ว 2 คน")).toBeInTheDocument();
+    expect(screen.getByText("ยอดรวม 180 บาท")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "คิดเงินรวม" }));
+
+    expect(screen.getByRole("heading", { name: "ยืนยันการจ่ายเงินรวม" })).toBeInTheDocument();
+    await user.clear(screen.getByLabelText("ยอดรับจริง A"));
+    await user.type(screen.getByLabelText("ยอดรับจริง A"), "80");
+    expect(screen.getByText("ส่วนลดรวม 10 บาท")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "จ่ายแล้วทั้งหมด" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: "ยืนยันการจ่ายเงินรวม" })).not.toBeInTheDocument()
+    );
+    await user.click(screen.getByRole("tab", { name: /สรุปจ่ายแล้ว/ }));
+    const paidSummary = screen.getByRole("region", { name: "รายการจ่ายแล้ว" });
+    expect(within(paidSummary).getByText("A")).toBeInTheDocument();
+    expect(within(paidSummary).getByText("B")).toBeInTheDocument();
+    expect(within(paidSummary).getByText("80 บาท")).toBeInTheDocument();
+    expect(within(paidSummary).getByText("90 บาท")).toBeInTheDocument();
+  });
+
+  it("distributes an edited batch payment total across selected players", async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: () => ({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn()
+      })
+    });
+
+    render(<HomePage />);
+    await user.type(screen.getByLabelText("ชื่อผู้เล่น"), "A");
+    await user.click(screen.getByRole("button", { name: "เพิ่มผู้เล่น" }));
+    await user.type(screen.getByLabelText("ชื่อผู้เล่น"), "B");
+    await user.click(screen.getByRole("button", { name: "เพิ่มผู้เล่น" }));
+    await user.click(screen.getByRole("tab", { name: "สมุดจด" }));
+    await user.click(screen.getByRole("button", { name: "เลือกคิดเงินรวม" }));
+    await user.click(screen.getByRole("checkbox", { name: "เลือก A คิดเงินรวม" }));
+    await user.click(screen.getByRole("checkbox", { name: "เลือก B คิดเงินรวม" }));
+    await user.click(screen.getByRole("button", { name: "คิดเงินรวม" }));
+
+    await user.clear(screen.getByLabelText("ยอดรับจริงรวม"));
+    await user.type(screen.getByLabelText("ยอดรับจริงรวม"), "150");
+
+    expect(screen.getByLabelText("ยอดรับจริง A")).toHaveValue("75");
+    expect(screen.getByLabelText("ยอดรับจริง B")).toHaveValue("75");
+    expect(screen.getByText("ส่วนลดรวม 30 บาท")).toBeInTheDocument();
+  });
+
   it("asks for confirmation before deleting a player", async () => {
     const user = userEvent.setup();
 

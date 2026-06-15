@@ -185,13 +185,16 @@ export async function deleteRemoteSession(sessionId: string): Promise<void> {
     return;
   }
 
-  const { error } = await supabase
-    .from('badminton_sessions')
-    .delete()
-    .eq('id', sessionId);
+  const { data, error } = await supabase.rpc('delete_badminton_session', {
+    p_id: sessionId,
+  });
 
   if (error) {
     throw error;
+  }
+
+  if (data !== true) {
+    throw new Error(`Remote room "${sessionId}" was not found.`);
   }
 }
 
