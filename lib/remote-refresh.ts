@@ -31,6 +31,17 @@ export function hasUnsyncedLocalChanges(options: {
   );
 }
 
+export function canAutoSaveRemote(options: {
+  hasSupabaseConfig: boolean;
+  remoteBaselineReady: boolean;
+  currentSnapshot: string;
+  lastRemoteSnapshot: string;
+}): boolean {
+  if (!options.hasSupabaseConfig) return true;
+  if (options.currentSnapshot === options.lastRemoteSnapshot) return false;
+  return options.remoteBaselineReady;
+}
+
 export function mergeRemotePayments(
   local: SessionState,
   remote: SessionState,

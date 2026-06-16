@@ -93,7 +93,19 @@ create table if not exists public.badminton_planned_match_players (
     references public.badminton_players(room_id, id) on delete cascade
 );
 
--- Keep legacy activity logs during staged rollout for rollback and auditing.
+create table if not exists public.badminton_match_events (
+  id text not null,
+  room_id text not null references public.badminton_rooms(id) on delete cascade,
+  action text not null,
+  message text not null,
+  created_at timestamptz not null,
+  position integer not null check (position > 0),
+  primary key (room_id, id),
+  unique (room_id, position)
+);
+
+create index if not exists badminton_match_events_room_idx
+on public.badminton_match_events (room_id);
 
 alter table public.badminton_sessions_backup enable row level security;
 alter table public.badminton_rooms enable row level security;
@@ -101,6 +113,7 @@ alter table public.badminton_players enable row level security;
 alter table public.badminton_shuttle_marks enable row level security;
 alter table public.badminton_planned_matches enable row level security;
 alter table public.badminton_planned_match_players enable row level security;
+alter table public.badminton_match_events enable row level security;
 
 revoke all on public.badminton_sessions_backup from anon;
 revoke insert, update, delete on public.badminton_rooms from anon;
@@ -108,6 +121,7 @@ revoke insert, update, delete on public.badminton_players from anon;
 revoke insert, update, delete on public.badminton_shuttle_marks from anon;
 revoke insert, update, delete on public.badminton_planned_matches from anon;
 revoke insert, update, delete on public.badminton_planned_match_players from anon;
+revoke insert, update, delete on public.badminton_match_events from anon;
 
 drop policy if exists "Public read badminton rooms" on public.badminton_rooms;
 create policy "Public read badminton rooms" on public.badminton_rooms for select to anon using (true);
@@ -119,6 +133,8 @@ drop policy if exists "Public read badminton planned matches" on public.badminto
 create policy "Public read badminton planned matches" on public.badminton_planned_matches for select to anon using (true);
 drop policy if exists "Public read badminton planned match players" on public.badminton_planned_match_players;
 create policy "Public read badminton planned match players" on public.badminton_planned_match_players for select to anon using (true);
+drop policy if exists "Public read badminton activity logs" on public.badminton_match_events;
+create policy "Public read badminton activity logs" on public.badminton_match_events for select to anon using (true);
 
 do $$
 begin

@@ -119,4 +119,20 @@ join public.badminton_players player
   on player.id = player_id.value and player.room_id = session.id
 on conflict do nothing;
 
+insert into public.badminton_match_events (id, room_id, action, message, created_at, position)
+select
+  coalesce(activity.value->>'id', session.id || ':activity-' || activity.ordinality),
+  session.id,
+  coalesce(activity.value->>'action', 'mark-added'),
+  coalesce(activity.value->>'message', ''),
+  coalesce(nullif(activity.value->>'createdAt', '')::timestamptz, session.updated_at),
+  activity.ordinality::integer
+from public.badminton_sessions session
+cross join lateral jsonb_array_elements(coalesce(session.state->'activityLog', '[]'::jsonb))
+with ordinality activity(value, ordinality)
+where activity.value->>'action' in ('mark-added', 'match-confirmed')
+and not exists (
+  select 1 from public.badminton_match_events existing where existing.room_id = session.id
+);
+
 commit;

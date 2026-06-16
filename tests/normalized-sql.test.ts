@@ -34,4 +34,14 @@ describe("normalized storage SQL contract", () => {
     expect(client).toContain("rpc('delete_normalized_badminton_room', {\n    p_room_id: sessionId");
     expect(rpcs).toContain("if result is null then raise exception 'Room not found'; end if;");
   });
+
+  it("persists activity needed for match source and start-time status", () => {
+    expect(schema).toContain("create table if not exists public.badminton_match_events");
+    expect(migration).toContain("insert into public.badminton_match_events");
+    expect(rpcs).toContain("'activityLog', coalesce((");
+    expect(rpcs).toContain("insert into public.badminton_match_events");
+    expect(rpcs).toContain("where element->>'action' in ('mark-added','match-confirmed')");
+    expect(migration).toContain("where activity.value->>'action' in ('mark-added', 'match-confirmed')");
+    expect(rpcs).not.toContain("'activityLog', '[]'::jsonb");
+  });
 });

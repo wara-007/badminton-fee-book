@@ -38,7 +38,13 @@ returns jsonb language sql stable security definer set search_path = public as $
       ) order by match.position)
       from public.badminton_planned_matches match where match.room_id=room.id
     ), '[]'::jsonb),
-    'activityLog', '[]'::jsonb,
+    'activityLog', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id', activity.id, 'action', activity.action, 'message', activity.message,
+        'createdAt', activity.created_at
+      ) order by activity.position)
+      from public.badminton_match_events activity where activity.room_id=room.id
+    ), '[]'::jsonb),
     'updatedAt', room.updated_at
   )
   from public.badminton_rooms room where room.id=p_room_id
@@ -65,6 +71,8 @@ declare
   player_id text;
   player_position integer;
   planned_position integer := 0;
+  activity jsonb;
+  activity_position integer := 0;
   mark_position integer;
   room_player_position integer := 0;
 begin
@@ -83,6 +91,7 @@ begin
   end if;
 
   delete from public.badminton_planned_matches where room_id=p_id;
+  delete from public.badminton_match_events where room_id=p_id;
   delete from public.badminton_shuttle_marks where room_id=p_id;
   delete from public.badminton_players where room_id=p_id;
 
@@ -122,6 +131,20 @@ begin
       insert into public.badminton_planned_match_players(match_id,room_id,player_id,position)
       values(p_id || ':' || (planned->>'id'),p_id,player_id,player_position);
     end loop;
+  end loop;
+
+  for activity in
+    select element
+    from jsonb_array_elements(coalesce(p_state->'activityLog','[]'::jsonb)) as items(element)
+    where element->>'action' in ('mark-added','match-confirmed')
+  loop
+    activity_position := activity_position + 1;
+    insert into public.badminton_match_events(id,room_id,action,message,created_at,position)
+    values(
+      activity->>'id', p_id, coalesce(activity->>'action','mark-added'),
+      coalesce(activity->>'message',''), coalesce(nullif(activity->>'createdAt','')::timestamptz,now()),
+      activity_position
+    );
   end loop;
 
   update public.badminton_rooms set

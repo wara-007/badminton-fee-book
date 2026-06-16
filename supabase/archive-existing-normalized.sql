@@ -9,6 +9,7 @@ declare
 begin
   foreach table_name in array array[
     'badminton_planned_match_players',
+    'badminton_match_events',
     'badminton_shuttle_marks',
     'badminton_planned_matches',
     'badminton_players',

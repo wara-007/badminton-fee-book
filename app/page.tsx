@@ -51,7 +51,7 @@ import {
 import { getAppTheme } from "@/lib/theme";
 import { useThemeMode } from "@/lib/theme-context";
 import { useRouter } from "next/navigation";
-import { getRemoteRefreshRetryDelay, hasUnsyncedLocalChanges, mergeRemoteChangesAgainstBase } from "@/lib/remote-refresh";
+import { canAutoSaveRemote, getRemoteRefreshRetryDelay, hasUnsyncedLocalChanges, mergeRemoteChangesAgainstBase } from "@/lib/remote-refresh";
 import { getRemoteSessionNotification } from "@/lib/remote-notification";
 import { CSSProperties, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -259,6 +259,7 @@ export default function HomePage() {
   });
   const lastRemoteSnapshotRef = useRef("");
   const remoteRevisionRef = useRef(0);
+  const remoteBaselineReadyRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clockOffsetRef = useRef(0);
   const sessionRef = useRef(session);
@@ -299,6 +300,7 @@ export default function HomePage() {
       const normalizedRemoteSession = normalizeSession(remote.session);
       const snapshot = serializeSession(normalizedRemoteSession);
       remoteRevisionRef.current = remote.revision;
+      remoteBaselineReadyRef.current = true;
       setClosedAt(remote.closedAt);
       lastRemoteSnapshotRef.current = snapshot;
       setRemoteNotification(getRemoteSessionNotification(sessionRef.current, normalizedRemoteSession));
@@ -383,6 +385,9 @@ export default function HomePage() {
 
     let cancelled = false;
     setHydrated(false);
+    remoteBaselineReadyRef.current = false;
+    lastRemoteSnapshotRef.current = "";
+    remoteRevisionRef.current = 0;
 
     async function loadSession() {
       if (hasSupabaseConfig) {
@@ -399,6 +404,7 @@ export default function HomePage() {
           const remoteSnapshot = serializeSession(normalizedRemoteSession);
           const pendingSnapshot = localStorage.getItem(getPendingSyncKey(sessionId));
           lastRemoteSnapshotRef.current = remoteSnapshot;
+          remoteBaselineReadyRef.current = true;
           setSession(normalizedRemoteSession);
           setLastLocalSavedAt(new Date().toISOString());
           if (pendingSnapshot) {
@@ -416,6 +422,7 @@ export default function HomePage() {
           const pendingSnapshot = localStorage.getItem(getPendingSyncKey(sessionId));
           if (pendingSnapshot) {
             setSession(parseSessionSnapshot(pendingSnapshot, createInitialSession()));
+            remoteBaselineReadyRef.current = true;
           }
           setPendingSyncSnapshot(pendingSnapshot);
           setLastLocalSavedAt(new Date().toISOString());
@@ -423,6 +430,7 @@ export default function HomePage() {
         }
       } else {
         setSession(loadLocalSession(sessionId));
+        remoteBaselineReadyRef.current = true;
         setPendingSyncSnapshot(null);
         setLastLocalSavedAt(new Date().toISOString());
         setSyncStatus("โหมดเครื่องนี้");
@@ -494,6 +502,7 @@ export default function HomePage() {
       const currentSnapshot = serializeSession(normalizeSession(sessionRef.current));
       if (snapshot === currentSnapshot) {
         remoteRevisionRef.current = remote.revision;
+        remoteBaselineReadyRef.current = true;
         lastRemoteSnapshotRef.current = snapshot;
         localStorage.removeItem(getPendingSyncKey(sessionId));
         setPendingSyncSnapshot(null);
@@ -517,6 +526,7 @@ export default function HomePage() {
           : null;
         if (mergedSession) {
           remoteRevisionRef.current = remote.revision;
+          remoteBaselineReadyRef.current = true;
           lastRemoteSnapshotRef.current = snapshot;
           setRemoteNotification(notification);
           setSession(mergedSession);
@@ -527,6 +537,7 @@ export default function HomePage() {
         return;
       }
       remoteRevisionRef.current = remote.revision;
+      remoteBaselineReadyRef.current = true;
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
@@ -552,7 +563,15 @@ export default function HomePage() {
     const snapshot = serializeSession(normalizedSession);
     setLastLocalSavedAt(new Date().toISOString());
 
-    if (!hasSupabaseConfig || snapshot === lastRemoteSnapshotRef.current) {
+    if (!canAutoSaveRemote({
+      hasSupabaseConfig,
+      remoteBaselineReady: remoteBaselineReadyRef.current,
+      currentSnapshot: snapshot,
+      lastRemoteSnapshot: lastRemoteSnapshotRef.current
+    })) {
+      if (hasSupabaseConfig && snapshot !== lastRemoteSnapshotRef.current) {
+        setSyncStatus("ใช้ข้อมูลเครื่องนี้");
+      }
       return;
     }
 
@@ -585,6 +604,7 @@ export default function HomePage() {
         .then((remote) => {
           const remoteSnapshot = serializeSession(remote.session);
           remoteRevisionRef.current = remote.revision;
+          remoteBaselineReadyRef.current = true;
           setClosedAt(remote.closedAt);
           lastRemoteSnapshotRef.current = remoteSnapshot;
           setSession(remote.session);
@@ -594,6 +614,31 @@ export default function HomePage() {
           setLastSyncedAt(new Date().toISOString());
         })
         .catch((error: unknown) => {
+          if (error instanceof RemoteSaveConflictError) {
+            const remoteSession = normalizeSession(error.remote.session);
+            const remoteSnapshot = serializeSession(remoteSession);
+            const lastRemoteSession = lastRemoteSnapshotRef.current
+              ? parseSessionSnapshot(lastRemoteSnapshotRef.current, normalizedSession)
+              : null;
+            const mergedSession = lastRemoteSession
+              ? mergeRemoteChangesAgainstBase(lastRemoteSession, normalizedSession, remoteSession)
+              : null;
+            const nextSession =
+              mergedSession ??
+              (!isSessionNewerThan(normalizedSession, remoteSession) ? remoteSession : null);
+            remoteRevisionRef.current = error.remote.revision;
+            remoteBaselineReadyRef.current = true;
+            setClosedAt(error.remote.closedAt);
+            lastRemoteSnapshotRef.current = remoteSnapshot;
+            if (nextSession) {
+              setSession(nextSession);
+              localStorage.removeItem(getPendingSyncKey(sessionId));
+              setPendingSyncSnapshot(null);
+              setSyncStatus(mergedSession ? "กำลังบันทึก" : "ซิงก์แล้ว");
+              setLastSyncedAt(new Date().toISOString());
+              return;
+            }
+          }
           localStorage.setItem(getPendingSyncKey(sessionId), snapshot);
           setPendingSyncSnapshot(snapshot);
           setSyncStatus(
@@ -1284,6 +1329,28 @@ export default function HomePage() {
     }));
   }
 
+  async function confirmAddingShuttleToPaidPlayers(players: Player[]): Promise<Set<string> | null> {
+    const paidPlayers = players.filter((player) => player.paid);
+    if (paidPlayers.length === 0) {
+      return new Set();
+    }
+
+    const confirmed = await showConfirm({
+      title: "มีผู้เล่นจ่ายเงินแล้ว",
+      headline: `พบผู้เล่นจ่ายแล้ว ${paidPlayers.length} คน`,
+      message: "หากเพิ่มลูก ระบบจะย้ายผู้เล่นเหล่านี้กลับเป็นค้างจ่ายเพื่อคำนวณยอดใหม่",
+      details: paidPlayers.map((player) => ({
+        label: player.name,
+        value: `จ่ายแล้ว ${formatBaht(player.paidAmount ?? calculatePlayerTotal(player, session.pricing))} บาท`,
+        tone: "warning" as const
+      })),
+      confirmLabel: "เพิ่มลูกและย้ายกลับ",
+      color: "warning"
+    });
+
+    return confirmed ? new Set(paidPlayers.map((player) => player.id)) : null;
+  }
+
   async function addMatchToNextShuttle(shuttleNumber: number) {
     if (isEditingLocked || !canManageSession) {
       return;
@@ -1338,6 +1405,10 @@ export default function HomePage() {
     if (!confirmed) {
       return;
     }
+    const paidPlayerIds = await confirmAddingShuttleToPaidPlayers(targetPlayers);
+    if (paidPlayerIds === null) {
+      return;
+    }
 
     const confirmedAt = getTrustedNowIso();
     const restUntil = addMinutes(confirmedAt, REST_MINUTES);
@@ -1350,6 +1421,9 @@ export default function HomePage() {
           ? setPlayerShuttleMarks(
             {
               ...player,
+              paid: paidPlayerIds.has(player.id) ? false : player.paid,
+              paidAt: paidPlayerIds.has(player.id) ? undefined : player.paidAt,
+              paidAmount: paidPlayerIds.has(player.id) ? undefined : player.paidAmount,
               restUntil,
               waitingSince: restUntil
             },
@@ -1431,6 +1505,10 @@ export default function HomePage() {
     if (!confirmed) {
       return;
     }
+    const paidPlayerIds = await confirmAddingShuttleToPaidPlayers(selectedPlayers);
+    if (paidPlayerIds === null) {
+      return;
+    }
 
     const confirmedAt = getTrustedNowIso();
     const restUntil = addMinutes(confirmedAt, REST_MINUTES);
@@ -1442,6 +1520,9 @@ export default function HomePage() {
           ? setPlayerShuttleMarks(
             {
               ...player,
+              paid: paidPlayerIds.has(player.id) ? false : player.paid,
+              paidAt: paidPlayerIds.has(player.id) ? undefined : player.paidAt,
+              paidAmount: paidPlayerIds.has(player.id) ? undefined : player.paidAmount,
               restUntil,
               waitingSince: restUntil,
               gameCount: player.gameCount + 1
@@ -1542,11 +1623,19 @@ export default function HomePage() {
         return;
       }
     }
+    const paidPlayerIds = !isRemoving
+      ? await confirmAddingShuttleToPaidPlayers([player])
+      : new Set<string>();
+    if (paidPlayerIds === null) {
+      return;
+    }
 
     const nextPlayers = session.players.map((currentPlayer) =>
       currentPlayer.id === playerId
         ? setPlayerShuttleMarks(
-          currentPlayer,
+          paidPlayerIds.has(currentPlayer.id)
+            ? { ...currentPlayer, paid: false, paidAt: undefined, paidAmount: undefined }
+            : currentPlayer,
           isRemoving
             ? getPlayerShuttleMarks(currentPlayer).filter((_, markIndex) => markIndex !== column)
             : [...getPlayerShuttleMarks(currentPlayer), targetShuttleNumber]
@@ -1898,6 +1987,7 @@ export default function HomePage() {
       const remote = await saveRemoteSession(sessionId, normalizedSession, remoteRevisionRef.current);
       const remoteSnapshot = serializeSession(remote.session);
       remoteRevisionRef.current = remote.revision;
+      remoteBaselineReadyRef.current = true;
       setClosedAt(remote.closedAt);
       lastRemoteSnapshotRef.current = remoteSnapshot;
       setSession(remote.session);

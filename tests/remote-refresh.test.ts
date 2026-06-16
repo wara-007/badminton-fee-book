@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createInitialSession } from "@/lib/session";
-import { classifyRemoteChanges, getComparableSessionSnapshot, getRemoteRefreshRetryDelay, hasUnsyncedLocalChanges, mergeRemoteChangesAgainstBase, mergeRemoteMatchChanges, mergeRemotePayments, mergeRemoteScopedChanges } from "@/lib/remote-refresh";
+import { canAutoSaveRemote, classifyRemoteChanges, getComparableSessionSnapshot, getRemoteRefreshRetryDelay, hasUnsyncedLocalChanges, mergeRemoteChangesAgainstBase, mergeRemoteMatchChanges, mergeRemotePayments, mergeRemoteScopedChanges } from "@/lib/remote-refresh";
 
 describe("remote refresh retry policy", () => {
   it("uses bounded exponential backoff", () => {
@@ -34,6 +34,27 @@ describe("remote refresh retry policy", () => {
   it("ignores timestamps and activity metadata when comparing sessions", () => {
     expect(getComparableSessionSnapshot(JSON.stringify({ players: [], updatedAt: "a", activityLog: [1] })))
       .toBe(getComparableSessionSnapshot(JSON.stringify({ players: [], updatedAt: "b", activityLog: [] })));
+  });
+
+  it("blocks remote auto-save until a remote baseline has loaded", () => {
+    expect(canAutoSaveRemote({
+      hasSupabaseConfig: true,
+      remoteBaselineReady: false,
+      currentSnapshot: "local",
+      lastRemoteSnapshot: ""
+    })).toBe(false);
+    expect(canAutoSaveRemote({
+      hasSupabaseConfig: true,
+      remoteBaselineReady: true,
+      currentSnapshot: "local",
+      lastRemoteSnapshot: "remote"
+    })).toBe(true);
+    expect(canAutoSaveRemote({
+      hasSupabaseConfig: false,
+      remoteBaselineReady: false,
+      currentSnapshot: "local",
+      lastRemoteSnapshot: ""
+    })).toBe(true);
   });
 
   it("merges remote payment without replacing local match changes", () => {
