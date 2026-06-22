@@ -93,6 +93,7 @@ import {
   loadRemoteSession,
   savePaymentAccountSetting,
   saveRemoteSession,
+  subscribePaymentSettings,
   subscribeRemoteSession
 } from "@/lib/supabase-session";
 import packageInfo from "@/package.json";
@@ -113,7 +114,6 @@ import {
 const bahtFormatter = new Intl.NumberFormat("th-TH");
 const appVersion = packageInfo.version;
 const AUTH_STORAGE_KEY = "badminton-fee-book.auth";
-const PAYMENT_ACCOUNT_STORAGE_KEY = "badminton-fee-book.payment-account";
 const PLAYER_SKILL_LABELS: Record<PlayerSkillLevel, string> = {
   bg: "BG",
   n: "N",
@@ -280,23 +280,17 @@ export default function HomePage() {
   }, [session]);
 
   useEffect(() => {
+    if (!hasSupabaseConfig) {
+      return undefined;
+    }
+
     let cancelled = false;
 
     async function loadPaymentAccount() {
-      const localAccountId = normalizePaymentAccountId(
-        localStorage.getItem(PAYMENT_ACCOUNT_STORAGE_KEY)
-      );
-      setSelectedPaymentAccountId(localAccountId);
-
-      if (!hasSupabaseConfig) {
-        return;
-      }
-
       try {
         const remoteAccountId = await loadPaymentAccountSetting();
         if (cancelled) return;
         setSelectedPaymentAccountId(remoteAccountId);
-        localStorage.setItem(PAYMENT_ACCOUNT_STORAGE_KEY, remoteAccountId);
       } catch (error) {
         console.warn("Failed to load payment account setting", error);
       }
@@ -306,6 +300,16 @@ export default function HomePage() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    if (!hasSupabaseConfig) {
+      return undefined;
+    }
+
+    return subscribePaymentSettings((accountId) => {
+      setSelectedPaymentAccountId(accountId);
+    });
   }, []);
 
   useEffect(() => {
@@ -1887,22 +1891,24 @@ export default function HomePage() {
 
   async function changePaymentAccount(accountId: PaymentAccountId) {
     const normalizedAccountId = normalizePaymentAccountId(accountId);
-    setSelectedPaymentAccountId(normalizedAccountId);
-    localStorage.setItem(PAYMENT_ACCOUNT_STORAGE_KEY, normalizedAccountId);
 
     if (!hasSupabaseConfig) {
+      setSelectedPaymentAccountId(normalizedAccountId);
       return;
     }
+
+    const previousAccountId = selectedPaymentAccountId;
+    setSelectedPaymentAccountId(normalizedAccountId);
 
     try {
       const remoteAccountId = await savePaymentAccountSetting(normalizedAccountId);
       setSelectedPaymentAccountId(remoteAccountId);
-      localStorage.setItem(PAYMENT_ACCOUNT_STORAGE_KEY, remoteAccountId);
     } catch (error) {
       console.warn("Failed to save payment account setting", error);
+      setSelectedPaymentAccountId(previousAccountId);
       await showAlert({
         title: "บันทึกบัญชีรับเงินไม่สำเร็จ",
-        message: "เครื่องนี้จะใช้บัญชีที่เลือกไว้ก่อน แต่เครื่องอื่นอาจยังไม่เปลี่ยนจนกว่าจะบันทึก Supabase สำเร็จ",
+        message: "ไม่สามารถบันทึกบัญชีรับเงินลง Supabase ได้ กรุณาลองใหม่อีกครั้ง",
         confirmLabel: "รับทราบ",
         color: "warning"
       });

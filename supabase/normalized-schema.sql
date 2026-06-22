@@ -175,3 +175,10 @@ begin
 exception
   when duplicate_object then null;
 end $$;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.badminton_payment_settings;
+exception
+  when duplicate_object then null;
+end $$;

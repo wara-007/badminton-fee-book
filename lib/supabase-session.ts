@@ -331,6 +331,36 @@ export async function savePaymentAccountSetting(
   return normalizePaymentSettings(data as PaymentSettingsRpcResult | null);
 }
 
+export function subscribePaymentSettings(
+  onPaymentSettings: (accountId: PaymentAccountId) => void,
+) {
+  if (!supabase) {
+    return () => undefined;
+  }
+
+  const channel = supabase
+    .channel('badminton-payment-settings')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'badminton_payment_settings',
+      },
+      (payload) => {
+        const nextRow = payload.new as { selected_account_id?: string } | null;
+        if (nextRow) {
+          onPaymentSettings(normalizePaymentAccountId(nextRow.selected_account_id));
+        }
+      },
+    )
+    .subscribe();
+
+  return () => {
+    void supabase.removeChannel(channel);
+  };
+}
+
 export function subscribeRemoteSession(
   sessionId: string,
   onSession: (remote: RemoteSession) => void,
