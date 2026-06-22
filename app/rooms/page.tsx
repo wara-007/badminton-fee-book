@@ -61,7 +61,7 @@ const ROOM_STORAGE_KEY = "badminton-fee-book.room";
 const SESSION_PREFIX = "badminton-fee-book.session.";
 const DASHBOARD_SNAPSHOTS_KEY = "badminton-fee-book.dashboard-snapshots";
 const PROJECT_NAME = "สมุดค่าตีแบด";
-const SUMMARY_THRESHOLD_MS = 24 * 60 * 60 * 1000;
+const SUMMARY_THRESHOLD_MS = 12 * 60 * 60 * 1000;
 const bahtFormatter = new Intl.NumberFormat("th-TH");
 
 type AuthSession = {
