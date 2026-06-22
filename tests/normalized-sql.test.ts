@@ -35,6 +35,18 @@ describe("normalized storage SQL contract", () => {
     expect(rpcs).toContain("if result is null then raise exception 'Room not found'; end if;");
   });
 
+  it("stores dashboard snapshots separately from live rooms", () => {
+    expect(schema).toContain("create table if not exists public.badminton_room_dashboard_snapshots");
+    expect(schema).toContain("room_id text primary key");
+    expect(schema).not.toMatch(
+      /badminton_room_dashboard_snapshots[\s\S]*references public\.badminton_rooms\(id\) on delete cascade/i
+    );
+    expect(rpcs).toContain("function public.upsert_badminton_room_dashboard_snapshot(");
+    expect(rpcs).toContain("function public.list_badminton_room_dashboard_snapshots()");
+    expect(client).toContain("rpc('upsert_badminton_room_dashboard_snapshot'");
+    expect(client).toContain("rpc('list_badminton_room_dashboard_snapshots'");
+  });
+
   it("persists activity needed for match source and start-time status", () => {
     expect(schema).toContain("create table if not exists public.badminton_match_events");
     expect(migration).toContain("insert into public.badminton_match_events");

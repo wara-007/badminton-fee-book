@@ -16,6 +16,74 @@ begin
   return found;
 end $$;
 
+create or replace function public.upsert_badminton_room_dashboard_snapshot(
+  p_room_id text,
+  p_started_at timestamptz,
+  p_people_count integer,
+  p_customer_count integer,
+  p_shuttle_count integer,
+  p_received_amount numeric
+) returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  snapshot public.badminton_room_dashboard_snapshots%rowtype;
+begin
+  insert into public.badminton_room_dashboard_snapshots(
+    room_id,
+    started_at,
+    captured_at,
+    people_count,
+    customer_count,
+    shuttle_count,
+    received_amount
+  ) values (
+    p_room_id,
+    p_started_at,
+    now(),
+    greatest(coalesce(p_people_count, 0), 0),
+    greatest(coalesce(p_customer_count, 0), 0),
+    greatest(coalesce(p_shuttle_count, 0), 0),
+    greatest(coalesce(p_received_amount, 0), 0)
+  )
+  on conflict (room_id) do update set
+    started_at=excluded.started_at,
+    captured_at=excluded.captured_at,
+    people_count=excluded.people_count,
+    customer_count=excluded.customer_count,
+    shuttle_count=excluded.shuttle_count,
+    received_amount=excluded.received_amount
+  returning * into snapshot;
+
+  return jsonb_build_object(
+    'room_id', snapshot.room_id,
+    'started_at', snapshot.started_at,
+    'captured_at', snapshot.captured_at,
+    'people_count', snapshot.people_count,
+    'customer_count', snapshot.customer_count,
+    'shuttle_count', snapshot.shuttle_count,
+    'received_amount', snapshot.received_amount
+  );
+end $$;
+
+create or replace function public.list_badminton_room_dashboard_snapshots()
+returns jsonb language sql stable security definer set search_path = public as $$
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'room_id', snapshot.room_id,
+        'started_at', snapshot.started_at,
+        'captured_at', snapshot.captured_at,
+        'people_count', snapshot.people_count,
+        'customer_count', snapshot.customer_count,
+        'shuttle_count', snapshot.shuttle_count,
+        'received_amount', snapshot.received_amount
+      )
+      order by snapshot.started_at desc
+    ),
+    '[]'::jsonb
+  )
+  from public.badminton_room_dashboard_snapshots snapshot
+$$;
+
 create or replace function public.build_normalized_badminton_state(p_room_id text)
 returns jsonb language sql stable security definer set search_path = public as $$
   select jsonb_build_object(
@@ -169,8 +237,12 @@ revoke all on function public.delete_normalized_badminton_room(text) from public
 revoke all on function public.build_normalized_badminton_state(text) from public, anon;
 revoke all on function public.load_normalized_badminton_session(text) from public, anon;
 revoke all on function public.save_normalized_badminton_session(text,jsonb,bigint) from public, anon;
+revoke all on function public.upsert_badminton_room_dashboard_snapshot(text,timestamptz,integer,integer,integer,numeric) from public, anon;
+revoke all on function public.list_badminton_room_dashboard_snapshots() from public, anon;
 
 grant execute on function public.load_normalized_badminton_session(text) to anon;
 grant execute on function public.save_normalized_badminton_session(text,jsonb,bigint) to anon;
 grant execute on function public.close_normalized_badminton_room(text) to anon;
 grant execute on function public.delete_normalized_badminton_room(text) to anon;
+grant execute on function public.upsert_badminton_room_dashboard_snapshot(text,timestamptz,integer,integer,integer,numeric) to anon;
+grant execute on function public.list_badminton_room_dashboard_snapshots() to anon;

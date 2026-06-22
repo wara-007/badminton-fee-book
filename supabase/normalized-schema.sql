@@ -107,6 +107,19 @@ create table if not exists public.badminton_match_events (
 create index if not exists badminton_match_events_room_idx
 on public.badminton_match_events (room_id);
 
+create table if not exists public.badminton_room_dashboard_snapshots (
+  room_id text primary key,
+  started_at timestamptz not null,
+  captured_at timestamptz not null default now(),
+  people_count integer not null default 0 check (people_count >= 0),
+  customer_count integer not null default 0 check (customer_count >= 0),
+  shuttle_count integer not null default 0 check (shuttle_count >= 0),
+  received_amount numeric not null default 0 check (received_amount >= 0)
+);
+
+create index if not exists badminton_room_dashboard_snapshots_started_idx
+on public.badminton_room_dashboard_snapshots (started_at desc);
+
 alter table public.badminton_sessions_backup enable row level security;
 alter table public.badminton_rooms enable row level security;
 alter table public.badminton_players enable row level security;
@@ -114,6 +127,7 @@ alter table public.badminton_shuttle_marks enable row level security;
 alter table public.badminton_planned_matches enable row level security;
 alter table public.badminton_planned_match_players enable row level security;
 alter table public.badminton_match_events enable row level security;
+alter table public.badminton_room_dashboard_snapshots enable row level security;
 
 revoke all on public.badminton_sessions_backup from anon;
 revoke insert, update, delete on public.badminton_rooms from anon;
@@ -122,6 +136,7 @@ revoke insert, update, delete on public.badminton_shuttle_marks from anon;
 revoke insert, update, delete on public.badminton_planned_matches from anon;
 revoke insert, update, delete on public.badminton_planned_match_players from anon;
 revoke insert, update, delete on public.badminton_match_events from anon;
+revoke insert, update, delete on public.badminton_room_dashboard_snapshots from anon;
 
 drop policy if exists "Public read badminton rooms" on public.badminton_rooms;
 create policy "Public read badminton rooms" on public.badminton_rooms for select to anon using (true);
@@ -135,6 +150,8 @@ drop policy if exists "Public read badminton planned match players" on public.ba
 create policy "Public read badminton planned match players" on public.badminton_planned_match_players for select to anon using (true);
 drop policy if exists "Public read badminton activity logs" on public.badminton_match_events;
 create policy "Public read badminton activity logs" on public.badminton_match_events for select to anon using (true);
+drop policy if exists "Public read badminton dashboard snapshots" on public.badminton_room_dashboard_snapshots;
+create policy "Public read badminton dashboard snapshots" on public.badminton_room_dashboard_snapshots for select to anon using (true);
 
 do $$
 begin

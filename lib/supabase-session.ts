@@ -19,6 +19,16 @@ export type RemoteSession = {
   closedAt: string | null;
 };
 
+export type RoomDashboardSnapshot = {
+  roomId: string;
+  startedAt: string;
+  capturedAt: string;
+  peopleCount: number;
+  customerCount: number;
+  shuttleCount: number;
+  receivedAmount: number;
+};
+
 export type RemoteSaveResult = RemoteSession;
 
 type RemoteSaveRpcResult = {
@@ -27,6 +37,16 @@ type RemoteSaveRpcResult = {
   state: SessionState;
   updated_at: string;
   closed_at: string | null;
+};
+
+type RoomDashboardSnapshotRpcResult = {
+  room_id: string;
+  started_at: string;
+  captured_at: string;
+  people_count: number;
+  customer_count: number;
+  shuttle_count: number;
+  received_amount: number;
 };
 
 export class RemoteSaveConflictError extends Error {
@@ -85,6 +105,20 @@ export function parseRemoteSaveResult(result: RemoteSaveRpcResult): RemoteSaveRe
   }
 
   return remote;
+}
+
+function normalizeDashboardSnapshot(
+  snapshot: RoomDashboardSnapshotRpcResult,
+): RoomDashboardSnapshot {
+  return {
+    roomId: snapshot.room_id,
+    startedAt: snapshot.started_at,
+    capturedAt: snapshot.captured_at,
+    peopleCount: Number(snapshot.people_count) || 0,
+    customerCount: Number(snapshot.customer_count) || 0,
+    shuttleCount: Number(snapshot.shuttle_count) || 0,
+    receivedAmount: Number(snapshot.received_amount) || 0,
+  };
 }
 
 export async function loadRemoteSession(
@@ -203,6 +237,45 @@ export async function deleteRemoteSession(sessionId: string): Promise<void> {
   if (data !== true) {
     throw new Error(`Remote room "${sessionId}" was not found.`);
   }
+}
+
+export async function listRoomDashboardSnapshots(): Promise<RoomDashboardSnapshot[]> {
+  if (!supabase) {
+    return [];
+  }
+
+  const { data, error } = await supabase.rpc('list_badminton_room_dashboard_snapshots');
+  if (error) {
+    throw error;
+  }
+
+  const rows = Array.isArray(data) ? data : [];
+  return rows.map((row) =>
+    normalizeDashboardSnapshot(row as RoomDashboardSnapshotRpcResult),
+  );
+}
+
+export async function upsertRoomDashboardSnapshot(
+  snapshot: RoomDashboardSnapshot,
+): Promise<RoomDashboardSnapshot> {
+  if (!supabase) {
+    return snapshot;
+  }
+
+  const { data, error } = await supabase.rpc('upsert_badminton_room_dashboard_snapshot', {
+    p_room_id: snapshot.roomId,
+    p_started_at: snapshot.startedAt,
+    p_people_count: snapshot.peopleCount,
+    p_customer_count: snapshot.customerCount,
+    p_shuttle_count: snapshot.shuttleCount,
+    p_received_amount: snapshot.receivedAmount,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return normalizeDashboardSnapshot(data as RoomDashboardSnapshotRpcResult);
 }
 
 export function subscribeRemoteSession(

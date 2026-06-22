@@ -36,7 +36,11 @@ export function ThemeContextProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const [mode, setMode] = useState<ThemeMode>(() => getInitialTheme());
+  const [mode, setMode] = useState<ThemeMode>("light");
+
+  useEffect(() => {
+    setMode(getInitialTheme());
+  }, []);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", mode);
