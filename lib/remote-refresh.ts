@@ -57,6 +57,7 @@ export function mergeRemotePayments(
             paid: remotePlayer.paid,
             paidAt: remotePlayer.paidAt,
             paidAmount: remotePlayer.paidAmount,
+            paidAccountId: remotePlayer.paidAccountId,
           }
         : player;
     }),
@@ -78,6 +79,7 @@ export function mergeRemoteMatchChanges(
             paid: localPlayer.paid,
             paidAt: localPlayer.paidAt,
             paidAmount: localPlayer.paidAmount,
+            paidAccountId: localPlayer.paidAccountId,
           }
         : player;
     }),
@@ -105,7 +107,8 @@ export function classifyRemoteChanges(local: SessionState, remote: SessionState)
     }
     hasPayments ||= localPlayer.paid !== remotePlayer.paid ||
       localPlayer.paidAt !== remotePlayer.paidAt ||
-      localPlayer.paidAmount !== remotePlayer.paidAmount;
+      localPlayer.paidAmount !== remotePlayer.paidAmount ||
+      localPlayer.paidAccountId !== remotePlayer.paidAccountId;
     hasMatchChanges ||= JSON.stringify(localPlayer.shuttleMarks ?? []) !== JSON.stringify(remotePlayer.shuttleMarks ?? []) ||
       localPlayer.gameCount !== remotePlayer.gameCount ||
       localPlayer.waitingSince !== remotePlayer.waitingSince ||

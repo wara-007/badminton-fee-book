@@ -28,9 +28,11 @@ describe("normalized storage SQL contract", () => {
   it("keeps client RPC names and parameters aligned", () => {
     expect(rpcs).toContain("function public.load_normalized_badminton_session(p_id text)");
     expect(rpcs).toContain("function public.save_normalized_badminton_session(");
+    expect(rpcs).toContain("function public.set_badminton_player_payment(");
     expect(rpcs).toContain("function public.delete_normalized_badminton_room(p_room_id text)");
     expect(client).toContain("rpc('load_normalized_badminton_session'");
     expect(client).toContain("rpc('save_normalized_badminton_session'");
+    expect(client).toContain("rpc('set_badminton_player_payment'");
     expect(client).toContain("rpc('delete_normalized_badminton_room', {\n    p_room_id: sessionId");
     expect(rpcs).toContain("if result is null then raise exception 'Room not found'; end if;");
   });
@@ -62,6 +64,8 @@ describe("normalized storage SQL contract", () => {
   it("persists which payment account was used for paid players", () => {
     expect(schema).toContain("paid_account_id text check (paid_account_id in ('gsb', 'kasikorn'))");
     expect(rpcs).toContain("'paidAccountId', coalesce(player.paid_account_id, 'gsb')");
+    expect(rpcs).toContain("delete from public.badminton_planned_match_players");
+    expect(rpcs).toContain("p_paid_account_id in ('gsb','kasikorn')");
     expect(rpcs).toContain("paid_account_id");
   });
 

@@ -63,17 +63,17 @@ describe("remote refresh retry policy", () => {
     local.players = [{ id: "a", name: "A", shuttleCount: 1, shuttleMarks: [2], skillLevel: "n", paid: false, gameCount: 1 }];
     const remote = structuredClone(local);
     remote.currentShuttleNumber = 2;
-    remote.players[0] = { ...remote.players[0], paid: true, paidAmount: 120 };
+    remote.players[0] = { ...remote.players[0], paid: true, paidAmount: 120, paidAccountId: "kasikorn" };
 
     const merged = mergeRemotePayments(local, remote);
 
     expect(merged.currentShuttleNumber).toBe(3);
-    expect(merged.players[0]).toMatchObject({ shuttleMarks: [2], paid: true, paidAmount: 120 });
+    expect(merged.players[0]).toMatchObject({ shuttleMarks: [2], paid: true, paidAmount: 120, paidAccountId: "kasikorn" });
   });
 
   it("merges remote match changes without replacing local payments", () => {
     const local = createInitialSession();
-    local.players = [{ id: "a", name: "A", shuttleCount: 0, shuttleMarks: [], skillLevel: "n", paid: true, paidAmount: 120, gameCount: 0 }];
+    local.players = [{ id: "a", name: "A", shuttleCount: 0, shuttleMarks: [], skillLevel: "n", paid: true, paidAmount: 120, paidAccountId: "kasikorn", gameCount: 0 }];
     const remote = structuredClone(local);
     remote.currentShuttleNumber = 2;
     remote.players[0] = { ...remote.players[0], shuttleCount: 1, shuttleMarks: [1], paid: false, paidAmount: undefined, gameCount: 1 };
@@ -81,7 +81,7 @@ describe("remote refresh retry policy", () => {
     const merged = mergeRemoteMatchChanges(local, remote);
 
     expect(merged.currentShuttleNumber).toBe(2);
-    expect(merged.players[0]).toMatchObject({ shuttleMarks: [1], gameCount: 1, paid: true, paidAmount: 120 });
+    expect(merged.players[0]).toMatchObject({ shuttleMarks: [1], gameCount: 1, paid: true, paidAmount: 120, paidAccountId: "kasikorn" });
   });
 
   it("merges payment and match changes received in the same remote update", () => {
@@ -95,7 +95,8 @@ describe("remote refresh retry policy", () => {
       shuttleMarks: [1],
       gameCount: 1,
       paid: true,
-      paidAmount: 120
+      paidAmount: 120,
+      paidAccountId: "kasikorn"
     };
 
     expect(classifyRemoteChanges(local, remote)).toEqual({
@@ -105,7 +106,7 @@ describe("remote refresh retry policy", () => {
     });
     expect(mergeRemoteScopedChanges(local, remote)).toMatchObject({
       currentShuttleNumber: 2,
-      players: [{ shuttleMarks: [1], gameCount: 1, paid: true, paidAmount: 120 }]
+      players: [{ shuttleMarks: [1], gameCount: 1, paid: true, paidAmount: 120, paidAccountId: "kasikorn" }]
     });
   });
 
@@ -116,11 +117,11 @@ describe("remote refresh retry policy", () => {
     local.currentShuttleNumber = 2;
     local.players[0] = { ...local.players[0], shuttleCount: 1, shuttleMarks: [1], gameCount: 1 };
     const remote = structuredClone(base);
-    remote.players[0] = { ...remote.players[0], paid: true, paidAmount: 120 };
+    remote.players[0] = { ...remote.players[0], paid: true, paidAmount: 120, paidAccountId: "kasikorn" };
 
     expect(mergeRemoteChangesAgainstBase(base, local, remote)).toMatchObject({
       currentShuttleNumber: 2,
-      players: [{ shuttleMarks: [1], gameCount: 1, paid: true, paidAmount: 120 }]
+      players: [{ shuttleMarks: [1], gameCount: 1, paid: true, paidAmount: 120, paidAccountId: "kasikorn" }]
     });
   });
 

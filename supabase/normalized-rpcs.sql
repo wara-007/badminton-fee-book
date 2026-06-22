@@ -276,6 +276,69 @@ begin
   );
 end $$;
 
+create or replace function public.set_badminton_player_payment(
+  p_room_id text,
+  p_player_id text,
+  p_paid boolean,
+  p_paid_amount numeric default null,
+  p_paid_account_id text default null,
+  p_paid_at timestamptz default null
+) returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  room public.badminton_rooms%rowtype;
+  normalized_account_id text;
+begin
+  select * into room from public.badminton_rooms where id=p_room_id for update;
+  if not found or room.closed_at is not null then
+    return jsonb_build_object(
+      'saved', false, 'revision', coalesce(room.revision, 0),
+      'state', case when room.id is null then null else public.build_normalized_badminton_state(p_room_id) end,
+      'updated_at', coalesce(room.updated_at, now()),
+      'closed_at', room.closed_at
+    );
+  end if;
+
+  if not exists (
+    select 1 from public.badminton_players
+    where room_id=p_room_id and id=p_player_id
+  ) then
+    return jsonb_build_object(
+      'saved', false, 'revision', room.revision,
+      'state', public.build_normalized_badminton_state(p_room_id),
+      'updated_at', room.updated_at, 'closed_at', room.closed_at
+    );
+  end if;
+
+  normalized_account_id := case
+    when p_paid and p_paid_account_id in ('gsb','kasikorn') then p_paid_account_id
+    when p_paid then 'gsb'
+    else null
+  end;
+
+  update public.badminton_players set
+    paid=coalesce(p_paid,false),
+    paid_at=case when coalesce(p_paid,false) then coalesce(p_paid_at, now()) else null end,
+    paid_amount=case when coalesce(p_paid,false) then greatest(coalesce(p_paid_amount,0),0) else null end,
+    paid_account_id=normalized_account_id
+  where room_id=p_room_id and id=p_player_id;
+
+  if coalesce(p_paid,false) then
+    delete from public.badminton_planned_match_players
+    where room_id=p_room_id and player_id=p_player_id;
+  end if;
+
+  update public.badminton_rooms set
+    revision=revision+1,
+    updated_at=now()
+  where id=p_room_id returning * into room;
+
+  return jsonb_build_object(
+    'saved', true, 'revision', room.revision,
+    'state', public.build_normalized_badminton_state(p_room_id),
+    'updated_at', room.updated_at, 'closed_at', room.closed_at
+  );
+end $$;
+
 -- The current app uses an anonymous publishable key, so only its four
 -- snapshot/room RPCs are exposed. Add Supabase Auth before tightening access.
 revoke all on function public.close_normalized_badminton_room(text) from public, anon;
@@ -283,6 +346,7 @@ revoke all on function public.delete_normalized_badminton_room(text) from public
 revoke all on function public.build_normalized_badminton_state(text) from public, anon;
 revoke all on function public.load_normalized_badminton_session(text) from public, anon;
 revoke all on function public.save_normalized_badminton_session(text,jsonb,bigint) from public, anon;
+revoke all on function public.set_badminton_player_payment(text,text,boolean,numeric,text,timestamptz) from public, anon;
 revoke all on function public.upsert_badminton_room_dashboard_snapshot(text,timestamptz,integer,integer,integer,numeric,jsonb) from public, anon;
 revoke all on function public.list_badminton_room_dashboard_snapshots() from public, anon;
 revoke all on function public.get_badminton_payment_settings() from public, anon;
@@ -290,6 +354,7 @@ revoke all on function public.set_badminton_payment_account(text) from public, a
 
 grant execute on function public.load_normalized_badminton_session(text) to anon;
 grant execute on function public.save_normalized_badminton_session(text,jsonb,bigint) to anon;
+grant execute on function public.set_badminton_player_payment(text,text,boolean,numeric,text,timestamptz) to anon;
 grant execute on function public.close_normalized_badminton_room(text) to anon;
 grant execute on function public.delete_normalized_badminton_room(text) to anon;
 grant execute on function public.upsert_badminton_room_dashboard_snapshot(text,timestamptz,integer,integer,integer,numeric,jsonb) to anon;

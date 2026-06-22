@@ -192,6 +192,40 @@ export async function saveRemoteSession(
   return parseRemoteSaveResult(data as RemoteSaveRpcResult);
 }
 
+export async function setRemotePlayerPayment(options: {
+  sessionId: string;
+  playerId: string;
+  paid: boolean;
+  paidAmount?: number;
+  paidAccountId?: PaymentAccountId;
+  paidAt?: string;
+}): Promise<RemoteSaveResult> {
+  if (!supabase) {
+    return {
+      session: createInitialSession(),
+      revision: 0,
+      closedAt: null,
+    };
+  }
+
+  const { data, error } = await supabase.rpc('set_badminton_player_payment', {
+    p_room_id: options.sessionId,
+    p_player_id: options.playerId,
+    p_paid: options.paid,
+    p_paid_amount: options.paid ? options.paidAmount ?? 0 : null,
+    p_paid_account_id: options.paid
+      ? normalizePaymentAccountId(options.paidAccountId)
+      : null,
+    p_paid_at: options.paid ? options.paidAt ?? new Date().toISOString() : null,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return parseRemoteSaveResult(data as RemoteSaveRpcResult);
+}
+
 export async function closeRemoteSession(sessionId: string): Promise<string> {
   if (!supabase) {
     return new Date().toISOString();

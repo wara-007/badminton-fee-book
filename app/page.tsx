@@ -93,6 +93,7 @@ import {
   loadRemoteSession,
   savePaymentAccountSetting,
   saveRemoteSession,
+  setRemotePlayerPayment,
   subscribePaymentSettings,
   subscribeRemoteSession
 } from "@/lib/supabase-session";
@@ -858,6 +859,25 @@ export default function HomePage() {
       ...updater(current),
       updatedAt: getTrustedNowIso()
     }));
+  }
+
+  function applyRemoteSession(remote: {
+    session: SessionState;
+    revision: number;
+    closedAt: string | null;
+  }) {
+    const normalizedRemoteSession = normalizeSession(remote.session);
+    const remoteSnapshot = serializeSession(normalizedRemoteSession);
+    remoteRevisionRef.current = remote.revision;
+    remoteBaselineReadyRef.current = true;
+    lastRemoteSnapshotRef.current = remoteSnapshot;
+    setClosedAt(remote.closedAt);
+    setSession(normalizedRemoteSession);
+    localStorage.removeItem(getPendingSyncKey(sessionId));
+    setPendingSyncSnapshot(null);
+    setSyncStatus("ซิงก์แล้ว");
+    setLastSyncedAt(new Date().toISOString());
+    setLastLocalSavedAt(new Date().toISOString());
   }
 
   function getTrustedNowIso(): string {
@@ -1851,6 +1871,31 @@ export default function HomePage() {
       return;
     }
 
+    const paidAt = getTrustedNowIso();
+
+    if (hasSupabaseConfig) {
+      try {
+        setSyncStatus("กำลังบันทึก");
+        const remote = await setRemotePlayerPayment({
+          sessionId,
+          playerId,
+          paid,
+          paidAmount: paid ? paidAmount : undefined,
+          paidAccountId: paid ? selectedPaymentAccountId : undefined,
+          paidAt: paid ? paidAt : undefined
+        });
+        applyRemoteSession(remote);
+        setRemoteNotification(
+          paid
+            ? `${player.name} จ่ายแล้ว ${formatBaht(paidAmount)} บาท`
+            : `ย้าย ${player.name} กลับไปค้างจ่าย`
+        );
+        return;
+      } catch {
+        setSyncStatus("รอส่งขึ้นเซิร์ฟเวอร์");
+      }
+    }
+
     updateSession((current) =>
       appendActivity(
         {
@@ -1860,7 +1905,7 @@ export default function HomePage() {
               ? {
                 ...currentPlayer,
                 paid,
-                paidAt: paid ? getTrustedNowIso() : undefined,
+                paidAt: paid ? paidAt : undefined,
                 paidAmount: paid ? paidAmount : undefined,
                 paidAccountId: paid ? selectedPaymentAccountId : undefined
               }
@@ -1955,12 +2000,39 @@ export default function HomePage() {
     );
   }
 
-  function confirmBatchPayment() {
+  async function confirmBatchPayment() {
     const paidAt = getTrustedNowIso();
     const paymentAmounts = new Map(
       batchPaymentItems.map((item) => [item.playerId, parsePaymentAmount(item.amountDraft)])
     );
     const selectedIds = new Set(batchPaymentItems.map((item) => item.playerId));
+
+    if (hasSupabaseConfig) {
+      try {
+        setSyncStatus("กำลังบันทึก");
+        let latestRemote: Awaited<ReturnType<typeof setRemotePlayerPayment>> | null = null;
+        for (const item of batchPaymentItems) {
+          latestRemote = await setRemotePlayerPayment({
+            sessionId,
+            playerId: item.playerId,
+            paid: true,
+            paidAmount: paymentAmounts.get(item.playerId) ?? 0,
+            paidAccountId: selectedPaymentAccountId,
+            paidAt
+          });
+        }
+        if (latestRemote) {
+          applyRemoteSession(latestRemote);
+        }
+        setBatchPaymentDialogOpen(false);
+        setBatchPaymentMode(false);
+        setBatchSelectedPlayerIds([]);
+        return;
+      } catch {
+        setSyncStatus("รอส่งขึ้นเซิร์ฟเวอร์");
+      }
+    }
+
     updateSession((current) => {
       let nextSession: SessionState = {
         ...current,
