@@ -4,6 +4,12 @@ import {
   createInitialSession,
   normalizeSession,
 } from '@/lib/session';
+import {
+  PaymentAccountId,
+  createEmptyReceivedByAccount,
+  normalizeReceivedByAccount,
+  normalizePaymentAccountId,
+} from '@/lib/payment-accounts';
 
 type SessionRow = {
   id: string;
@@ -27,6 +33,7 @@ export type RoomDashboardSnapshot = {
   customerCount: number;
   shuttleCount: number;
   receivedAmount: number;
+  receivedByAccount: Record<PaymentAccountId, number>;
 };
 
 export type RemoteSaveResult = RemoteSession;
@@ -47,6 +54,11 @@ type RoomDashboardSnapshotRpcResult = {
   customer_count: number;
   shuttle_count: number;
   received_amount: number;
+  received_by_account?: unknown;
+};
+
+type PaymentSettingsRpcResult = {
+  selected_account_id?: string;
 };
 
 export class RemoteSaveConflictError extends Error {
@@ -118,7 +130,17 @@ function normalizeDashboardSnapshot(
     customerCount: Number(snapshot.customer_count) || 0,
     shuttleCount: Number(snapshot.shuttle_count) || 0,
     receivedAmount: Number(snapshot.received_amount) || 0,
+    receivedByAccount: normalizeReceivedByAccount(
+      snapshot.received_by_account,
+      Number(snapshot.received_amount) || 0,
+    ),
   };
+}
+
+function normalizePaymentSettings(
+  settings: PaymentSettingsRpcResult | null,
+): PaymentAccountId {
+  return normalizePaymentAccountId(settings?.selected_account_id);
 }
 
 export async function loadRemoteSession(
@@ -269,6 +291,7 @@ export async function upsertRoomDashboardSnapshot(
     p_customer_count: snapshot.customerCount,
     p_shuttle_count: snapshot.shuttleCount,
     p_received_amount: snapshot.receivedAmount,
+    p_received_by_account: snapshot.receivedByAccount ?? createEmptyReceivedByAccount(),
   });
 
   if (error) {
@@ -276,6 +299,36 @@ export async function upsertRoomDashboardSnapshot(
   }
 
   return normalizeDashboardSnapshot(data as RoomDashboardSnapshotRpcResult);
+}
+
+export async function loadPaymentAccountSetting(): Promise<PaymentAccountId> {
+  if (!supabase) {
+    return normalizePaymentAccountId(null);
+  }
+
+  const { data, error } = await supabase.rpc('get_badminton_payment_settings');
+  if (error) {
+    throw error;
+  }
+
+  return normalizePaymentSettings(data as PaymentSettingsRpcResult | null);
+}
+
+export async function savePaymentAccountSetting(
+  accountId: PaymentAccountId,
+): Promise<PaymentAccountId> {
+  if (!supabase) {
+    return normalizePaymentAccountId(accountId);
+  }
+
+  const { data, error } = await supabase.rpc('set_badminton_payment_account', {
+    p_selected_account_id: accountId,
+  });
+  if (error) {
+    throw error;
+  }
+
+  return normalizePaymentSettings(data as PaymentSettingsRpcResult | null);
 }
 
 export function subscribeRemoteSession(

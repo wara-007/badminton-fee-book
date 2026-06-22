@@ -6,6 +6,11 @@ import {
   createPromptPayQrUrlFromPayload,
   normalizePromptPayId
 } from "@/lib/promptpay";
+import {
+  PAYMENT_ACCOUNTS,
+  getPaymentAccount,
+  normalizeReceivedByAccount
+} from "@/lib/payment-accounts";
 
 describe("PromptPay QR helpers", () => {
   it("normalizes PromptPay IDs before building QR payloads", () => {
@@ -39,5 +44,29 @@ describe("PromptPay QR helpers", () => {
     expect(nextPayload).not.toContain("540520.00");
     expect(nextPayload).toMatch(/6304[0-9A-F]{4}$/);
     expect(decodeURIComponent(url)).toContain("5406125.00");
+  });
+
+  it("keeps both selectable payment accounts available for QR generation", () => {
+    expect(PAYMENT_ACCOUNTS.map((account) => account.id)).toEqual([
+      "gsb",
+      "kasikorn"
+    ]);
+    expect(PAYMENT_ACCOUNTS.every((account) => account.logoSrc.startsWith("/payment-accounts/"))).toBe(true);
+    expect(getPaymentAccount("gsb").promptPayDisplay).toBe("089-081-0878");
+    expect(getPaymentAccount("kasikorn").promptPayDisplay).toBe("004999095920004");
+    expect(createPromptPayQrUrlFromPayload(getPaymentAccount("kasikorn").payload, 125)).toContain(
+      encodeURIComponent("5406125.00")
+    );
+  });
+
+  it("defaults legacy received totals to the GSB account", () => {
+    expect(normalizeReceivedByAccount(undefined, 250)).toEqual({
+      gsb: 250,
+      kasikorn: 0
+    });
+    expect(normalizeReceivedByAccount({ gsb: 100, kasikorn: 150 }, 250)).toEqual({
+      gsb: 100,
+      kasikorn: 150
+    });
   });
 });

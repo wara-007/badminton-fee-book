@@ -88,8 +88,10 @@ import {
   RemoteSaveConflictError,
   closeRemoteSession,
   hasSupabaseConfig,
+  loadPaymentAccountSetting,
   loadRemoteNow,
   loadRemoteSession,
+  savePaymentAccountSetting,
   saveRemoteSession,
   subscribeRemoteSession
 } from "@/lib/supabase-session";
@@ -100,12 +102,18 @@ import {
   matchSpokenPlayerNames
 } from "@/lib/voice-player-match";
 import { createPromptPayQrUrlFromPayload } from "@/lib/promptpay";
+import {
+  DEFAULT_PAYMENT_ACCOUNT_ID,
+  PAYMENT_ACCOUNTS,
+  PaymentAccountId,
+  getPaymentAccount,
+  normalizePaymentAccountId
+} from "@/lib/payment-accounts";
 
 const bahtFormatter = new Intl.NumberFormat("th-TH");
 const appVersion = packageInfo.version;
 const AUTH_STORAGE_KEY = "badminton-fee-book.auth";
-const PAYMENT_QR_RECIPIENT_NAME = "ว่าที่ ร้อยตรี ธนากร มาศิริ";
-const PAYMENT_QR_PAYLOAD = "00020101021129370016A0000006770101110113006689081087853037645802TH63042E3B";
+const PAYMENT_ACCOUNT_STORAGE_KEY = "badminton-fee-book.payment-account";
 const PLAYER_SKILL_LABELS: Record<PlayerSkillLevel, string> = {
   bg: "BG",
   n: "N",
@@ -231,6 +239,8 @@ export default function HomePage() {
   const [batchSelectedPlayerIds, setBatchSelectedPlayerIds] = useState<string[]>([]);
   const [batchPaymentItems, setBatchPaymentItems] = useState<BatchPaymentItem[]>([]);
   const [batchPaymentDialogOpen, setBatchPaymentDialogOpen] = useState(false);
+  const [selectedPaymentAccountId, setSelectedPaymentAccountId] =
+    useState<PaymentAccountId>(DEFAULT_PAYMENT_ACCOUNT_ID);
   const [now, setNow] = useState(() => new Date().toISOString());
   const [clockOffsetMs, setClockOffsetMs] = useState(0);
   const [hydrated, setHydrated] = useState(false);
@@ -268,6 +278,35 @@ export default function HomePage() {
   useEffect(() => {
     sessionRef.current = session;
   }, [session]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPaymentAccount() {
+      const localAccountId = normalizePaymentAccountId(
+        localStorage.getItem(PAYMENT_ACCOUNT_STORAGE_KEY)
+      );
+      setSelectedPaymentAccountId(localAccountId);
+
+      if (!hasSupabaseConfig) {
+        return;
+      }
+
+      try {
+        const remoteAccountId = await loadPaymentAccountSetting();
+        if (cancelled) return;
+        setSelectedPaymentAccountId(remoteAccountId);
+        localStorage.setItem(PAYMENT_ACCOUNT_STORAGE_KEY, remoteAccountId);
+      } catch (error) {
+        console.warn("Failed to load payment account setting", error);
+      }
+    }
+
+    void loadPaymentAccount();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const displayMode = window.matchMedia("(display-mode: standalone)");
@@ -1077,6 +1116,7 @@ export default function HomePage() {
           paid: false,
           paidAt: undefined,
           paidAmount: undefined,
+          paidAccountId: undefined,
           gameCount: 0
         }))
       }));
@@ -1424,6 +1464,7 @@ export default function HomePage() {
               paid: paidPlayerIds.has(player.id) ? false : player.paid,
               paidAt: paidPlayerIds.has(player.id) ? undefined : player.paidAt,
               paidAmount: paidPlayerIds.has(player.id) ? undefined : player.paidAmount,
+              paidAccountId: paidPlayerIds.has(player.id) ? undefined : player.paidAccountId,
               restUntil,
               waitingSince: restUntil
             },
@@ -1523,6 +1564,7 @@ export default function HomePage() {
               paid: paidPlayerIds.has(player.id) ? false : player.paid,
               paidAt: paidPlayerIds.has(player.id) ? undefined : player.paidAt,
               paidAmount: paidPlayerIds.has(player.id) ? undefined : player.paidAmount,
+              paidAccountId: paidPlayerIds.has(player.id) ? undefined : player.paidAccountId,
               restUntil,
               waitingSince: restUntil,
               gameCount: player.gameCount + 1
@@ -1634,7 +1676,7 @@ export default function HomePage() {
       currentPlayer.id === playerId
         ? setPlayerShuttleMarks(
           paidPlayerIds.has(currentPlayer.id)
-            ? { ...currentPlayer, paid: false, paidAt: undefined, paidAmount: undefined }
+            ? { ...currentPlayer, paid: false, paidAt: undefined, paidAmount: undefined, paidAccountId: undefined }
             : currentPlayer,
           isRemoving
             ? getPlayerShuttleMarks(currentPlayer).filter((_, markIndex) => markIndex !== column)
@@ -1815,7 +1857,8 @@ export default function HomePage() {
                 ...currentPlayer,
                 paid,
                 paidAt: paid ? getTrustedNowIso() : undefined,
-                paidAmount: paid ? paidAmount : undefined
+                paidAmount: paid ? paidAmount : undefined,
+                paidAccountId: paid ? selectedPaymentAccountId : undefined
               }
               : currentPlayer
           ),
@@ -1840,6 +1883,30 @@ export default function HomePage() {
   function toggleBatchPaymentMode() {
     setBatchPaymentMode((current) => !current);
     setBatchSelectedPlayerIds([]);
+  }
+
+  async function changePaymentAccount(accountId: PaymentAccountId) {
+    const normalizedAccountId = normalizePaymentAccountId(accountId);
+    setSelectedPaymentAccountId(normalizedAccountId);
+    localStorage.setItem(PAYMENT_ACCOUNT_STORAGE_KEY, normalizedAccountId);
+
+    if (!hasSupabaseConfig) {
+      return;
+    }
+
+    try {
+      const remoteAccountId = await savePaymentAccountSetting(normalizedAccountId);
+      setSelectedPaymentAccountId(remoteAccountId);
+      localStorage.setItem(PAYMENT_ACCOUNT_STORAGE_KEY, remoteAccountId);
+    } catch (error) {
+      console.warn("Failed to save payment account setting", error);
+      await showAlert({
+        title: "บันทึกบัญชีรับเงินไม่สำเร็จ",
+        message: "เครื่องนี้จะใช้บัญชีที่เลือกไว้ก่อน แต่เครื่องอื่นอาจยังไม่เปลี่ยนจนกว่าจะบันทึก Supabase สำเร็จ",
+        confirmLabel: "รับทราบ",
+        color: "warning"
+      });
+    }
   }
 
   function toggleBatchPaymentPlayer(playerId: string) {
@@ -1893,7 +1960,13 @@ export default function HomePage() {
         ...current,
         players: current.players.map((player) =>
           selectedIds.has(player.id)
-            ? { ...player, paid: true, paidAt, paidAmount: paymentAmounts.get(player.id) }
+            ? {
+              ...player,
+              paid: true,
+              paidAt,
+              paidAmount: paymentAmounts.get(player.id),
+              paidAccountId: selectedPaymentAccountId
+            }
             : player
         ),
         plannedMatches: current.plannedMatches.map((match) => ({
@@ -2034,9 +2107,10 @@ export default function HomePage() {
     }
   }
 
+  const selectedPaymentAccount = getPaymentAccount(selectedPaymentAccountId);
   const paymentDialogAmount = parsePaymentAmount(paymentDialog.amountDraft);
   const paymentDialogQrImage = paymentDialogAmount
-    ? createPromptPayQrUrlFromPayload(PAYMENT_QR_PAYLOAD, paymentDialogAmount)
+    ? createPromptPayQrUrlFromPayload(selectedPaymentAccount.payload, paymentDialogAmount)
     : "";
   const batchCalculatedTotal = batchPaymentItems.reduce((sum, item) => sum + item.calculatedAmount, 0);
   const batchPaymentTotal = batchPaymentItems.reduce(
@@ -2045,7 +2119,7 @@ export default function HomePage() {
   );
   const batchPaymentDifference = batchPaymentTotal - batchCalculatedTotal;
   const batchPaymentQrImage = batchPaymentTotal
-    ? createPromptPayQrUrlFromPayload(PAYMENT_QR_PAYLOAD, batchPaymentTotal)
+    ? createPromptPayQrUrlFromPayload(selectedPaymentAccount.payload, batchPaymentTotal)
     : "";
 
   if (!authSession) {
@@ -2483,6 +2557,8 @@ export default function HomePage() {
                   onResetSession={resetSession}
                   onCopySummary={copySummary}
                   onFinishSession={finishSession}
+                  selectedPaymentAccountId={selectedPaymentAccountId}
+                  onPaymentAccountChange={changePaymentAccount}
                   sessionClosed={Boolean(closedAt)}
                   canFinishSession={userRole === "admin" && hasSupabaseConfig}
                   matchSetupMode={matchSetupMode}
@@ -2549,14 +2625,25 @@ export default function HomePage() {
                 alt={`PromptPay QR สำหรับจ่าย ${formatBaht(paymentDialogAmount)} บาท`}
                 className="appDialogImage"
               />
-              <Typography className="appDialogImageCaption">
-                {PAYMENT_QR_RECIPIENT_NAME}
-              </Typography>
             </Box>
           ) : null}
-          <Typography textAlign="center" className="appDialogNote appDialogNote-primary">
-            QR จะเปลี่ยนตามยอดเงินที่แก้ ให้เช็กชื่อผู้รับและยอดในแอพธนาคารก่อนยืนยัน
-          </Typography>
+          <Box className="paymentDialogAccount">
+            <Box
+              component="img"
+              src={selectedPaymentAccount.logoSrc}
+              alt=""
+              aria-hidden="true"
+              className="paymentDialogAccountLogo"
+            />
+            <Box>
+              <Typography className="paymentDialogAccountName">
+                {selectedPaymentAccount.label}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                PromptPay {selectedPaymentAccount.promptPayDisplay}
+              </Typography>
+            </Box>
+          </Box>
         </DialogContent>
         <DialogActions className="appDialogActions">
           <Button variant="outlined" onClick={() => closePaymentDialog(false)}>
@@ -2632,9 +2719,25 @@ export default function HomePage() {
                   alt={`PromptPay QR สำหรับจ่าย ${formatBaht(batchPaymentTotal)} บาท`}
                   className="appDialogImage"
                 />
-                <Typography className="appDialogImageCaption">{PAYMENT_QR_RECIPIENT_NAME}</Typography>
               </Box>
             ) : null}
+            <Box className="paymentDialogAccount">
+              <Box
+                component="img"
+                src={selectedPaymentAccount.logoSrc}
+                alt=""
+                aria-hidden="true"
+                className="paymentDialogAccountLogo"
+              />
+              <Box>
+                <Typography className="paymentDialogAccountName">
+                  {selectedPaymentAccount.label}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  PromptPay {selectedPaymentAccount.promptPayDisplay}
+                </Typography>
+              </Box>
+            </Box>
           </Stack>
         </DialogContent>
         <DialogActions className="appDialogActions">
@@ -4156,6 +4259,7 @@ function PaidSummary({
                       player.name === paidPlayer.name &&
                       player.shuttleCount === paidPlayer.shuttleCount
                   );
+                  const paidAccount = getPaymentAccount(paidPlayer.paidAccountId);
                   const discount = paidPlayer.calculatedAmount - paidPlayer.amount;
                   const hasDiscount = discount > 0;
                   const hasOverpay = discount < 0;
@@ -4170,6 +4274,18 @@ function PaidSummary({
                         ) : null}
                         <Typography fontWeight={800}>{paidPlayer.name}</Typography>
                         <Typography color="text.secondary">{paidPlayer.shuttleCount} ลูก</Typography>
+                        <Box className="paidPlayerPaymentAccount">
+                          <Box
+                            component="img"
+                            src={paidAccount.logoSrc}
+                            alt=""
+                            aria-hidden="true"
+                            className="paidPlayerPaymentLogo"
+                          />
+                          <Typography variant="caption">
+                            {paidAccount.label}
+                          </Typography>
+                        </Box>
                       </Box>
                       <Stack direction="row" spacing={1.5} alignItems="flex-start" className="paidPlayerRight">
                         <Box className="paidPlayerAmounts">
@@ -4218,6 +4334,8 @@ function DataManagementPanel({
   onResetSession,
   onCopySummary,
   onFinishSession,
+  selectedPaymentAccountId,
+  onPaymentAccountChange,
   sessionClosed,
   canFinishSession,
   matchSetupMode,
@@ -4228,6 +4346,8 @@ function DataManagementPanel({
   onResetSession: () => void;
   onCopySummary: () => void;
   onFinishSession: () => void;
+  selectedPaymentAccountId: PaymentAccountId;
+  onPaymentAccountChange: (accountId: PaymentAccountId) => void;
   sessionClosed: boolean;
   canFinishSession: boolean;
   matchSetupMode: boolean;
@@ -4243,6 +4363,43 @@ function DataManagementPanel({
         <Typography color="text.secondary">
           รวมเครื่องมือ export และจัดการข้อมูลรอบนี้
         </Typography>
+      </Box>
+      <Box className="paymentAccountSettings">
+        <Typography fontWeight={800}>บัญชีรับเงิน QR</Typography>
+        <ToggleButtonGroup
+          exclusive
+          value={selectedPaymentAccountId}
+          onChange={(_, value) => {
+            if (value) {
+              onPaymentAccountChange(normalizePaymentAccountId(value));
+            }
+          }}
+          aria-label="เลือกบัญชีรับเงิน QR"
+          className="paymentAccountToggle"
+        >
+          {PAYMENT_ACCOUNTS.map((account) => (
+            <ToggleButton
+              key={account.id}
+              value={account.id}
+              aria-label={`${account.label} PromptPay ${account.promptPayDisplay}`}
+              className="paymentAccountOption"
+            >
+              <Box
+                component="img"
+                src={account.logoSrc}
+                alt=""
+                aria-hidden="true"
+                className="paymentAccountLogo"
+              />
+              <Box>
+                <Typography fontWeight={800}>{account.label}</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  PromptPay {account.promptPayDisplay}
+                </Typography>
+              </Box>
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
       </Box>
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1} className="dataManagementActions">
         {matchSetupMode ? (

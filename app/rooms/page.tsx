@@ -33,10 +33,18 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import LogoutIcon from "@mui/icons-material/Logout";
 import {
   createInitialSession,
+  getPlayerPaymentAmount,
   normalizeSession,
   SessionState,
   summarizeSession
 } from "@/lib/session";
+import {
+  PAYMENT_ACCOUNTS,
+  createEmptyReceivedByAccount,
+  getPaymentAccount,
+  normalizeReceivedByAccount,
+  normalizePaymentAccountId
+} from "@/lib/payment-accounts";
 import {
   deleteRemoteSession,
   hasSupabaseConfig,
@@ -122,7 +130,11 @@ function loadDashboardSnapshots(): RoomSummary[] {
           peopleCount: Number(candidate.peopleCount) || 0,
           customerCount: Number(candidate.customerCount) || 0,
           shuttleCount: Number(candidate.shuttleCount) || 0,
-          receivedAmount: Number(candidate.receivedAmount) || 0
+          receivedAmount: Number(candidate.receivedAmount) || 0,
+          receivedByAccount: normalizeReceivedByAccount(
+            candidate.receivedByAccount,
+            Number(candidate.receivedAmount) || 0
+          )
         };
       })
       .filter((snapshot): snapshot is RoomSummary => Boolean(snapshot));
@@ -229,6 +241,16 @@ function createRoomSummary(roomId: string, session: SessionState): RoomSummary |
   }
 
   const summary = summarizeSession(session.players, session.pricing);
+  const receivedByAccount = session.players
+    .filter((player) => player.paid)
+    .reduce((totals, player) => {
+      const accountId = normalizePaymentAccountId(player.paidAccountId);
+      return {
+        ...totals,
+        [accountId]: totals[accountId] + getPlayerPaymentAmount(player, session.pricing)
+      };
+    }, createEmptyReceivedByAccount());
+
   return {
     roomId,
     startedAt,
@@ -236,7 +258,8 @@ function createRoomSummary(roomId: string, session: SessionState): RoomSummary |
     peopleCount: summary.playerCount,
     customerCount: summary.playerCount,
     shuttleCount: summary.shuttleCount,
-    receivedAmount: summary.paidAmount
+    receivedAmount: summary.paidAmount,
+    receivedByAccount
   };
 }
 
@@ -437,13 +460,23 @@ export default function RoomsPage() {
         peopleCount: totals.peopleCount + summary.peopleCount,
         customerCount: totals.customerCount + summary.customerCount,
         shuttleCount: totals.shuttleCount + summary.shuttleCount,
-        receivedAmount: totals.receivedAmount + summary.receivedAmount
+        receivedAmount: totals.receivedAmount + summary.receivedAmount,
+        receivedByAccount: PAYMENT_ACCOUNTS.reduce(
+          (accountTotals, account) => ({
+            ...accountTotals,
+            [account.id]:
+              accountTotals[account.id] +
+              (summary.receivedByAccount?.[account.id] ?? 0)
+          }),
+          totals.receivedByAccount
+        )
       }),
       {
         peopleCount: 0,
         customerCount: 0,
         shuttleCount: 0,
-        receivedAmount: 0
+        receivedAmount: 0,
+        receivedByAccount: createEmptyReceivedByAccount()
       }
     );
   }, [filteredRoomSummaries]);
@@ -874,12 +907,42 @@ export default function RoomsPage() {
                         <Typography variant="body2" fontWeight={800} sx={{ mb: 1.25 }}>
                           ยอดเงินที่รับตาม Room
                         </Typography>
+                        <Box
+                          sx={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            gap: 1,
+                            mb: 1.25
+                          }}
+                        >
+                          {PAYMENT_ACCOUNTS.map((account) => (
+                            <Box
+                              key={account.id}
+                              sx={{ display: "inline-flex", alignItems: "center", gap: 0.5 }}
+                            >
+                              <Box
+                                sx={{
+                                  width: 10,
+                                  height: 10,
+                                  borderRadius: 0.5,
+                                  background:
+                                    account.id === "gsb"
+                                      ? "var(--selected-chip-bg)"
+                                      : "var(--success-text)"
+                                }}
+                              />
+                              <Typography variant="caption" color="text.secondary">
+                                {account.label} {formatBaht(dashboardTotals.receivedByAccount[account.id])} บาท
+                              </Typography>
+                            </Box>
+                          ))}
+                        </Box>
                         <Stack spacing={1.1}>
                           {filteredRoomSummaries.map((summary) => {
-                            const barWidth = `${Math.max(
+                            const totalWidth = Math.max(
                               5,
                               (summary.receivedAmount / chartMaxReceivedAmount) * 100
-                            )}%`;
+                            );
                             return (
                               <Box key={`money-chart-${summary.roomId}`}>
                                 <Box
@@ -902,17 +965,49 @@ export default function RoomsPage() {
                                     height: 16,
                                     borderRadius: 1,
                                     background: "var(--border-color)",
-                                    overflow: "hidden"
+                                    overflow: "hidden",
+                                    display: "flex"
                                   }}
                                 >
-                                  <Box
-                                    sx={{
-                                      width: barWidth,
-                                      height: "100%",
-                                      borderRadius: 1,
-                                      background: "var(--primary)"
-                                    }}
-                                  />
+                                  {PAYMENT_ACCOUNTS.map((account) => {
+                                    const accountAmount =
+                                      summary.receivedByAccount?.[account.id] ?? 0;
+                                    if (accountAmount <= 0 || summary.receivedAmount <= 0) {
+                                      return null;
+                                    }
+                                    return (
+                                      <Box
+                                        key={account.id}
+                                        title={`${account.label} ${formatBaht(accountAmount)} บาท`}
+                                        sx={{
+                                          width: `${(accountAmount / summary.receivedAmount) * totalWidth}%`,
+                                          height: "100%",
+                                          background:
+                                            account.id === "gsb"
+                                              ? "var(--selected-chip-bg)"
+                                              : "var(--success-text)"
+                                        }}
+                                      />
+                                    );
+                                  })}
+                                </Box>
+                                <Box
+                                  sx={{
+                                    display: "flex",
+                                    flexWrap: "wrap",
+                                    gap: 1,
+                                    mt: 0.5
+                                  }}
+                                >
+                                  {PAYMENT_ACCOUNTS.map((account) => (
+                                    <Typography
+                                      key={account.id}
+                                      variant="caption"
+                                      color="text.secondary"
+                                    >
+                                      {account.label} {formatBaht(summary.receivedByAccount?.[account.id] ?? 0)} บาท
+                                    </Typography>
+                                  ))}
                                 </Box>
                               </Box>
                             );
@@ -1056,7 +1151,7 @@ export default function RoomsPage() {
                                 display: "grid",
                                 gridTemplateColumns: {
                                   xs: "1fr",
-                                  sm: "1.2fr repeat(3, minmax(88px, 1fr))"
+                                  sm: "1.2fr repeat(4, minmax(88px, 1fr))"
                                 },
                                 gap: 1,
                                 alignItems: "center",
@@ -1080,6 +1175,22 @@ export default function RoomsPage() {
                               <Typography>
                                 รับแล้ว <strong>{formatBaht(summary.receivedAmount)}</strong> บาท
                               </Typography>
+                              <Box>
+                                {PAYMENT_ACCOUNTS.map((account) => {
+                                  const accountAmount =
+                                    summary.receivedByAccount?.[account.id] ?? 0;
+                                  return (
+                                    <Typography
+                                      key={account.id}
+                                      variant="caption"
+                                      color="text.secondary"
+                                      sx={{ display: "block" }}
+                                    >
+                                      {account.label} {formatBaht(accountAmount)} บาท
+                                    </Typography>
+                                  );
+                                })}
+                              </Box>
                             </Box>
                           ))}
                         </Stack>

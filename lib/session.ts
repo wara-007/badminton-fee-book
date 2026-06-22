@@ -1,3 +1,8 @@
+import {
+  PaymentAccountId,
+  normalizePaymentAccountId,
+} from './payment-accounts';
+
 export type PlayerSkillLevel = 'bg' | 'n' | 's' | 'p-' | 'p';
 
 export type Player = {
@@ -9,6 +14,7 @@ export type Player = {
   paid: boolean;
   paidAt?: string;
   paidAmount?: number;
+  paidAccountId?: PaymentAccountId;
   waitingSince?: string;
   restUntil?: string;
   gameCount: number;
@@ -49,6 +55,7 @@ export type PaidPlayerSummary = {
   amount: number;
   calculatedAmount: number;
   paidAt?: string;
+  paidAccountId: PaymentAccountId;
 };
 
 export type PaidDaySummary = {
@@ -577,6 +584,7 @@ export function groupPaidPlayersByDay(
         amount: getPlayerPaymentAmount(player, pricing),
         calculatedAmount: calculatePlayerTotal(player, pricing),
         paidAt: player.paidAt,
+        paidAccountId: normalizePaymentAccountId(player.paidAccountId),
       });
       current.totalAmount = current.players.reduce(
         (sum, paidPlayer) => sum + paidPlayer.amount,
@@ -763,6 +771,9 @@ export function normalizeSession(value: unknown): SessionState {
                 Number.isFinite(player.paidAmount)
                   ? Math.max(0, player.paidAmount)
                   : undefined,
+              paidAccountId: player.paid
+                ? normalizePaymentAccountId(player.paidAccountId)
+                : undefined,
               waitingSince:
                 typeof player.waitingSince === 'string'
                   ? player.waitingSince

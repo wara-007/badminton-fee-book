@@ -38,13 +38,31 @@ describe("normalized storage SQL contract", () => {
   it("stores dashboard snapshots separately from live rooms", () => {
     expect(schema).toContain("create table if not exists public.badminton_room_dashboard_snapshots");
     expect(schema).toContain("room_id text primary key");
+    expect(schema).toContain("received_by_account jsonb not null default");
     expect(schema).not.toMatch(
       /badminton_room_dashboard_snapshots[\s\S]*references public\.badminton_rooms\(id\) on delete cascade/i
     );
     expect(rpcs).toContain("function public.upsert_badminton_room_dashboard_snapshot(");
+    expect(rpcs).toContain("p_received_by_account jsonb");
+    expect(rpcs).toContain("'received_by_account', snapshot.received_by_account");
     expect(rpcs).toContain("function public.list_badminton_room_dashboard_snapshots()");
     expect(client).toContain("rpc('upsert_badminton_room_dashboard_snapshot'");
     expect(client).toContain("rpc('list_badminton_room_dashboard_snapshots'");
+  });
+
+  it("stores the selected PromptPay account as shared Supabase settings", () => {
+    expect(schema).toContain("create table if not exists public.badminton_payment_settings");
+    expect(schema).toContain("selected_account_id text not null default 'gsb'");
+    expect(rpcs).toContain("function public.get_badminton_payment_settings()");
+    expect(rpcs).toContain("function public.set_badminton_payment_account(p_selected_account_id text)");
+    expect(client).toContain("rpc('get_badminton_payment_settings'");
+    expect(client).toContain("rpc('set_badminton_payment_account'");
+  });
+
+  it("persists which payment account was used for paid players", () => {
+    expect(schema).toContain("paid_account_id text check (paid_account_id in ('gsb', 'kasikorn'))");
+    expect(rpcs).toContain("'paidAccountId', coalesce(player.paid_account_id, 'gsb')");
+    expect(rpcs).toContain("paid_account_id");
   });
 
   it("persists activity needed for match source and start-time status", () => {

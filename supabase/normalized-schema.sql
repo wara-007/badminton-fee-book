@@ -38,6 +38,7 @@ create table if not exists public.badminton_players (
   paid boolean not null default false,
   paid_at timestamptz,
   paid_amount numeric check (paid_amount >= 0),
+  paid_account_id text check (paid_account_id in ('gsb', 'kasikorn')),
   waiting_since timestamptz,
   rest_until timestamptz,
   game_count integer not null default 0 check (game_count >= 0),
@@ -114,11 +115,22 @@ create table if not exists public.badminton_room_dashboard_snapshots (
   people_count integer not null default 0 check (people_count >= 0),
   customer_count integer not null default 0 check (customer_count >= 0),
   shuttle_count integer not null default 0 check (shuttle_count >= 0),
-  received_amount numeric not null default 0 check (received_amount >= 0)
+  received_amount numeric not null default 0 check (received_amount >= 0),
+  received_by_account jsonb not null default '{"gsb": 0, "kasikorn": 0}'::jsonb
 );
 
 create index if not exists badminton_room_dashboard_snapshots_started_idx
 on public.badminton_room_dashboard_snapshots (started_at desc);
+
+create table if not exists public.badminton_payment_settings (
+  id boolean primary key default true check (id),
+  selected_account_id text not null default 'gsb' check (selected_account_id in ('gsb', 'kasikorn')),
+  updated_at timestamptz not null default now()
+);
+
+insert into public.badminton_payment_settings (id, selected_account_id)
+values (true, 'gsb')
+on conflict (id) do nothing;
 
 alter table public.badminton_sessions_backup enable row level security;
 alter table public.badminton_rooms enable row level security;
@@ -128,6 +140,7 @@ alter table public.badminton_planned_matches enable row level security;
 alter table public.badminton_planned_match_players enable row level security;
 alter table public.badminton_match_events enable row level security;
 alter table public.badminton_room_dashboard_snapshots enable row level security;
+alter table public.badminton_payment_settings enable row level security;
 
 revoke all on public.badminton_sessions_backup from anon;
 revoke insert, update, delete on public.badminton_rooms from anon;
@@ -137,6 +150,7 @@ revoke insert, update, delete on public.badminton_planned_matches from anon;
 revoke insert, update, delete on public.badminton_planned_match_players from anon;
 revoke insert, update, delete on public.badminton_match_events from anon;
 revoke insert, update, delete on public.badminton_room_dashboard_snapshots from anon;
+revoke insert, update, delete on public.badminton_payment_settings from anon;
 
 drop policy if exists "Public read badminton rooms" on public.badminton_rooms;
 create policy "Public read badminton rooms" on public.badminton_rooms for select to anon using (true);
@@ -152,6 +166,8 @@ drop policy if exists "Public read badminton activity logs" on public.badminton_
 create policy "Public read badminton activity logs" on public.badminton_match_events for select to anon using (true);
 drop policy if exists "Public read badminton dashboard snapshots" on public.badminton_room_dashboard_snapshots;
 create policy "Public read badminton dashboard snapshots" on public.badminton_room_dashboard_snapshots for select to anon using (true);
+drop policy if exists "Public read badminton payment settings" on public.badminton_payment_settings;
+create policy "Public read badminton payment settings" on public.badminton_payment_settings for select to anon using (true);
 
 do $$
 begin

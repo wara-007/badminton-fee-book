@@ -1224,6 +1224,26 @@ thead .stickyName {
   flex-shrink: 0;
 }
 
+.paidPlayerPaymentAccount {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--card-bg-alt);
+  color: var(--text-secondary);
+}
+
+.paidPlayerPaymentLogo {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  object-fit: contain;
+  background: #ffffff;
+}
+
 .dataManagementPanel {
   display: grid;
   gap: 16px;
@@ -1232,6 +1252,44 @@ thead .stickyName {
 
 .dataManagementActions {
   align-items: flex-start;
+}
+
+.paymentAccountSettings {
+  display: grid;
+  gap: 10px;
+}
+
+.paymentAccountToggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.paymentAccountOption {
+  display: flex !important;
+  align-items: center;
+  gap: 10px;
+  justify-content: flex-start;
+  min-height: 68px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 8px !important;
+  background: var(--card-bg-alt);
+  text-align: left;
+}
+
+.paymentAccountLogo {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  border-radius: 8px;
+  object-fit: contain;
+  background: #ffffff;
+}
+
+.paymentAccountOption.Mui-selected {
+  border-color: var(--primary) !important;
+  background: var(--primary-bg) !important;
 }
 
 .playerSkillManagementPanel {
@@ -1758,6 +1816,35 @@ thead .stickyName {
   justify-content: center;
   gap: 8px;
   padding: 6px 0 2px;
+}
+
+.paymentDialogAccount {
+  display: flex;
+  width: min(260px, 78vw);
+  margin-inline: auto;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--app-dialog-border);
+  border-radius: 8px;
+  background: var(--detail-bg);
+  text-align: center;
+}
+
+.paymentDialogAccountLogo {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border-radius: 6px;
+  object-fit: contain;
+  background: #ffffff;
+}
+
+.paymentDialogAccountName {
+  font-size: 0.9rem;
+  font-weight: 900;
+  line-height: 1.15;
 }
 
 .appDialogImage {
