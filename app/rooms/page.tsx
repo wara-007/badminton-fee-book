@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Box,
@@ -347,6 +347,7 @@ export default function RoomsPage() {
   const [rooms, setRooms] = useState<string[]>([]);
   const [roomSummaries, setRoomSummaries] = useState<RoomSummary[]>([]);
   const [summaryMonth, setSummaryMonth] = useState("all");
+  const summaryMonthInitialized = useRef(false);
   const [summaryDetailsOpen, setSummaryDetailsOpen] = useState(false);
   const [currentRoom, setCurrentRoom] = useState<string>("main");
   const [newRoomName, setNewRoomName] = useState("");
@@ -439,6 +440,14 @@ export default function RoomsPage() {
   }, [roomSummaries]);
 
   useEffect(() => {
+    if (summaryMonthOptions.length === 0) return;
+    if (!summaryMonthInitialized.current) {
+      summaryMonthInitialized.current = true;
+      const now = new Date();
+      const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      setSummaryMonth(summaryMonthOptions.includes(currentMonthKey) ? currentMonthKey : summaryMonthOptions[0]);
+      return;
+    }
     if (summaryMonth === "all" || summaryMonthOptions.includes(summaryMonth)) {
       return;
     }
@@ -841,18 +850,28 @@ export default function RoomsPage() {
                     display: "grid",
                     gridTemplateColumns: {
                       xs: "repeat(2, minmax(0, 1fr))",
-                      sm: "repeat(4, minmax(0, 1fr))"
+                      sm: "repeat(3, minmax(0, 1fr))"
                     },
                     gap: 1
                   }}
                 >
                   {[
-                    { label: "จำนวนคน", value: dashboardTotals.peopleCount },
-                    { label: "จำนวนลูก", value: dashboardTotals.shuttleCount },
-                    { label: "จำนวนลูกค้า", value: dashboardTotals.customerCount },
+                    { label: "จำนวนคน", value: dashboardTotals.peopleCount, sub: null },
+                    {
+                      label: "จำนวนลูก",
+                      value: `${dashboardTotals.shuttleCount} ลูก`,
+                      sub: (() => {
+                        const s = dashboardTotals.shuttleCount;
+                        const tubes = Math.floor(s / 12);
+                        const remaining = s % 12;
+                        if (tubes === 0) return null;
+                        return remaining > 0 ? `${tubes} หลอด / ${remaining} ลูก` : `${tubes} หลอด`;
+                      })()
+                    },
                     {
                       label: "ยอดเงินที่รับ",
-                      value: `${formatBaht(dashboardTotals.receivedAmount)} บาท`
+                      value: `${formatBaht(dashboardTotals.receivedAmount)} บาท`,
+                      sub: null
                     }
                   ].map((stat) => (
                     <Box
@@ -870,6 +889,11 @@ export default function RoomsPage() {
                       <Typography fontWeight={800} sx={{ mt: 0.25 }}>
                         {stat.value}
                       </Typography>
+                      {stat.sub && (
+                        <Typography variant="caption" color="text.secondary" fontWeight={400}>
+                          {stat.sub}
+                        </Typography>
+                      )}
                     </Box>
                   ))}
                 </Box>
@@ -937,81 +961,80 @@ export default function RoomsPage() {
                             </Box>
                           ))}
                         </Box>
-                        <Stack spacing={1.1}>
-                          {filteredRoomSummaries.map((summary) => {
-                            const totalWidth = Math.max(
-                              5,
-                              (summary.receivedAmount / chartMaxReceivedAmount) * 100
-                            );
-                            return (
-                              <Box key={`money-chart-${summary.roomId}`}>
-                                <Box
-                                  sx={{
-                                    display: "flex",
-                                    justifyContent: "space-between",
-                                    gap: 1,
-                                    mb: 0.5
-                                  }}
-                                >
-                                  <Typography variant="body2" fontWeight={700}>
-                                    {summary.roomId}
-                                  </Typography>
-                                  <Typography variant="body2" color="text.secondary">
-                                    {formatBaht(summary.receivedAmount)} บาท
-                                  </Typography>
-                                </Box>
-                                <Box
-                                  sx={{
-                                    height: 16,
-                                    borderRadius: 1,
-                                    background: "var(--border-color)",
-                                    overflow: "hidden",
-                                    display: "flex"
-                                  }}
-                                >
-                                  {PAYMENT_ACCOUNTS.map((account) => {
-                                    const accountAmount =
-                                      summary.receivedByAccount?.[account.id] ?? 0;
-                                    if (accountAmount <= 0 || summary.receivedAmount <= 0) {
-                                      return null;
-                                    }
-                                    return (
-                                      <Box
-                                        key={account.id}
-                                        title={`${account.label} ${formatBaht(accountAmount)} บาท`}
-                                        sx={{
-                                          width: `${(accountAmount / summary.receivedAmount) * totalWidth}%`,
-                                          height: "100%",
-                                          background:
-                                            account.id === "gsb"
-                                              ? "var(--selected-chip-bg)"
-                                              : "var(--success-text)"
-                                        }}
-                                      />
-                                    );
-                                  })}
-                                </Box>
-                                <Box
-                                  sx={{
-                                    display: "flex",
-                                    flexWrap: "wrap",
-                                    gap: 1,
-                                    mt: 0.5
-                                  }}
-                                >
-                                  {PAYMENT_ACCOUNTS.map((account) => (
-                                    <Typography
-                                      key={account.id}
-                                      variant="caption"
-                                      color="text.secondary"
-                                    >
-                                      {account.label} {formatBaht(summary.receivedByAccount?.[account.id] ?? 0)} บาท
-                                    </Typography>
-                                  ))}
-                                </Box>
+                        <Stack spacing={1.5}>
+                          {filteredRoomSummaries.map((summary) => (
+                            <Box key={`money-chart-${summary.roomId}`}>
+                              <Box
+                                sx={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  gap: 1,
+                                  mb: 0.75
+                                }}
+                              >
+                                <Typography variant="body2" fontWeight={700}>
+                                  {summary.roomId}
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                  {formatBaht(summary.receivedAmount)} บ.
+                                </Typography>
                               </Box>
-                            );
-                          })}
+                              <Stack spacing={0.6}>
+                                {PAYMENT_ACCOUNTS.map((account) => {
+                                  const accountAmount =
+                                    summary.receivedByAccount?.[account.id] ?? 0;
+                                  const barWidth = Math.max(
+                                    accountAmount > 0 ? 2 : 0,
+                                    (accountAmount / chartMaxReceivedAmount) * 100
+                                  );
+                                  const color =
+                                    account.id === "gsb"
+                                      ? "var(--selected-chip-bg)"
+                                      : "var(--success-text)";
+                                  return (
+                                    <Box
+                                      key={account.id}
+                                      sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                                    >
+                                      <Typography
+                                        variant="caption"
+                                        color="text.secondary"
+                                        sx={{ width: 56, flexShrink: 0, textAlign: "right" }}
+                                      >
+                                        {account.bankName}
+                                      </Typography>
+                                      <Box
+                                        sx={{
+                                          flex: 1,
+                                          height: 12,
+                                          borderRadius: 1,
+                                          background: "var(--border-color)",
+                                          overflow: "hidden"
+                                        }}
+                                      >
+                                        <Box
+                                          title={`${account.label} ${formatBaht(accountAmount)} บาท`}
+                                          sx={{
+                                            width: `${barWidth}%`,
+                                            height: "100%",
+                                            background: color,
+                                            borderRadius: 1
+                                          }}
+                                        />
+                                      </Box>
+                                      <Typography
+                                        variant="caption"
+                                        color="text.secondary"
+                                        sx={{ width: 60, flexShrink: 0 }}
+                                      >
+                                        {formatBaht(accountAmount)}
+                                      </Typography>
+                                    </Box>
+                                  );
+                                })}
+                              </Stack>
+                            </Box>
+                          ))}
                         </Stack>
                       </Box>
 
