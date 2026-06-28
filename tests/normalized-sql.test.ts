@@ -48,8 +48,11 @@ describe("normalized storage SQL contract", () => {
     expect(rpcs).toContain("p_received_by_account jsonb");
     expect(rpcs).toContain("'received_by_account', snapshot.received_by_account");
     expect(schema).toContain("joined_by_hour jsonb not null default '{}'::jsonb");
+    expect(schema).toContain("paid_by_hour jsonb not null default '{}'::jsonb");
     expect(rpcs).toContain("p_joined_by_hour jsonb default '{}'::jsonb");
+    expect(rpcs).toContain("p_paid_by_hour jsonb default '{}'::jsonb");
     expect(rpcs).toContain("'joined_by_hour', snapshot.joined_by_hour");
+    expect(rpcs).toContain("'paid_by_hour', snapshot.paid_by_hour");
     expect(rpcs).toContain("function public.list_badminton_room_dashboard_snapshots()");
     expect(client).toContain("rpc('upsert_badminton_room_dashboard_snapshot'");
     expect(client).toContain("rpc('list_badminton_room_dashboard_snapshots'");

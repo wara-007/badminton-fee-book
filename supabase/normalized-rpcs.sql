@@ -17,6 +17,7 @@ begin
 end $$;
 
 drop function if exists public.upsert_badminton_room_dashboard_snapshot(text,timestamptz,integer,integer,integer,numeric,jsonb);
+drop function if exists public.upsert_badminton_room_dashboard_snapshot(text,timestamptz,integer,integer,integer,numeric,jsonb,jsonb);
 
 create or replace function public.upsert_badminton_room_dashboard_snapshot(
   p_room_id text,
@@ -26,7 +27,8 @@ create or replace function public.upsert_badminton_room_dashboard_snapshot(
   p_shuttle_count integer,
   p_received_amount numeric,
   p_received_by_account jsonb default '{"gsb": 0, "kasikorn": 0}'::jsonb,
-  p_joined_by_hour jsonb default '{}'::jsonb
+  p_joined_by_hour jsonb default '{}'::jsonb,
+  p_paid_by_hour jsonb default '{}'::jsonb
 ) returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   snapshot public.badminton_room_dashboard_snapshots%rowtype;
@@ -40,7 +42,8 @@ begin
     shuttle_count,
     received_amount,
     received_by_account,
-    joined_by_hour
+    joined_by_hour,
+    paid_by_hour
   ) values (
     p_room_id,
     p_started_at,
@@ -53,7 +56,8 @@ begin
       'gsb', greatest(coalesce((p_received_by_account->>'gsb')::numeric, 0), 0),
       'kasikorn', greatest(coalesce((p_received_by_account->>'kasikorn')::numeric, 0), 0)
     ),
-    coalesce(p_joined_by_hour, '{}'::jsonb)
+    coalesce(p_joined_by_hour, '{}'::jsonb),
+    coalesce(p_paid_by_hour, '{}'::jsonb)
   )
   on conflict (room_id) do update set
     started_at=excluded.started_at,
@@ -63,7 +67,8 @@ begin
     shuttle_count=excluded.shuttle_count,
     received_amount=excluded.received_amount,
     received_by_account=excluded.received_by_account,
-    joined_by_hour=excluded.joined_by_hour
+    joined_by_hour=excluded.joined_by_hour,
+    paid_by_hour=excluded.paid_by_hour
   returning * into snapshot;
 
   return jsonb_build_object(
@@ -75,7 +80,8 @@ begin
     'shuttle_count', snapshot.shuttle_count,
     'received_amount', snapshot.received_amount,
     'received_by_account', snapshot.received_by_account,
-    'joined_by_hour', snapshot.joined_by_hour
+    'joined_by_hour', snapshot.joined_by_hour,
+    'paid_by_hour', snapshot.paid_by_hour
   );
 end $$;
 
@@ -92,7 +98,8 @@ returns jsonb language sql stable security definer set search_path = public as $
         'shuttle_count', snapshot.shuttle_count,
         'received_amount', snapshot.received_amount,
         'received_by_account', snapshot.received_by_account,
-        'joined_by_hour', snapshot.joined_by_hour
+        'joined_by_hour', snapshot.joined_by_hour,
+        'paid_by_hour', snapshot.paid_by_hour
       )
       order by snapshot.started_at desc
     ),
@@ -357,7 +364,7 @@ revoke all on function public.build_normalized_badminton_state(text) from public
 revoke all on function public.load_normalized_badminton_session(text) from public, anon;
 revoke all on function public.save_normalized_badminton_session(text,jsonb,bigint) from public, anon;
 revoke all on function public.set_badminton_player_payment(text,text,boolean,numeric,text,timestamptz) from public, anon;
-revoke all on function public.upsert_badminton_room_dashboard_snapshot(text,timestamptz,integer,integer,integer,numeric,jsonb,jsonb) from public, anon;
+revoke all on function public.upsert_badminton_room_dashboard_snapshot(text,timestamptz,integer,integer,integer,numeric,jsonb,jsonb,jsonb) from public, anon;
 revoke all on function public.list_badminton_room_dashboard_snapshots() from public, anon;
 revoke all on function public.get_badminton_payment_settings() from public, anon;
 revoke all on function public.set_badminton_payment_account(text) from public, anon;
@@ -367,7 +374,7 @@ grant execute on function public.save_normalized_badminton_session(text,jsonb,bi
 grant execute on function public.set_badminton_player_payment(text,text,boolean,numeric,text,timestamptz) to anon;
 grant execute on function public.close_normalized_badminton_room(text) to anon;
 grant execute on function public.delete_normalized_badminton_room(text) to anon;
-grant execute on function public.upsert_badminton_room_dashboard_snapshot(text,timestamptz,integer,integer,integer,numeric,jsonb,jsonb) to anon;
+grant execute on function public.upsert_badminton_room_dashboard_snapshot(text,timestamptz,integer,integer,integer,numeric,jsonb,jsonb,jsonb) to anon;
 grant execute on function public.list_badminton_room_dashboard_snapshots() to anon;
 grant execute on function public.get_badminton_payment_settings() to anon;
 grant execute on function public.set_badminton_payment_account(text) to anon;

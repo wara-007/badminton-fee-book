@@ -135,7 +135,8 @@ function loadDashboardSnapshots(): RoomSummary[] {
             candidate.receivedByAccount,
             Number(candidate.receivedAmount) || 0
           ),
-          joinedByHour: normalizeJoinedByHour(candidate.joinedByHour)
+          joinedByHour: normalizeHourlyCounts(candidate.joinedByHour),
+          paidByHour: normalizeHourlyCounts(candidate.paidByHour)
         };
       })
       .filter((snapshot): snapshot is RoomSummary => Boolean(snapshot));
@@ -234,7 +235,7 @@ function getRoomStartedAt(session: SessionState): string {
   return new Date(Math.min(...candidates.map((date) => date.getTime()))).toISOString();
 }
 
-function normalizeJoinedByHour(value: unknown): Record<string, number> {
+function normalizeHourlyCounts(value: unknown): Record<string, number> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {};
   }
@@ -248,11 +249,12 @@ function normalizeJoinedByHour(value: unknown): Record<string, number> {
   );
 }
 
-function createJoinedByHour(session: SessionState): Record<string, number> {
-  return session.players.reduce<Record<string, number>>((totals, player) => {
-    const joinedAt = player.joinedAt ?? player.waitingSince;
-    if (!joinedAt) return totals;
-    const joinedDate = new Date(joinedAt);
+function createHourlyCounts(
+  values: Array<string | undefined>
+): Record<string, number> {
+  return values.reduce<Record<string, number>>((totals, value) => {
+    if (!value) return totals;
+    const joinedDate = new Date(value);
     if (Number.isNaN(joinedDate.getTime())) return totals;
     const hourKey = `${String(joinedDate.getHours()).padStart(2, "0")}:00`;
     return {
@@ -289,7 +291,12 @@ function createRoomSummary(roomId: string, session: SessionState): RoomSummary |
     shuttleCount: summary.shuttleCount,
     receivedAmount: summary.paidAmount,
     receivedByAccount,
-    joinedByHour: createJoinedByHour(session)
+    joinedByHour: createHourlyCounts(
+      session.players.map((player) => player.joinedAt ?? player.waitingSince)
+    ),
+    paidByHour: createHourlyCounts(
+      session.players.filter((player) => player.paid).map((player) => player.paidAt)
+    )
   };
 }
 
@@ -541,7 +548,7 @@ export default function RoomsPage() {
     return roomSummaries.filter((summary) => getDateKey(summary.startedAt) === summaryDate);
   }, [roomSummaries, summaryDate]);
 
-  const joinedHourChartRows = useMemo(() => {
+  const attendanceChartRows = useMemo(() => {
     const joinedByHour = selectedDateSummaries.reduce<Record<string, number>>(
       (totals, summary) => {
         Object.entries(summary.joinedByHour ?? {}).forEach(([hour, count]) => {
@@ -551,21 +558,46 @@ export default function RoomsPage() {
       },
       {}
     );
-    let runningTotal = 0;
-    return Object.entries(joinedByHour)
-      .sort(([firstHour], [secondHour]) => firstHour.localeCompare(secondHour))
-      .map(([hour, added]) => {
-        runningTotal += added;
-        return { hour, added, total: runningTotal };
+    const paidByHour = selectedDateSummaries.reduce<Record<string, number>>(
+      (totals, summary) => {
+        Object.entries(summary.paidByHour ?? {}).forEach(([hour, count]) => {
+          totals[hour] = (totals[hour] ?? 0) + count;
+        });
+        return totals;
+      },
+      {}
+    );
+    let joinedTotal = 0;
+    let paidTotal = 0;
+    return Array.from(new Set([...Object.keys(joinedByHour), ...Object.keys(paidByHour)]))
+      .sort((firstHour, secondHour) => firstHour.localeCompare(secondHour))
+      .map((hour) => {
+        const added = joinedByHour[hour] ?? 0;
+        const paid = paidByHour[hour] ?? 0;
+        joinedTotal += added;
+        paidTotal += paid;
+        return {
+          hour,
+          added,
+          joinedTotal,
+          paid,
+          paidTotal,
+          remaining: Math.max(0, joinedTotal - paidTotal)
+        };
       });
   }, [selectedDateSummaries]);
 
-  const joinedHourMax = useMemo(() => {
+  const attendanceChartMax = useMemo(() => {
     return Math.max(
       1,
-      ...joinedHourChartRows.flatMap((row) => [row.added, row.total])
+      ...attendanceChartRows.flatMap((row) => [
+        row.added,
+        row.joinedTotal,
+        row.paidTotal,
+        row.remaining
+      ])
     );
-  }, [joinedHourChartRows]);
+  }, [attendanceChartRows]);
 
   const dashboardTotals = useMemo(() => {
     return filteredRoomSummaries.reduce(
@@ -1022,7 +1054,7 @@ export default function RoomsPage() {
                   >
                     <Box>
                       <Typography variant="body2" fontWeight={800}>
-                        ยอดลงชื่อรายชั่วโมงและยอดสะสม
+                        ลงชื่อ จ่ายแล้ว และคงเหลือตามช่วงเวลา
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
                         {summaryDate ? formatDateLabel(summaryDate) : "ยังไม่มีข้อมูลรายวัน"}
@@ -1043,7 +1075,7 @@ export default function RoomsPage() {
                       ))}
                     </TextField>
                   </Box>
-                  {joinedHourChartRows.length === 0 ? (
+                  {attendanceChartRows.length === 0 ? (
                     <Box
                       sx={{
                         border: "1px dashed var(--empty-border)",
@@ -1053,13 +1085,13 @@ export default function RoomsPage() {
                       }}
                     >
                       <Typography color="text.secondary">
-                        ยังไม่มีข้อมูลเวลาลงชื่อสำหรับวันนี้
+                        ยังไม่มีข้อมูลเวลาลงชื่อหรือจ่ายเงินสำหรับวันนี้
                       </Typography>
                     </Box>
                   ) : (
                     <Box sx={{ overflowX: "auto" }}>
                       {(() => {
-                        const width = Math.max(560, joinedHourChartRows.length * 96);
+                        const width = Math.max(620, attendanceChartRows.length * 104);
                         const height = 250;
                         const top = 26;
                         const right = 28;
@@ -1067,20 +1099,26 @@ export default function RoomsPage() {
                         const left = 42;
                         const plotWidth = width - left - right;
                         const plotHeight = height - top - bottom;
-                        const step = plotWidth / Math.max(1, joinedHourChartRows.length);
+                        const step = plotWidth / Math.max(1, attendanceChartRows.length);
                         const barWidth = Math.min(44, step * 0.46);
                         const y = (value: number) =>
-                          top + plotHeight - (value / joinedHourMax) * plotHeight;
+                          top + plotHeight - (value / attendanceChartMax) * plotHeight;
                         const pointX = (index: number) => left + step * index + step / 2;
-                        const linePoints = joinedHourChartRows
-                          .map((row, index) => `${pointX(index)},${y(row.total)}`)
+                        const joinedLinePoints = attendanceChartRows
+                          .map((row, index) => `${pointX(index)},${y(row.joinedTotal)}`)
+                          .join(" ");
+                        const paidLinePoints = attendanceChartRows
+                          .map((row, index) => `${pointX(index)},${y(row.paidTotal)}`)
+                          .join(" ");
+                        const remainingLinePoints = attendanceChartRows
+                          .map((row, index) => `${pointX(index)},${y(row.remaining)}`)
                           .join(" ");
                         return (
                           <Box
                             component="svg"
                             viewBox={`0 0 ${width} ${height}`}
                             role="img"
-                            aria-label="กราฟยอดลงชื่อรายชั่วโมงและยอดสะสม"
+                            aria-label="กราฟลงชื่อ จ่ายแล้ว และคงเหลือตามช่วงเวลา"
                             sx={{
                               display: "block",
                               minWidth: width,
@@ -1109,7 +1147,7 @@ export default function RoomsPage() {
                                 opacity="0.7"
                               />
                             ))}
-                            {joinedHourChartRows.map((row, index) => {
+                            {attendanceChartRows.map((row, index) => {
                               const x = pointX(index);
                               const barHeight = top + plotHeight - y(row.added);
                               return (
@@ -1146,36 +1184,73 @@ export default function RoomsPage() {
                               );
                             })}
                             <polyline
-                              points={linePoints}
+                              points={joinedLinePoints}
                               fill="none"
-                              stroke="var(--selected-chip-bg)"
+                              stroke="#2563eb"
                               strokeWidth="3"
                               strokeLinecap="round"
                               strokeLinejoin="round"
                             />
-                            {joinedHourChartRows.map((row, index) => {
+                            <polyline
+                              points={paidLinePoints}
+                              fill="none"
+                              stroke="#e11d48"
+                              strokeWidth="3"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              opacity="0.92"
+                            />
+                            <polyline
+                              points={remainingLinePoints}
+                              fill="none"
+                              stroke="var(--success-text)"
+                              strokeWidth="3"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeDasharray="7 6"
+                              opacity="0.92"
+                            />
+                            {attendanceChartRows.map((row, index) => {
                               const x = pointX(index);
-                              const cy = y(row.total);
+                              const joinedCy = y(row.joinedTotal);
+                              const paidCy = y(row.paidTotal);
+                              const remainingCy = y(row.remaining);
                               return (
                                 <g key={`total-${row.hour}`}>
                                   <circle
                                     cx={x}
-                                    cy={cy}
+                                    cy={joinedCy}
                                     r="5"
-                                    fill="var(--selected-chip-bg)"
+                                    fill="#2563eb"
                                     stroke="var(--card-bg-alt)"
                                     strokeWidth="2"
                                   />
                                   <text
                                     x={x}
-                                    y={Math.max(14, cy - 12)}
+                                    y={Math.max(14, joinedCy - 12)}
                                     textAnchor="middle"
                                     fontSize="12"
                                     fontWeight="800"
-                                    fill="var(--selected-chip-bg)"
+                                    fill="#2563eb"
                                   >
-                                    {row.total}
+                                    {row.joinedTotal}
                                   </text>
+                                  <circle
+                                    cx={x}
+                                    cy={paidCy}
+                                    r="4"
+                                    fill="#e11d48"
+                                    stroke="var(--card-bg-alt)"
+                                    strokeWidth="2"
+                                  />
+                                  <circle
+                                    cx={x}
+                                    cy={remainingCy}
+                                    r="4"
+                                    fill="var(--success-text)"
+                                    stroke="var(--card-bg-alt)"
+                                    strokeWidth="2"
+                                  />
                                 </g>
                               );
                             })}
@@ -1190,9 +1265,21 @@ export default function RoomsPage() {
                           </Typography>
                         </Box>
                         <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.75 }}>
-                          <Box sx={{ width: 18, height: 3, borderRadius: 1, background: "var(--selected-chip-bg)" }} />
+                          <Box sx={{ width: 18, height: 3, borderRadius: 1, background: "#2563eb" }} />
                           <Typography variant="caption" color="text.secondary">
                             รวมสะสม
+                          </Typography>
+                        </Box>
+                        <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.75 }}>
+                          <Box sx={{ width: 18, height: 3, borderRadius: 1, background: "#e11d48" }} />
+                          <Typography variant="caption" color="text.secondary">
+                            จ่ายแล้วสะสม
+                          </Typography>
+                        </Box>
+                        <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.75 }}>
+                          <Box sx={{ width: 18, height: 0, borderTop: "3px dashed var(--success-text)" }} />
+                          <Typography variant="caption" color="text.secondary">
+                            คงเหลือ
                           </Typography>
                         </Box>
                       </Stack>

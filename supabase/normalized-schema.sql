@@ -118,7 +118,8 @@ create table if not exists public.badminton_room_dashboard_snapshots (
   shuttle_count integer not null default 0 check (shuttle_count >= 0),
   received_amount numeric not null default 0 check (received_amount >= 0),
   received_by_account jsonb not null default '{"gsb": 0, "kasikorn": 0}'::jsonb,
-  joined_by_hour jsonb not null default '{}'::jsonb
+  joined_by_hour jsonb not null default '{}'::jsonb,
+  paid_by_hour jsonb not null default '{}'::jsonb
 );
 
 create index if not exists badminton_room_dashboard_snapshots_started_idx

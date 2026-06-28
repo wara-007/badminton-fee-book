@@ -35,6 +35,7 @@ export type RoomDashboardSnapshot = {
   receivedAmount: number;
   receivedByAccount: Record<PaymentAccountId, number>;
   joinedByHour: Record<string, number>;
+  paidByHour: Record<string, number>;
 };
 
 export type RemoteSaveResult = RemoteSession;
@@ -57,6 +58,7 @@ type RoomDashboardSnapshotRpcResult = {
   received_amount: number;
   received_by_account?: unknown;
   joined_by_hour?: unknown;
+  paid_by_hour?: unknown;
 };
 
 type PaymentSettingsRpcResult = {
@@ -136,11 +138,12 @@ function normalizeDashboardSnapshot(
       snapshot.received_by_account,
       Number(snapshot.received_amount) || 0,
     ),
-    joinedByHour: normalizeJoinedByHour(snapshot.joined_by_hour),
+    joinedByHour: normalizeHourlyCounts(snapshot.joined_by_hour),
+    paidByHour: normalizeHourlyCounts(snapshot.paid_by_hour),
   };
 }
 
-function normalizeJoinedByHour(value: unknown): Record<string, number> {
+function normalizeHourlyCounts(value: unknown): Record<string, number> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return {};
   }
@@ -344,6 +347,7 @@ export async function upsertRoomDashboardSnapshot(
     p_received_amount: snapshot.receivedAmount,
     p_received_by_account: snapshot.receivedByAccount ?? createEmptyReceivedByAccount(),
     p_joined_by_hour: snapshot.joinedByHour ?? {},
+    p_paid_by_hour: snapshot.paidByHour ?? {},
   });
 
   if (error) {
