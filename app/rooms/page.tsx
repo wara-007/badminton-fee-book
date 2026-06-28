@@ -134,7 +134,8 @@ function loadDashboardSnapshots(): RoomSummary[] {
           receivedByAccount: normalizeReceivedByAccount(
             candidate.receivedByAccount,
             Number(candidate.receivedAmount) || 0
-          )
+          ),
+          joinedByHour: normalizeJoinedByHour(candidate.joinedByHour)
         };
       })
       .filter((snapshot): snapshot is RoomSummary => Boolean(snapshot));
@@ -233,6 +234,34 @@ function getRoomStartedAt(session: SessionState): string {
   return new Date(Math.min(...candidates.map((date) => date.getTime()))).toISOString();
 }
 
+function normalizeJoinedByHour(value: unknown): Record<string, number> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .map(([hour, count]) => [
+        hour,
+        Number.isFinite(Number(count)) ? Math.max(0, Number(count)) : 0
+      ])
+      .filter(([hour, count]) => /^\d{2}:00$/.test(String(hour)) && Number(count) > 0)
+  );
+}
+
+function createJoinedByHour(session: SessionState): Record<string, number> {
+  return session.players.reduce<Record<string, number>>((totals, player) => {
+    const joinedAt = player.joinedAt ?? player.waitingSince;
+    if (!joinedAt) return totals;
+    const joinedDate = new Date(joinedAt);
+    if (Number.isNaN(joinedDate.getTime())) return totals;
+    const hourKey = `${String(joinedDate.getHours()).padStart(2, "0")}:00`;
+    return {
+      ...totals,
+      [hourKey]: (totals[hourKey] ?? 0) + 1
+    };
+  }, {});
+}
+
 function createRoomSummary(roomId: string, session: SessionState): RoomSummary | null {
   const startedAt = getRoomStartedAt(session);
   const startedTime = new Date(startedAt).getTime();
@@ -259,7 +288,8 @@ function createRoomSummary(roomId: string, session: SessionState): RoomSummary |
     customerCount: summary.playerCount,
     shuttleCount: summary.shuttleCount,
     receivedAmount: summary.paidAmount,
-    receivedByAccount
+    receivedByAccount,
+    joinedByHour: createJoinedByHour(session)
   };
 }
 
@@ -283,6 +313,26 @@ function getMonthKey(value: string): string {
     return "";
   }
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getDateKey(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function formatDateLabel(dateKey: string): string {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  if (!year || !month || !day) {
+    return "ไม่ทราบวัน";
+  }
+  return new Intl.DateTimeFormat("th-TH", {
+    day: "numeric",
+    month: "short",
+    year: "numeric"
+  }).format(new Date(year, month - 1, day));
 }
 
 function formatMonthLabel(monthKey: string): string {
@@ -348,6 +398,8 @@ export default function RoomsPage() {
   const [roomSummaries, setRoomSummaries] = useState<RoomSummary[]>([]);
   const [summaryMonth, setSummaryMonth] = useState("all");
   const summaryMonthInitialized = useRef(false);
+  const [summaryDate, setSummaryDate] = useState("");
+  const summaryDateInitialized = useRef(false);
   const [summaryDetailsOpen, setSummaryDetailsOpen] = useState(false);
   const [currentRoom, setCurrentRoom] = useState<string>("main");
   const [newRoomName, setNewRoomName] = useState("");
@@ -462,6 +514,58 @@ export default function RoomsPage() {
       (summary) => getMonthKey(summary.startedAt) === summaryMonth
     );
   }, [roomSummaries, summaryMonth]);
+
+  const summaryDateOptions = useMemo(() => {
+    return Array.from(
+      new Set(roomSummaries.map((summary) => getDateKey(summary.startedAt)).filter(Boolean))
+    ).sort((a, b) => b.localeCompare(a));
+  }, [roomSummaries]);
+
+  useEffect(() => {
+    if (summaryDateOptions.length === 0) return;
+    if (!summaryDateInitialized.current) {
+      summaryDateInitialized.current = true;
+      const now = new Date();
+      const currentDateKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      setSummaryDate(summaryDateOptions.includes(currentDateKey) ? currentDateKey : summaryDateOptions[0]);
+      return;
+    }
+    if (summaryDate && summaryDateOptions.includes(summaryDate)) {
+      return;
+    }
+    setSummaryDate(summaryDateOptions[0] ?? "");
+  }, [summaryDate, summaryDateOptions]);
+
+  const selectedDateSummaries = useMemo(() => {
+    if (!summaryDate) return [];
+    return roomSummaries.filter((summary) => getDateKey(summary.startedAt) === summaryDate);
+  }, [roomSummaries, summaryDate]);
+
+  const joinedHourChartRows = useMemo(() => {
+    const joinedByHour = selectedDateSummaries.reduce<Record<string, number>>(
+      (totals, summary) => {
+        Object.entries(summary.joinedByHour ?? {}).forEach(([hour, count]) => {
+          totals[hour] = (totals[hour] ?? 0) + count;
+        });
+        return totals;
+      },
+      {}
+    );
+    let runningTotal = 0;
+    return Object.entries(joinedByHour)
+      .sort(([firstHour], [secondHour]) => firstHour.localeCompare(secondHour))
+      .map(([hour, added]) => {
+        runningTotal += added;
+        return { hour, added, total: runningTotal };
+      });
+  }, [selectedDateSummaries]);
+
+  const joinedHourMax = useMemo(() => {
+    return Math.max(
+      1,
+      ...joinedHourChartRows.flatMap((row) => [row.added, row.total])
+    );
+  }, [joinedHourChartRows]);
 
   const dashboardTotals = useMemo(() => {
     return filteredRoomSummaries.reduce(
@@ -896,6 +1000,204 @@ export default function RoomsPage() {
                       )}
                     </Box>
                   ))}
+                </Box>
+
+                <Box
+                  sx={{
+                    border: "1px solid var(--border-color)",
+                    borderRadius: 2,
+                    p: 1.5,
+                    background: "var(--card-bg-alt)"
+                  }}
+                >
+                  <Box
+                    sx={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 1.5,
+                      alignItems: { xs: "stretch", sm: "center" },
+                      flexDirection: { xs: "column", sm: "row" },
+                      mb: 1.25
+                    }}
+                  >
+                    <Box>
+                      <Typography variant="body2" fontWeight={800}>
+                        ยอดลงชื่อรายชั่วโมงและยอดสะสม
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {summaryDate ? formatDateLabel(summaryDate) : "ยังไม่มีข้อมูลรายวัน"}
+                      </Typography>
+                    </Box>
+                    <TextField
+                      select
+                      label="วัน"
+                      value={summaryDate}
+                      onChange={(event) => setSummaryDate(event.target.value)}
+                      size="small"
+                      sx={{ minWidth: { xs: "100%", sm: 190 } }}
+                    >
+                      {summaryDateOptions.map((dateKey) => (
+                        <MenuItem key={dateKey} value={dateKey}>
+                          {formatDateLabel(dateKey)}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Box>
+                  {joinedHourChartRows.length === 0 ? (
+                    <Box
+                      sx={{
+                        border: "1px dashed var(--empty-border)",
+                        borderRadius: 2,
+                        p: 2,
+                        textAlign: "center"
+                      }}
+                    >
+                      <Typography color="text.secondary">
+                        ยังไม่มีข้อมูลเวลาลงชื่อสำหรับวันนี้
+                      </Typography>
+                    </Box>
+                  ) : (
+                    <Box sx={{ overflowX: "auto" }}>
+                      {(() => {
+                        const width = Math.max(560, joinedHourChartRows.length * 96);
+                        const height = 250;
+                        const top = 26;
+                        const right = 28;
+                        const bottom = 54;
+                        const left = 42;
+                        const plotWidth = width - left - right;
+                        const plotHeight = height - top - bottom;
+                        const step = plotWidth / Math.max(1, joinedHourChartRows.length);
+                        const barWidth = Math.min(44, step * 0.46);
+                        const y = (value: number) =>
+                          top + plotHeight - (value / joinedHourMax) * plotHeight;
+                        const pointX = (index: number) => left + step * index + step / 2;
+                        const linePoints = joinedHourChartRows
+                          .map((row, index) => `${pointX(index)},${y(row.total)}`)
+                          .join(" ");
+                        return (
+                          <Box
+                            component="svg"
+                            viewBox={`0 0 ${width} ${height}`}
+                            role="img"
+                            aria-label="กราฟยอดลงชื่อรายชั่วโมงและยอดสะสม"
+                            sx={{
+                              display: "block",
+                              minWidth: width,
+                              width: "100%",
+                              height: 260
+                            }}
+                          >
+                            <line
+                              x1={left}
+                              y1={top + plotHeight}
+                              x2={width - right}
+                              y2={top + plotHeight}
+                              stroke="var(--border-color)"
+                              strokeWidth="1"
+                            />
+                            {[0.5, 1].map((ratio) => (
+                              <line
+                                key={ratio}
+                                x1={left}
+                                y1={top + plotHeight - plotHeight * ratio}
+                                x2={width - right}
+                                y2={top + plotHeight - plotHeight * ratio}
+                                stroke="var(--border-color)"
+                                strokeWidth="1"
+                                strokeDasharray="4 6"
+                                opacity="0.7"
+                              />
+                            ))}
+                            {joinedHourChartRows.map((row, index) => {
+                              const x = pointX(index);
+                              const barHeight = top + plotHeight - y(row.added);
+                              return (
+                                <g key={row.hour}>
+                                  <rect
+                                    x={x - barWidth / 2}
+                                    y={y(row.added)}
+                                    width={barWidth}
+                                    height={barHeight}
+                                    rx="4"
+                                    fill="var(--success-text)"
+                                    opacity="0.82"
+                                  />
+                                  <text
+                                    x={x}
+                                    y={Math.max(14, y(row.added) - 7)}
+                                    textAnchor="middle"
+                                    fontSize="12"
+                                    fontWeight="700"
+                                    fill="currentColor"
+                                  >
+                                    +{row.added}
+                                  </text>
+                                  <text
+                                    x={x}
+                                    y={height - 20}
+                                    textAnchor="middle"
+                                    fontSize="12"
+                                    fill="currentColor"
+                                  >
+                                    {row.hour}
+                                  </text>
+                                </g>
+                              );
+                            })}
+                            <polyline
+                              points={linePoints}
+                              fill="none"
+                              stroke="var(--selected-chip-bg)"
+                              strokeWidth="3"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                            {joinedHourChartRows.map((row, index) => {
+                              const x = pointX(index);
+                              const cy = y(row.total);
+                              return (
+                                <g key={`total-${row.hour}`}>
+                                  <circle
+                                    cx={x}
+                                    cy={cy}
+                                    r="5"
+                                    fill="var(--selected-chip-bg)"
+                                    stroke="var(--card-bg-alt)"
+                                    strokeWidth="2"
+                                  />
+                                  <text
+                                    x={x}
+                                    y={Math.max(14, cy - 12)}
+                                    textAnchor="middle"
+                                    fontSize="12"
+                                    fontWeight="800"
+                                    fill="var(--selected-chip-bg)"
+                                  >
+                                    {row.total}
+                                  </text>
+                                </g>
+                              );
+                            })}
+                          </Box>
+                        );
+                      })()}
+                      <Stack direction="row" spacing={2} sx={{ mt: 0.5, flexWrap: "wrap" }}>
+                        <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.75 }}>
+                          <Box sx={{ width: 10, height: 10, borderRadius: 0.5, background: "var(--success-text)" }} />
+                          <Typography variant="caption" color="text.secondary">
+                            เพิ่มมา
+                          </Typography>
+                        </Box>
+                        <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.75 }}>
+                          <Box sx={{ width: 18, height: 3, borderRadius: 1, background: "var(--selected-chip-bg)" }} />
+                          <Typography variant="caption" color="text.secondary">
+                            รวมสะสม
+                          </Typography>
+                        </Box>
+                      </Stack>
+                    </Box>
+                  )}
                 </Box>
 
                 {filteredRoomSummaries.length === 0 ? (

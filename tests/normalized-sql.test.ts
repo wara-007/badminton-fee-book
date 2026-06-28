@@ -47,6 +47,9 @@ describe("normalized storage SQL contract", () => {
     expect(rpcs).toContain("function public.upsert_badminton_room_dashboard_snapshot(");
     expect(rpcs).toContain("p_received_by_account jsonb");
     expect(rpcs).toContain("'received_by_account', snapshot.received_by_account");
+    expect(schema).toContain("joined_by_hour jsonb not null default '{}'::jsonb");
+    expect(rpcs).toContain("p_joined_by_hour jsonb default '{}'::jsonb");
+    expect(rpcs).toContain("'joined_by_hour', snapshot.joined_by_hour");
     expect(rpcs).toContain("function public.list_badminton_room_dashboard_snapshots()");
     expect(client).toContain("rpc('upsert_badminton_room_dashboard_snapshot'");
     expect(client).toContain("rpc('list_badminton_room_dashboard_snapshots'");
@@ -64,6 +67,9 @@ describe("normalized storage SQL contract", () => {
   it("persists which payment account was used for paid players", () => {
     expect(schema).toContain("paid_account_id text check (paid_account_id in ('gsb', 'kasikorn'))");
     expect(rpcs).toContain("'paidAccountId', coalesce(player.paid_account_id, 'gsb')");
+    expect(schema).toContain("joined_at timestamptz not null default now()");
+    expect(rpcs).toContain("'joinedAt', player.joined_at");
+    expect(rpcs).toContain("coalesce(nullif(player->>'joinedAt','')::timestamptz");
     expect(rpcs).toContain("delete from public.badminton_planned_match_players");
     expect(rpcs).toContain("p_paid_account_id in ('gsb','kasikorn')");
     expect(rpcs).toContain("paid_account_id");

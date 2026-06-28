@@ -39,6 +39,7 @@ create table if not exists public.badminton_players (
   paid_at timestamptz,
   paid_amount numeric check (paid_amount >= 0),
   paid_account_id text check (paid_account_id in ('gsb', 'kasikorn')),
+  joined_at timestamptz not null default now(),
   waiting_since timestamptz,
   rest_until timestamptz,
   game_count integer not null default 0 check (game_count >= 0),
@@ -116,7 +117,8 @@ create table if not exists public.badminton_room_dashboard_snapshots (
   customer_count integer not null default 0 check (customer_count >= 0),
   shuttle_count integer not null default 0 check (shuttle_count >= 0),
   received_amount numeric not null default 0 check (received_amount >= 0),
-  received_by_account jsonb not null default '{"gsb": 0, "kasikorn": 0}'::jsonb
+  received_by_account jsonb not null default '{"gsb": 0, "kasikorn": 0}'::jsonb,
+  joined_by_hour jsonb not null default '{}'::jsonb
 );
 
 create index if not exists badminton_room_dashboard_snapshots_started_idx

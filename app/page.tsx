@@ -1016,6 +1016,7 @@ export default function HomePage() {
         {
           ...createPlayer(trimmedName),
           skillLevel: playerSkillLevel,
+          joinedAt: createdAt,
           waitingSince: createdAt
         }
       ]

@@ -15,6 +15,7 @@ export type Player = {
   paidAt?: string;
   paidAmount?: number;
   paidAccountId?: PaymentAccountId;
+  joinedAt?: string;
   waitingSince?: string;
   restUntil?: string;
   gameCount: number;
@@ -142,6 +143,7 @@ export function createPlayer(name: string): Player {
     shuttleMarks: [],
     skillLevel: DEFAULT_PLAYER_SKILL_LEVEL,
     paid: false,
+    joinedAt: new Date().toISOString(),
     waitingSince: new Date().toISOString(),
     gameCount: 0,
   };
@@ -774,6 +776,12 @@ export function normalizeSession(value: unknown): SessionState {
               paidAccountId: player.paid
                 ? normalizePaymentAccountId(player.paidAccountId)
                 : undefined,
+              joinedAt:
+                typeof player.joinedAt === 'string'
+                  ? player.joinedAt
+                  : typeof player.waitingSince === 'string'
+                    ? player.waitingSince
+                    : new Date().toISOString(),
               waitingSince:
                 typeof player.waitingSince === 'string'
                   ? player.waitingSince

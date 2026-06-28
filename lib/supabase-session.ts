@@ -34,6 +34,7 @@ export type RoomDashboardSnapshot = {
   shuttleCount: number;
   receivedAmount: number;
   receivedByAccount: Record<PaymentAccountId, number>;
+  joinedByHour: Record<string, number>;
 };
 
 export type RemoteSaveResult = RemoteSession;
@@ -55,6 +56,7 @@ type RoomDashboardSnapshotRpcResult = {
   shuttle_count: number;
   received_amount: number;
   received_by_account?: unknown;
+  joined_by_hour?: unknown;
 };
 
 type PaymentSettingsRpcResult = {
@@ -134,7 +136,22 @@ function normalizeDashboardSnapshot(
       snapshot.received_by_account,
       Number(snapshot.received_amount) || 0,
     ),
+    joinedByHour: normalizeJoinedByHour(snapshot.joined_by_hour),
   };
+}
+
+function normalizeJoinedByHour(value: unknown): Record<string, number> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .map(([hour, count]) => [
+        hour,
+        Number.isFinite(Number(count)) ? Math.max(0, Number(count)) : 0,
+      ])
+      .filter(([hour, count]) => /^\d{2}:00$/.test(String(hour)) && Number(count) > 0),
+  );
 }
 
 function normalizePaymentSettings(
@@ -326,6 +343,7 @@ export async function upsertRoomDashboardSnapshot(
     p_shuttle_count: snapshot.shuttleCount,
     p_received_amount: snapshot.receivedAmount,
     p_received_by_account: snapshot.receivedByAccount ?? createEmptyReceivedByAccount(),
+    p_joined_by_hour: snapshot.joinedByHour ?? {},
   });
 
   if (error) {

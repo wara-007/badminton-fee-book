@@ -16,6 +16,8 @@ begin
   return found;
 end $$;
 
+drop function if exists public.upsert_badminton_room_dashboard_snapshot(text,timestamptz,integer,integer,integer,numeric,jsonb);
+
 create or replace function public.upsert_badminton_room_dashboard_snapshot(
   p_room_id text,
   p_started_at timestamptz,
@@ -23,7 +25,8 @@ create or replace function public.upsert_badminton_room_dashboard_snapshot(
   p_customer_count integer,
   p_shuttle_count integer,
   p_received_amount numeric,
-  p_received_by_account jsonb default '{"gsb": 0, "kasikorn": 0}'::jsonb
+  p_received_by_account jsonb default '{"gsb": 0, "kasikorn": 0}'::jsonb,
+  p_joined_by_hour jsonb default '{}'::jsonb
 ) returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   snapshot public.badminton_room_dashboard_snapshots%rowtype;
@@ -36,7 +39,8 @@ begin
     customer_count,
     shuttle_count,
     received_amount,
-    received_by_account
+    received_by_account,
+    joined_by_hour
   ) values (
     p_room_id,
     p_started_at,
@@ -48,7 +52,8 @@ begin
     jsonb_build_object(
       'gsb', greatest(coalesce((p_received_by_account->>'gsb')::numeric, 0), 0),
       'kasikorn', greatest(coalesce((p_received_by_account->>'kasikorn')::numeric, 0), 0)
-    )
+    ),
+    coalesce(p_joined_by_hour, '{}'::jsonb)
   )
   on conflict (room_id) do update set
     started_at=excluded.started_at,
@@ -57,7 +62,8 @@ begin
     customer_count=excluded.customer_count,
     shuttle_count=excluded.shuttle_count,
     received_amount=excluded.received_amount,
-    received_by_account=excluded.received_by_account
+    received_by_account=excluded.received_by_account,
+    joined_by_hour=excluded.joined_by_hour
   returning * into snapshot;
 
   return jsonb_build_object(
@@ -68,7 +74,8 @@ begin
     'customer_count', snapshot.customer_count,
     'shuttle_count', snapshot.shuttle_count,
     'received_amount', snapshot.received_amount,
-    'received_by_account', snapshot.received_by_account
+    'received_by_account', snapshot.received_by_account,
+    'joined_by_hour', snapshot.joined_by_hour
   );
 end $$;
 
@@ -84,7 +91,8 @@ returns jsonb language sql stable security definer set search_path = public as $
         'customer_count', snapshot.customer_count,
         'shuttle_count', snapshot.shuttle_count,
         'received_amount', snapshot.received_amount,
-        'received_by_account', snapshot.received_by_account
+        'received_by_account', snapshot.received_by_account,
+        'joined_by_hour', snapshot.joined_by_hour
       )
       order by snapshot.started_at desc
     ),
@@ -133,6 +141,7 @@ returns jsonb language sql stable security definer set search_path = public as $
         'shuttleMarks', coalesce((select jsonb_agg(mark.shuttle_number order by mark.shuttle_number, mark.position) from public.badminton_shuttle_marks mark where mark.room_id=player.room_id and mark.player_id=player.id), '[]'::jsonb),
         'paid', player.paid, 'paidAt', player.paid_at, 'paidAmount', player.paid_amount,
         'paidAccountId', coalesce(player.paid_account_id, 'gsb'),
+        'joinedAt', player.joined_at,
         'waitingSince', player.waiting_since, 'restUntil', player.rest_until, 'gameCount', player.game_count
       ) order by player.position)
       from public.badminton_players player where player.room_id=room.id
@@ -208,7 +217,7 @@ begin
   loop
     room_player_position := room_player_position + 1;
     insert into public.badminton_players(
-      room_id,id,name,position,skill_level,paid,paid_at,paid_amount,paid_account_id,waiting_since,rest_until,game_count
+      room_id,id,name,position,skill_level,paid,paid_at,paid_amount,paid_account_id,joined_at,waiting_since,rest_until,game_count
     ) values (
       p_id, player->>'id', player->>'name', room_player_position, coalesce(player->>'skillLevel','n'),
       coalesce((player->>'paid')::boolean,false), nullif(player->>'paidAt','')::timestamptz,
@@ -218,6 +227,7 @@ begin
           then case when player->>'paidAccountId' in ('gsb','kasikorn') then player->>'paidAccountId' else 'gsb' end
         else null
       end,
+      coalesce(nullif(player->>'joinedAt','')::timestamptz, nullif(player->>'waitingSince','')::timestamptz, now()),
       nullif(player->>'waitingSince','')::timestamptz,
       nullif(player->>'restUntil','')::timestamptz, greatest(coalesce((player->>'gameCount')::integer,0),0)
     );
@@ -347,7 +357,7 @@ revoke all on function public.build_normalized_badminton_state(text) from public
 revoke all on function public.load_normalized_badminton_session(text) from public, anon;
 revoke all on function public.save_normalized_badminton_session(text,jsonb,bigint) from public, anon;
 revoke all on function public.set_badminton_player_payment(text,text,boolean,numeric,text,timestamptz) from public, anon;
-revoke all on function public.upsert_badminton_room_dashboard_snapshot(text,timestamptz,integer,integer,integer,numeric,jsonb) from public, anon;
+revoke all on function public.upsert_badminton_room_dashboard_snapshot(text,timestamptz,integer,integer,integer,numeric,jsonb,jsonb) from public, anon;
 revoke all on function public.list_badminton_room_dashboard_snapshots() from public, anon;
 revoke all on function public.get_badminton_payment_settings() from public, anon;
 revoke all on function public.set_badminton_payment_account(text) from public, anon;
@@ -357,7 +367,7 @@ grant execute on function public.save_normalized_badminton_session(text,jsonb,bi
 grant execute on function public.set_badminton_player_payment(text,text,boolean,numeric,text,timestamptz) to anon;
 grant execute on function public.close_normalized_badminton_room(text) to anon;
 grant execute on function public.delete_normalized_badminton_room(text) to anon;
-grant execute on function public.upsert_badminton_room_dashboard_snapshot(text,timestamptz,integer,integer,integer,numeric,jsonb) to anon;
+grant execute on function public.upsert_badminton_room_dashboard_snapshot(text,timestamptz,integer,integer,integer,numeric,jsonb,jsonb) to anon;
 grant execute on function public.list_badminton_room_dashboard_snapshots() to anon;
 grant execute on function public.get_badminton_payment_settings() to anon;
 grant execute on function public.set_badminton_payment_account(text) to anon;
