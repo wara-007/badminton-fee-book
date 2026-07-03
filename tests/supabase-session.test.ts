@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   RemoteSaveConflictError,
+  isRemoteNowUnsupportedError,
   parseRemoteSaveResult,
   prepareSessionForRemote
 } from "@/lib/supabase-session";
@@ -64,5 +65,16 @@ describe("Supabase session revision saves", () => {
         closed_at: null
       })
     ).toThrow(RemoteSaveConflictError);
+  });
+
+  it("treats a missing server-time RPC as unsupported", () => {
+    expect(
+      isRemoteNowUnsupportedError({
+        code: "PGRST202",
+        details: "Searched for the function public.current_server_time without parameters",
+        hint: null,
+        message: "Could not find the function public.current_server_time in the schema cache"
+      })
+    ).toBe(true);
   });
 });

@@ -86,6 +86,19 @@ export const supabase: SupabaseClient | null = hasSupabaseConfig
 
 let remoteNowSupported = true;
 
+export function isRemoteNowUnsupportedError(error: PostgrestError | null): boolean {
+  if (!error) {
+    return false;
+  }
+
+  return (
+    error.code === 'PGRST100' ||
+    error.code === 'PGRST202' ||
+    error.message.includes('Not Found') ||
+    error.message.includes('current_server_time')
+  );
+}
+
 export function prepareSessionForRemote(session: SessionState): SessionState {
   return {
     ...session,
@@ -268,7 +281,7 @@ export async function loadRemoteNow(): Promise<string> {
   const { data, error } = await supabase.rpc('current_server_time');
   if (error || typeof data !== 'string') {
     const postgrestError = error as PostgrestError | null;
-    if (postgrestError?.code === 'PGRST100' || postgrestError?.message.includes('Not Found')) {
+    if (isRemoteNowUnsupportedError(postgrestError)) {
       remoteNowSupported = false;
     }
     return new Date().toISOString();
