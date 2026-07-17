@@ -797,6 +797,14 @@ body {
   background: var(--primary-bg) !important;
 }
 
+.scoreTableWrap .MuiTableRow-root.ledgerSelectedRow .stickyAction {
+  background: var(--primary-bg) !important;
+}
+
+.scoreTableWrap .MuiTableRow-root.ledgerSelectedRow .stickySelect {
+  background: var(--primary-bg) !important;
+}
+
 .scoreTableWrap .MuiTableRow-root.ledgerSelectedRow .playerNameButton {
   border-color: var(--primary-light);
   background: var(--primary-bg);
@@ -1061,6 +1069,86 @@ body {
 thead .stickyName {
   z-index: 5;
   background: var(--table-header-bg);
+}
+
+.stickyNameAfterSelect {
+  left: 52px;
+}
+
+.stickySelect {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  min-width: 52px;
+  width: 52px;
+  background: var(--sticky-name-bg);
+}
+
+thead .stickySelect {
+  z-index: 6;
+  background: var(--table-header-bg);
+}
+
+.scoreTableWrap .MuiTableRow-root.waitingWarningRow .stickySelect {
+  background: var(--warning-bg);
+}
+
+.scoreTableWrap .MuiTableRow-root.waitingWarningRow:hover .stickySelect {
+  background: var(--waiting-warning-hover);
+}
+
+.scoreTableWrap .MuiTableRow-root.waitingDangerRow .stickySelect {
+  background: var(--danger-bg);
+}
+
+.scoreTableWrap .MuiTableRow-root.waitingDangerRow:hover .stickySelect {
+  background: var(--waiting-danger-hover);
+}
+
+.stickyAction {
+  position: sticky;
+  z-index: 3;
+  background: var(--sticky-name-bg);
+}
+
+thead .stickyAction {
+  z-index: 5;
+  background: var(--table-header-bg);
+}
+
+.stickyDelete {
+  right: 0;
+  min-width: 52px;
+  width: 52px;
+}
+
+.stickyPaid {
+  right: 52px;
+  min-width: 72px;
+  width: 72px;
+}
+
+.stickyAmount {
+  right: 124px;
+  min-width: 72px;
+  width: 72px;
+  box-shadow: -1px 0 0 var(--border-color);
+}
+
+.scoreTableWrap .MuiTableRow-root.waitingWarningRow .stickyAction {
+  background: var(--warning-bg);
+}
+
+.scoreTableWrap .MuiTableRow-root.waitingWarningRow:hover .stickyAction {
+  background: var(--waiting-warning-hover);
+}
+
+.scoreTableWrap .MuiTableRow-root.waitingDangerRow .stickyAction {
+  background: var(--danger-bg);
+}
+
+.scoreTableWrap .MuiTableRow-root.waitingDangerRow:hover .stickyAction {
+  background: var(--waiting-danger-hover);
 }
 
 .shuttleHeader {

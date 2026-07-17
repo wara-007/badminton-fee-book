@@ -3112,8 +3112,8 @@ function ScoreSheet({
       <Table stickyHeader size="small" aria-label="ตารางค่าตีแบด">
         <TableHead>
           <TableRow>
-            {batchPaymentMode ? <TableCell align="center">เลือก</TableCell> : null}
-            <TableCell className="stickyName">ชื่อ</TableCell>
+            {batchPaymentMode ? <TableCell align="center" className="stickySelect">เลือก</TableCell> : null}
+            <TableCell className={`stickyName${batchPaymentMode ? " stickyNameAfterSelect" : ""}`}>ชื่อ</TableCell>
             {shuttleColumns.map((column) => (
               <TableCell key={column} align="center" className="shuttleHeader">
                 {column + 1}
@@ -3121,9 +3121,9 @@ function ScoreSheet({
             ))}
             <TableCell align="center">ลูก</TableCell>
             <TableCell align="center">เกม</TableCell>
-            <TableCell align="right">ยอด</TableCell>
-            <TableCell align="center">จ่ายแล้ว</TableCell>
-            <TableCell align="center">ลบ</TableCell>
+            <TableCell align="right" className="stickyAction stickyAmount">ยอด</TableCell>
+            <TableCell align="center" className="stickyAction stickyPaid">จ่ายแล้ว</TableCell>
+            <TableCell align="center" className="stickyAction stickyDelete">ลบ</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -3148,7 +3148,7 @@ function ScoreSheet({
                 }`}
               >
                 {batchPaymentMode ? (
-                  <TableCell align="center">
+                  <TableCell align="center" className="stickySelect">
                     <Checkbox
                       inputProps={{ "aria-label": `เลือก ${player.name} คิดเงินรวม` }}
                       checked={batchSelectedPlayerIds.includes(player.id)}
@@ -3156,7 +3156,7 @@ function ScoreSheet({
                     />
                   </TableCell>
                 ) : null}
-                <TableCell className="stickyName playerCell">
+                <TableCell className={`stickyName playerCell${batchPaymentMode ? " stickyNameAfterSelect" : ""}`}>
                   <Button
                     className="playerNameButton"
                     aria-label={`ติ๊กลูกให้ ${player.name}`}
@@ -3230,10 +3230,10 @@ function ScoreSheet({
                 >
                   {player.gameCount}
                 </TableCell>
-                <TableCell align="right" className="amountCell">
+                <TableCell align="right" className="amountCell stickyAction stickyAmount">
                   {formatBaht(calculatePlayerTotal(player, pricing))}
                 </TableCell>
-                <TableCell align="center">
+                <TableCell align="center" className="stickyAction stickyPaid">
                   <Checkbox
                     inputProps={{ "aria-label": `${player.name} จ่ายแล้ว` }}
                     checked={player.paid}
@@ -3241,7 +3241,7 @@ function ScoreSheet({
                     onChange={(event) => onSetPaid(player.id, event.target.checked)}
                   />
                 </TableCell>
-                <TableCell align="center">
+                <TableCell align="center" className="stickyAction stickyDelete">
                   <Tooltip title={`ลบ ${player.name}`}>
                     <span>
                       <IconButton
