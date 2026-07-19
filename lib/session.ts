@@ -26,11 +26,14 @@ export type Pricing = {
   shuttleFee: number;
 };
 
+export type MatchSource = 'batch' | 'planned' | 'manual';
+
 export type SessionState = {
   players: Player[];
   pricing: Pricing;
   currentShuttleNumber: number;
   plannedMatches: PlannedMatch[];
+  matchSources?: Record<string, MatchSource>;
   activityLog: ActivityLogEntry[];
   updatedAt: string;
 };
@@ -155,6 +158,7 @@ export function createInitialSession(): SessionState {
     pricing: DEFAULT_PRICING,
     currentShuttleNumber: 1,
     plannedMatches: createDefaultPlannedMatches(),
+    matchSources: {},
     activityLog: [],
     updatedAt: new Date().toISOString(),
   };
@@ -608,6 +612,7 @@ export function groupPaidPlayersByDay(
 export function groupMatchesByShuttle(
   players: Player[],
   activityLog?: ActivityLogEntry[],
+  persistedSources?: Record<string, MatchSource>,
 ): MatchSummary[] {
   const groups = new Map<number, string[]>();
 
@@ -619,7 +624,15 @@ export function groupMatchesByShuttle(
     });
   });
 
-  const sourceMap = new Map<number, 'batch' | 'planned' | 'manual'>();
+  const sourceMap = new Map<number, MatchSource>();
+  if (persistedSources) {
+    Object.entries(persistedSources).forEach(([shuttleNumber, source]) => {
+      const parsedShuttleNumber = Number(shuttleNumber);
+      if (Number.isInteger(parsedShuttleNumber) && parsedShuttleNumber > 0) {
+        sourceMap.set(parsedShuttleNumber, source);
+      }
+    });
+  }
   const startedAtMap = new Map<number, string>();
   if (activityLog) {
     for (let i = activityLog.length - 1; i >= 0; i--) {
@@ -870,6 +883,20 @@ export function normalizeSession(value: unknown): SessionState {
       Number(candidate.currentShuttleNumber) || 1,
     ),
     plannedMatches,
+    matchSources:
+      candidate.matchSources && typeof candidate.matchSources === 'object'
+        ? Object.fromEntries(
+            Object.entries(candidate.matchSources)
+              .filter(([shuttleNumber, source]) =>
+                /^\d+$/.test(shuttleNumber) &&
+                ['batch', 'planned', 'manual'].includes(String(source)),
+              )
+              .map(([shuttleNumber, source]) => [
+                shuttleNumber,
+                source as MatchSource,
+              ]),
+          )
+        : {},
     activityLog: Array.isArray(candidate.activityLog)
       ? candidate.activityLog
           .filter((activity): activity is ActivityLogEntry => {

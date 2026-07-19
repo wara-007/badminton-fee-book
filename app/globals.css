@@ -3,20 +3,20 @@
 }
 
 :root {
-  --app-bg: #f7f5ef;
-  --app-text: #1f2933;
+  --app-bg: #f7f9fc;
+  --app-text: #172033;
   --card-bg: #ffffff;
-  --card-bg-alt: #fbfaf7;
-  --border-color: #e7e2d8;
-  --border-light: #d8d1c5;
-  --primary: #05247a;
-  --primary-light: #123a9a;
-  --primary-bg: #edf2ff;
-  --text-secondary: #5f6c7b;
-  --toolbar-bg: #fffdfa;
-  --tracker-bg: #f7fbfa;
-  --picker-bg: #fffdf8;
-  --table-header-bg: #f3eee3;
+  --card-bg-alt: #f8fafc;
+  --border-color: #e1e6ef;
+  --border-light: #cbd3df;
+  --primary: #1b3a6b;
+  --primary-light: #294f88;
+  --primary-bg: #e8eef8;
+  --text-secondary: #687386;
+  --toolbar-bg: #fbfcfe;
+  --tracker-bg: #f3f7fc;
+  --picker-bg: #f7f9fc;
+  --table-header-bg: #eef2f7;
   --sticky-name-bg: #ffffff;
   --danger-border: #fca5a5;
   --danger-bg: #fff7f7;
@@ -88,21 +88,21 @@
 }
 
 [data-theme='dark'] {
-  --app-bg: #1a1a1a;
+  --app-bg: #181a20;
   --app-text: #e5e7eb;
-  --card-bg: #252525;
-  --card-bg-alt: #2a2a2a;
-  --border-color: #333333;
-  --border-light: #444444;
-  --primary: #8fb3ff;
-  --primary-light: #bfd0ff;
-  --primary-bg: #101d44;
-  --text-secondary: #9ca3af;
-  --toolbar-bg: #1f1f1f;
-  --tracker-bg: #1f1f1f;
-  --picker-bg: #1a1a1a;
-  --table-header-bg: #333333;
-  --sticky-name-bg: #252525;
+  --card-bg: #22252d;
+  --card-bg-alt: #272b34;
+  --border-color: #343945;
+  --border-light: #47505f;
+  --primary: #91b4ff;
+  --primary-light: #b8ccff;
+  --primary-bg: #263754;
+  --text-secondary: #aeb7c7;
+  --toolbar-bg: #1e2128;
+  --tracker-bg: #202631;
+  --picker-bg: #1b1e25;
+  --table-header-bg: #2b303a;
+  --sticky-name-bg: #22252d;
   --danger-border: #7f1d1d;
   --danger-bg: #3f1212;
   --danger-text: #fca5a5;
@@ -573,6 +573,337 @@ body {
 
 .sheetContent {
   overflow: visible;
+}
+
+.matchQueuePicker {
+  --queue-sticky-offset: 0px;
+  position: relative;
+  min-height: calc(100vh - 180px);
+  background: var(--app-bg);
+}
+
+.matchQueueControls {
+  position: sticky;
+  top: var(--queue-sticky-offset);
+  z-index: 6;
+  display: grid;
+  gap: 7px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--toolbar-bg);
+}
+
+.matchQueueSelectionHeader,
+.matchQueueProgress,
+.matchQueueTools,
+.matchQueueRow,
+.matchQueuePlayerMeta {
+  display: flex;
+  align-items: center;
+}
+
+.matchQueueSelectionHeader {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.matchQueueTitle {
+  font-size: 1.12rem !important;
+  font-weight: 900 !important;
+}
+
+.matchQueueProgress {
+  gap: 10px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.matchQueueProgress strong {
+  min-width: 30px;
+  font-size: 1rem;
+}
+
+.matchQueueProgress strong.isComplete {
+  color: var(--primary);
+}
+
+.matchQueueDots {
+  display: flex;
+  gap: 6px;
+}
+
+.matchQueueDots i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--border-color);
+}
+
+.matchQueueDots i.isFilled {
+  background: var(--primary);
+}
+
+.matchQueueSlots,
+.matchQueuePlayerGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.matchQueueSlots {
+  gap: 6px;
+}
+
+.matchQueueSlot {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  min-width: 0;
+  min-height: 46px;
+  padding: 4px 6px;
+  border: 2px dashed var(--border-light);
+  border-radius: 12px;
+  color: var(--text-secondary);
+  background: var(--card-bg-alt);
+  font: inherit;
+  font-weight: 700;
+}
+
+.matchQueueSlot.isSelected {
+  cursor: pointer;
+  border-style: solid;
+  border-color: #1b3a6b;
+  color: #fff;
+  background: #1b3a6b;
+}
+
+.matchQueueSlot:disabled:not(.isSelected) {
+  opacity: 1;
+}
+
+.matchQueueSlotName,
+.matchQueuePlayerName {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.matchQueueSlotName {
+  font-weight: 900;
+}
+
+.matchQueueSlotMeta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0;
+}
+
+.matchQueueSlotMeta .MuiSvgIcon-root {
+  width: 15px;
+  height: 15px;
+}
+
+.matchQueueTools {
+  flex-wrap: nowrap;
+  gap: 10px;
+  min-width: 0;
+}
+
+.matchQueueShuttleControl {
+  display: flex;
+  align-items: center;
+}
+
+.matchQueueTools > .MuiFormControl-root {
+  flex: 1 1 240px;
+  min-width: 140px;
+}
+
+.matchQueueTools > .MuiToggleButtonGroup-root,
+.matchQueueShuttleControl,
+.matchQueueToggle {
+  flex: 0 0 auto;
+}
+
+.matchQueueShuttleControl {
+  gap: 6px;
+}
+
+.matchQueueShuttleControl .MuiIconButton-root {
+  min-width: 40px;
+  min-height: 40px;
+}
+
+@media (max-width: 600px) {
+  .matchQueueTools {
+    gap: 6px;
+  }
+
+  .matchQueueShuttleControl {
+    gap: 2px;
+  }
+
+  .matchQueueShuttleControl > .MuiTypography-root {
+    display: none;
+  }
+
+  .matchQueueTools > .MuiToggleButtonGroup-root .MuiToggleButton-root {
+    padding-inline: 8px;
+  }
+}
+
+.matchQueueToggle {
+  flex: 0 0 auto;
+  gap: 6px;
+  min-width: 72px !important;
+  height: 40px;
+  padding-inline: 12px !important;
+}
+
+.matchQueueToggle .MuiSvgIcon-root {
+  font-size: 22px;
+}
+
+.matchQueueWarning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--warning-border);
+  border-radius: 10px;
+  color: var(--warning-text);
+  background: var(--warning-bg);
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.matchQueueWarning .MuiSvgIcon-root {
+  flex: 0 0 auto;
+  font-size: 20px;
+}
+
+.matchQueuePanel {
+  max-height: 192px;
+  overflow-y: auto;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--card-bg);
+}
+
+.matchQueueRow {
+  min-height: 54px;
+  gap: 12px;
+  padding: 6px 12px 6px 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.matchQueueRow:last-child {
+  border-bottom: 0;
+}
+
+.matchQueueRow > strong {
+  flex: 0 0 64px;
+  font-size: 0.84rem;
+}
+
+.matchQueueRowPlayers {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 5px 12px;
+  min-width: 0;
+}
+
+.matchQueueRowPlayers > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.matchQueueEmpty {
+  padding: 20px !important;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.matchQueuePlayerGrid {
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 8px;
+  padding: 12px 4px 12px 12px;
+}
+
+.matchQueuePlayer {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 56px;
+  padding: 7px 5px;
+  border: 2px solid var(--border-color);
+  border-radius: 12px;
+  color: var(--app-text);
+  background: var(--card-bg);
+  font: inherit;
+  transition: transform 160ms ease-out, border-color 160ms ease-out, background-color 160ms ease-out;
+}
+
+.matchQueuePlayer:not(:disabled) {
+  cursor: pointer;
+}
+
+.matchQueuePlayer:not(:disabled):hover {
+  border-color: var(--primary-light);
+  background: var(--primary-bg);
+}
+
+.matchQueuePlayer:not(:disabled):active {
+  transform: scale(.95);
+}
+
+.matchQueuePlayer.isSelected {
+  border-color: #1b3a6b;
+  color: #fff;
+  background: #1b3a6b;
+}
+
+.matchQueuePlayer:disabled:not(.isSelected) {
+  opacity: .3;
+}
+
+.matchQueuePlayerName {
+  font-weight: 900;
+}
+
+.matchQueuePlayerMeta {
+  justify-content: center;
+  gap: 5px;
+  min-height: 20px;
+}
+
+.matchQueuePlayerMeta > .MuiSvgIcon-root {
+  width: 19px;
+  height: 19px;
+}
+
+.matchQueueQueuedIcon {
+  color: #d97706;
+}
+
+[data-theme='dark'] .matchQueueSlot.isSelected,
+[data-theme='dark'] .matchQueuePlayer.isSelected {
+  border-color: #91b4ff;
+  color: #14213a;
+  background: #91b4ff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .matchQueuePlayer {
+    transition: none;
+  }
 }
 
 .currentShuttlePicker {
@@ -1985,4 +2316,455 @@ thead .stickyAction {
 .appDialogActions {
   padding: 12px 22px 18px;
   gap: 8px;
+}
+
+/* Figma Make visual system: navy operations UI */
+body {
+  font-feature-settings: "kern" 1, "tnum" 1;
+}
+
+.appShell {
+  padding: 20px 0 36px;
+  background:
+    radial-gradient(circle at 92% 0%, rgb(27 58 107 / 5%), transparent 28rem),
+    var(--app-bg);
+}
+
+.appHeader {
+  align-items: center;
+  padding: 4px 2px 10px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.sessionIdentity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.roomDashboardHeader {
+  padding: 4px 2px 14px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.roomDashboardBrand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.roomBrandMark {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  flex: 0 0 46px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #1b3a6b;
+}
+
+.brandIconImage {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.roomDashboardActions .MuiIconButton-root {
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+}
+
+.sessionTitle {
+  color: var(--app-text);
+  font-size: 1rem !important;
+  font-weight: 900 !important;
+  line-height: 1.2 !important;
+}
+
+.sessionCode {
+  margin-top: 2px !important;
+  color: var(--text-secondary);
+  font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace !important;
+  font-size: 0.72rem !important;
+}
+
+.appTitle {
+  color: var(--app-text);
+  font-size: 1.75rem !important;
+  letter-spacing: -0.025em !important;
+}
+
+.appSubtitle {
+  margin-top: 2px !important;
+  font-size: 0.92rem !important;
+}
+
+.controlBand,
+.tablePanel,
+.loginPanel,
+.appShell .MuiPaper-root {
+  border-color: var(--border-color);
+}
+
+.controlBand,
+.tablePanel,
+.loginPanel {
+  border-radius: 12px;
+  background: var(--card-bg);
+}
+
+.controlBand {
+  padding: 14px;
+}
+
+.tablePanel {
+  min-height: calc(100vh - 236px);
+  box-shadow: 0 1px 2px rgb(19 35 61 / 4%);
+}
+
+.loginShell {
+  background:
+    radial-gradient(circle at 50% 18%, rgb(27 58 107 / 11%), transparent 22rem),
+    var(--app-bg);
+}
+
+.loginPanel {
+  position: relative;
+  width: min(400px, 100%);
+  gap: 20px;
+  padding: 28px;
+  box-shadow: 0 2px 6px rgb(19 35 61 / 8%);
+}
+
+.loginLogo {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  margin: -4px auto 0;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #1b3a6b;
+}
+
+.loginPanel .appTitle,
+.loginPanel .appSubtitle {
+  text-align: center;
+}
+
+.loginForm {
+  gap: 16px;
+}
+
+.appShell .MuiOutlinedInput-root {
+  border-radius: 10px;
+  background: var(--card-bg-alt);
+}
+
+.appShell .MuiOutlinedInput-notchedOutline {
+  border-color: var(--border-color);
+}
+
+.appShell .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline {
+  border-color: var(--border-light);
+}
+
+.appShell .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline {
+  border-width: 2px;
+  border-color: var(--primary);
+}
+
+.appShell .MuiButton-containedPrimary {
+  color: #fff;
+  background: #1b3a6b;
+}
+
+.appShell .MuiButton-containedPrimary:hover {
+  background: #122b52;
+}
+
+[data-theme='dark'] .appShell .MuiButton-containedPrimary {
+  color: #14213a;
+  background: #91b4ff;
+}
+
+.appShell .MuiButton-outlined {
+  border-color: var(--border-light);
+  background: var(--card-bg);
+}
+
+.appShell .MuiIconButton-root {
+  border: 1px solid transparent;
+}
+
+.appShell .MuiIconButton-root:hover {
+  border-color: var(--border-color);
+  background: var(--primary-bg);
+}
+
+.appShell .MuiChip-root {
+  min-height: 28px;
+  border-radius: 999px;
+  font-weight: 800;
+}
+
+.sheetTabs {
+  min-height: 54px;
+  padding: 0 6px;
+  background: var(--card-bg);
+}
+
+.sheetTabs .MuiTab-root {
+  gap: 6px;
+  min-width: 112px;
+  padding-inline: 12px;
+  font-size: 0.82rem;
+}
+
+.sheetTabs .MuiTab-iconWrapper {
+  margin: 0 !important;
+  font-size: 19px;
+}
+
+.sheetToolbar,
+.ledgerToolbar {
+  padding: 14px 16px;
+  background: var(--toolbar-bg);
+}
+
+.currentShuttleTracker {
+  background: var(--tracker-bg);
+}
+
+.summaryGrid {
+  grid-template-columns: repeat(5, minmax(132px, 1fr));
+  gap: 10px;
+  margin: 16px;
+}
+
+.summaryStat {
+  min-height: 96px;
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--card-bg);
+}
+
+.summaryStat .MuiTypography-root:last-child,
+.scoreTableWrap td,
+.scoreTableWrap th,
+.paymentDialogCalculatedAmount {
+  font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.playerPickerGroup,
+.plannedMatchCard,
+.plannedPlayerAlphabetGroup {
+  border-radius: 12px;
+}
+
+.playerPickerButton,
+.plannedPlayerButton {
+  min-height: 46px;
+  border-radius: 10px;
+}
+
+.playerPickerButtonSelected {
+  color: #fff !important;
+  border-color: #1b3a6b !important;
+  background: #1b3a6b !important;
+}
+
+.scoreTableWrap .MuiTableHead-root .MuiTableCell-root {
+  color: var(--app-text);
+  background: var(--table-header-bg);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.scoreTableWrap .MuiTableRow-root:hover .MuiTableCell-root {
+  background-color: var(--primary-bg);
+}
+
+.appDialogPaper,
+.addPlayerDialogPaper {
+  border-radius: 14px !important;
+  box-shadow: 0 12px 36px rgb(13 25 46 / 18%) !important;
+}
+
+.appDialogTitle {
+  background: var(--card-bg);
+}
+
+.batchPaymentBar {
+  border-radius: 12px;
+  background: var(--card-bg);
+  box-shadow: 0 4px 12px rgb(19 35 61 / 12%);
+}
+
+@media (max-width: 900px) {
+  .appShell {
+    padding-top: 14px;
+  }
+
+  .appHeader {
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .authStatus {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .sessionIdentity {
+    flex-wrap: wrap;
+  }
+
+  .summaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .plannedMatchPanel,
+  .plannedMatchPanelAlphabet {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .appShell {
+    padding: 10px 0 24px;
+  }
+
+  .appHeader {
+    flex-direction: column;
+  }
+
+  .authStatus {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .sessionIdentity {
+    width: 100%;
+  }
+
+  .roomDashboardHeader {
+    align-items: center !important;
+  }
+
+  .roomDashboardBrand .MuiTypography-h5 {
+    font-size: 1.05rem;
+  }
+
+  .sessionIdentity > :nth-child(2) {
+    flex: 1;
+  }
+
+  .controlBand {
+    padding: 12px;
+  }
+
+  .quickControls,
+  .addPlayerForm {
+    width: 100%;
+  }
+
+  .addPlayerForm {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .settingsPanel {
+    grid-template-columns: 1fr;
+  }
+
+  .sheetToolbar,
+  .ledgerToolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .searchField,
+  .ledgerShuttleSearchField {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .summaryGrid {
+    margin: 12px;
+  }
+
+  .loginPanel {
+    padding: 24px 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* Checked shuttle marks are intentionally disabled after selection. Keep their
+   semantic source/status colors instead of letting MUI's disabled style win. */
+.appShell .MuiCheckbox-root.Mui-disabled .shuttleNumberIconChecked {
+  border-color: var(--primary-light);
+  color: #ffffff;
+  background: var(--primary-light);
+}
+
+.appShell .MuiCheckbox-root.Mui-disabled .shuttleNumberIconWarning {
+  border-color: var(--shuttle-warning-border);
+  color: #ffffff;
+  background: #f59e0b;
+}
+
+.appShell .MuiCheckbox-root.Mui-disabled .shuttleNumberIconDanger {
+  border-color: var(--shuttle-danger-border);
+  color: #ffffff;
+  background: #dc2626;
+}
+
+.appShell .MuiCheckbox-root.Mui-disabled .shuttleNumberIconBatch {
+  border-color: var(--shuttle-batch-border);
+  color: var(--batch-text);
+  background: var(--batch-bg);
+}
+
+/* Match list uses the same semantic colors as shuttle marks. These rules sit
+   after the shared Paper styling so source/status colors remain visible. */
+.appShell .MuiPaper-root.matchItemBatch {
+  border-color: var(--batch-border);
+  color: var(--batch-text);
+  background: var(--batch-bg);
+}
+
+.appShell .MuiPaper-root.matchItemBatch .MuiTypography-root,
+.appShell .MuiPaper-root.matchItemBatch .matchStartTime {
+  color: var(--batch-text);
+}
+
+.appShell .MuiPaper-root.matchItemWarning {
+  border-color: var(--warning-border);
+  color: var(--warning-text);
+  background: var(--warning-bg);
+}
+
+.appShell .MuiPaper-root.matchItemDanger {
+  border-color: var(--danger-border);
+  color: var(--danger-text);
+  background: var(--danger-bg);
+}
+
+.appShell .matchItemBatch .matchNamePill {
+  border-color: var(--batch-border);
+  color: var(--batch-text);
+  background: color-mix(in srgb, var(--batch-bg) 76%, var(--card-bg));
 }

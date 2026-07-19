@@ -95,7 +95,8 @@ export function classifyRemoteChanges(local: SessionState, remote: SessionState)
   const localPlayers = new Map(local.players.map((player) => [player.id, player]));
   let hasPayments = false;
   let hasMatchChanges = local.currentShuttleNumber !== remote.currentShuttleNumber ||
-    JSON.stringify(local.plannedMatches) !== JSON.stringify(remote.plannedMatches);
+    JSON.stringify(local.plannedMatches) !== JSON.stringify(remote.plannedMatches) ||
+    JSON.stringify(local.matchSources ?? {}) !== JSON.stringify(remote.matchSources ?? {});
   let hasOtherChanges = local.players.length !== remote.players.length ||
     JSON.stringify(local.pricing) !== JSON.stringify(remote.pricing);
 

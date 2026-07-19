@@ -777,6 +777,7 @@ export default function RoomsPage() {
         <Container maxWidth="md">
           <Stack spacing={3}>
             <Box
+              className="roomDashboardHeader"
               sx={{
                 display: "flex",
                 alignItems: "center",
@@ -784,25 +785,31 @@ export default function RoomsPage() {
                 gap: 2
               }}
             >
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-                <SportsTennisIcon color="primary" sx={{ fontSize: 32 }} />
-                <Typography variant="h5" fontWeight={800}>
-                  เลือก Room
-                </Typography>
+              <Box className="roomDashboardBrand">
+                <Box className="roomBrandMark" aria-hidden="true">
+                  <Box component="img" src="/app-icon.svg" alt="" className="brandIconImage" />
+                </Box>
+                <Box>
+                  <Typography variant="h5" fontWeight={900}>
+                    {PROJECT_NAME}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    จัดการ Room และสรุปยอด
+                  </Typography>
+                </Box>
               </Box>
-              <Tooltip title={mode === "dark" ? "สลับไปโหมดสว่าง" : "สลับไปโหมดมืด"}>
-                <IconButton onClick={toggleTheme} size="small">
-                  {mode === "dark" ? <LightModeIcon /> : <DarkModeIcon />}
-                </IconButton>
-              </Tooltip>
-              <Button
-                variant="outlined"
-                color="secondary"
-                startIcon={<LogoutIcon />}
-                onClick={handleLogout}
-              >
-                ออกจากระบบ
-              </Button>
+              <Stack direction="row" spacing={1} className="roomDashboardActions">
+                <Tooltip title={mode === "dark" ? "สลับไปโหมดสว่าง" : "สลับไปโหมดมืด"}>
+                  <IconButton onClick={toggleTheme}>
+                    {mode === "dark" ? <LightModeIcon /> : <DarkModeIcon />}
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="ออกจากระบบ">
+                  <IconButton onClick={handleLogout} aria-label="ออกจากระบบ">
+                    <LogoutIcon />
+                  </IconButton>
+                </Tooltip>
+              </Stack>
             </Box>
 
             <Paper

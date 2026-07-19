@@ -13,6 +13,15 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import SportsTennisIcon from "@mui/icons-material/SportsTennis";
+import TimelineIcon from "@mui/icons-material/Timeline";
+import LayersIcon from "@mui/icons-material/Layers";
+import SearchIcon from "@mui/icons-material/Search";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
+import MenuBookIcon from "@mui/icons-material/MenuBook";
+import GroupsIcon from "@mui/icons-material/Groups";
+import CreditCardIcon from "@mui/icons-material/CreditCard";
+import StorageIcon from "@mui/icons-material/Storage";
+import LogoutIcon from "@mui/icons-material/Logout";
 import {
   Box,
   Button,
@@ -228,6 +237,7 @@ export default function HomePage() {
   const [matchSearchTerm, setMatchSearchTerm] = useState("");
   const [selectedPlannedMatchId, setSelectedPlannedMatchId] = useState("");
   const [activeTab, setActiveTab] = useState(0);
+  const [queuePickerSearch, setQueuePickerSearch] = useState("");
   const [playerSortMode, setPlayerSortMode] = useState<"queue" | "alphabetical">("queue");
   const [matchSetupMode, setMatchSetupMode] = useState(false);
   const [addPlayerDialogOpen, setAddPlayerDialogOpen] = useState(false);
@@ -786,7 +796,10 @@ export default function HomePage() {
     () => groupPaidPlayersByDay(session.players, session.pricing),
     [session.players, session.pricing]
   );
-  const matchGroups = useMemo(() => groupMatchesByShuttle(session.players, session.activityLog), [session.players, session.activityLog]);
+  const matchGroups = useMemo(
+    () => groupMatchesByShuttle(session.players, session.activityLog, session.matchSources),
+    [session.players, session.activityLog, session.matchSources]
+  );
   const overLimitShuttleNumbers = useMemo(
     () =>
       new Set(
@@ -1501,6 +1514,10 @@ export default function HomePage() {
         {
           ...current,
           players: nextPlayers,
+          matchSources: {
+            ...current.matchSources,
+            [targetShuttleNumber]: "batch"
+          },
           currentShuttleNumber: targetShuttleNumber + 1
         },
         createActivity(
@@ -1602,6 +1619,10 @@ export default function HomePage() {
         {
           ...current,
           players: nextPlayers,
+          matchSources: {
+            ...current.matchSources,
+            [targetShuttleNumber]: "planned"
+          },
           currentShuttleNumber: targetShuttleNumber + 1,
           plannedMatches: renumberPlannedMatches([
             ...current.plannedMatches.filter((match) => match.id !== matchId),
@@ -1792,6 +1813,12 @@ export default function HomePage() {
       let nextSession: SessionState = {
         ...current,
         players: restedPlayers,
+        matchSources: isRemoving
+          ? current.matchSources
+          : {
+            ...current.matchSources,
+            [targetShuttleNumber]: "manual"
+          },
         plannedMatches: isRemoving
           ? current.plannedMatches
           : current.plannedMatches.map((match) => ({
@@ -2248,31 +2275,37 @@ export default function HomePage() {
           <Stack spacing={3}>
             {!matchSetupMode ? (
               <Box className="appHeader">
-                <Box>
-                  <Typography variant="h4" component="h1" className="appTitle">
-                    สมุดค่าตีแบด
-                  </Typography>
-                  <Typography color="text.secondary" className="appSubtitle">
-                    จดลูก คิดเงิน และเช็กจ่ายแล้วในรอบเดียว
-                  </Typography>
-                </Box>
-                <Stack direction="row" spacing={1} alignItems="center" className="authStatus">
+                <Box className="sessionIdentity">
+                  <IconButton aria-label="กลับไปหน้ารอบ" onClick={() => router.push("/rooms")}>
+                    <ArrowBackIcon />
+                  </IconButton>
+                  <Box>
+                    <Typography component="h1" className="sessionTitle">
+                      รอบ {sessionId}
+                    </Typography>
+                    <Typography className="sessionCode">สมุดค่าตีแบด · {syncStatus}</Typography>
+                  </Box>
+                  <Chip label={closedAt ? "ปิดแล้ว" : "Live"} size="small" color={closedAt ? "default" : "success"} />
+                  <Chip label={`ตี ${matchGroups.length} match`} size="small" color="primary" />
                   <Chip
-                    label={userRole === "admin" ? "admin: ทำได้ทุกอย่าง" : "admin2: จ่ายเงินเท่านั้น"}
-                    color={userRole === "admin" ? "primary" : "secondary"}
+                    label={`ค้าง ${session.players.filter((player) => !player.paid).length} คน`}
+                    size="small"
+                    color="error"
                     variant="outlined"
                   />
+                </Box>
+                <Stack direction="row" spacing={1} alignItems="center" className="authStatus">
+                  <Button variant="contained" startIcon={<AddIcon />} onClick={() => setAddPlayerDialogOpen(true)}>
+                    เพิ่มผู้เล่น
+                  </Button>
                   <Tooltip title={mode === "dark" ? "สลับไปโหมดสว่าง" : "สลับไปโหมดมืด"}>
-                    <IconButton onClick={toggleTheme} size="small">
+                    <IconButton onClick={toggleTheme}>
                       {mode === "dark" ? <LightModeIcon /> : <DarkModeIcon />}
                     </IconButton>
                   </Tooltip>
-                  <Button variant="outlined" startIcon={<ArrowBackIcon />} onClick={() => router.push("/rooms")}>
-                    รอบ
-                  </Button>
-                  <Button variant="outlined" onClick={logout}>
-                    ออกจากระบบ
-                  </Button>
+                  <Tooltip title={`ออกจากระบบ (${userRole})`}>
+                    <IconButton onClick={logout} aria-label="ออกจากระบบ"><LogoutIcon /></IconButton>
+                  </Tooltip>
                 </Stack>
               </Box>
             ) : null}
@@ -2401,92 +2434,45 @@ export default function HomePage() {
                 variant="scrollable"
                 scrollButtons="auto"
               >
-                <Tab label={`กำลังตี (${activePlayers.length})`} />
-                <Tab label="จัด Match ล่วงหน้า" disabled={isEditingLocked} />
-                <Tab label="สมุดจด" disabled={isEditingLocked} />
-                <Tab label={`Match (${matchGroups.length})`} disabled={isEditingLocked} />
                 <Tab
-                  label={`สรุปจ่ายแล้ว (${formatBaht(summary.paidAmount)} บาท)`}
+                  icon={<TimelineIcon />}
+                  iconPosition="start"
+                  label={`กำลังตี ${activePlayers.length}`}
+                />
+                <Tab icon={<LayersIcon />} iconPosition="start" label="จัด Match" disabled={isEditingLocked} />
+                <Tab icon={<MenuBookIcon />} iconPosition="start" label="สมุดจด" disabled={isEditingLocked} />
+                <Tab icon={<GroupsIcon />} iconPosition="start" label="Match" disabled={isEditingLocked} />
+                <Tab
+                  icon={<CreditCardIcon />}
+                  iconPosition="start"
+                  label={`จ่ายเงิน ${session.players.filter((player) => !player.paid).length}`}
                   disabled={isEditingLocked}
                 />
-                <Tab label="จัดการข้อมูล" disabled={isEditingLocked} />
+                <Tab icon={<StorageIcon />} iconPosition="start" label="ข้อมูล" disabled={isEditingLocked} />
               </Tabs>
               <Divider />
 
               {activeTab === 0 ? (
-                <Box className="sheetContent">
-                  <Box className="sheetToolbar">
-                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-                      <TextField
-                        label="ค้นหาชื่อ"
-                        value={searchTerm}
-                        onChange={(event) => setSearchTerm(event.target.value)}
-                        className="searchField"
-                        autoComplete="off"
-                      />
-                      <ToggleButtonGroup
-                        value={playerSortMode}
-                        exclusive
-                        onChange={(_, nextValue: "queue" | "alphabetical" | null) => {
-                          if (nextValue) {
-                            setPlayerSortMode(nextValue);
-                          }
-                        }}
-                        size="small"
-                        aria-label="ตัวเลือกการเรียงรายชื่อ"
-                      >
-                        <ToggleButton value="queue" aria-label="เรียงตามคิว">
-                          ตามคิว
-                        </ToggleButton>
-                        <ToggleButton value="alphabetical" aria-label="เรียงตามอักษร">
-                          ก-ฮ
-                        </ToggleButton>
-                      </ToggleButtonGroup>
-                    </Stack>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <Typography fontWeight={800}>ลูกที่</Typography>
-                      <IconButton
-                        aria-label="ลดลูก number"
-                        onClick={() => stepCurrentShuttleNumber(-1)}
-                        disabled={isEditingMode || !canManageSession || activeShuttleNumber <= 1}
-                      >
-                        <RemoveIcon />
-                      </IconButton>
-                      <TextField
-                        label="ลูกที่"
-                        type="number"
-                        value={activeShuttleNumber}
-                        onChange={(event) => updateCurrentShuttleNumber(event.target.value)}
-                        disabled={isEditingMode || !canManageSession}
-                        inputProps={{ min: 1, "aria-label": "ลูก number" }}
-                        className="currentShuttleField"
-                      />
-                      <IconButton
-                        aria-label="เพิ่มลูก number"
-                        onClick={() => stepCurrentShuttleNumber(1)}
-                        disabled={isEditingMode || !canManageSession}
-                      >
-                        <AddIcon />
-                      </IconButton>
-                    </Stack>
-                  </Box>
-                  <CurrentShuttlePicker
-                    summary={currentShuttleSummary}
-                    players={visibleActivePlayers}
-                    voicePlayers={activePlayers}
-                    allPlayerCount={activePlayers.length}
-                    hasSearch={Boolean(normalizedSearch)}
-                    activeShuttleNumber={activeShuttleNumber}
-                    sortMode={playerSortMode}
-                    now={now}
-                    isEditingMode={isEditingMode}
-                    isEditingLocked={isEditingLocked}
-                    canManageSession={canManageSession}
-                    onTogglePlayer={addActiveShuttlePlayer}
-                    onRemovePlayer={removeActiveShuttlePlayer}
-                  />
-                  <PriorityPlayers players={priorityPlayers} now={now} />
-                </Box>
+                <MatchQueuePicker
+                  players={activePlayers}
+                  plannedMatches={session.plannedMatches}
+                  selectedPlayerIds={currentShuttleSummary.entries.map((entry) => entry.playerId)}
+                  search={queuePickerSearch}
+                  now={now}
+                  sortMode={playerSortMode}
+                  activeShuttleNumber={activeShuttleNumber}
+                  isEditingMode={isEditingMode}
+                  canManageSession={canManageSession && !isEditingLocked}
+                  onSearchChange={setQueuePickerSearch}
+                  onSortModeChange={setPlayerSortMode}
+                  onShuttleNumberChange={updateCurrentShuttleNumber}
+                  onStepShuttleNumber={stepCurrentShuttleNumber}
+                  onTogglePlayer={(playerId) =>
+                    currentShuttleSummary.entries.some((entry) => entry.playerId === playerId)
+                      ? removeActiveShuttlePlayer(playerId)
+                      : addActiveShuttlePlayer(playerId)
+                  }
+                />
               ) : activeTab === 1 ? (
                 <PlannedMatchPanel
                   plannedMatches={session.plannedMatches}
@@ -3021,6 +3007,9 @@ function LoginScreen({
   return (
     <Box component="main" className="loginShell">
       <Paper className="loginPanel" elevation={0}>
+        <Box className="loginLogo" aria-hidden="true">
+          <Box component="img" src="/app-icon.svg" alt="" className="brandIconImage" />
+        </Box>
         <Box>
           <Typography variant="h4" component="h1" className="appTitle">
             สมุดค่าตีแบด
@@ -3827,6 +3816,206 @@ function PriorityPlayers({ players, now }: { players: Player[]; now: string }) {
       </Stack>
     </Box>
   );
+}
+
+function MatchQueuePicker({
+  players,
+  plannedMatches,
+  selectedPlayerIds,
+  search,
+  now,
+  sortMode,
+  activeShuttleNumber,
+  isEditingMode,
+  canManageSession,
+  onSearchChange,
+  onSortModeChange,
+  onShuttleNumberChange,
+  onStepShuttleNumber,
+  onTogglePlayer
+}: {
+  players: Player[];
+  plannedMatches: PlannedMatch[];
+  selectedPlayerIds: string[];
+  search: string;
+  now: string;
+  sortMode: "queue" | "alphabetical";
+  activeShuttleNumber: number;
+  isEditingMode: boolean;
+  canManageSession: boolean;
+  onSearchChange: (value: string) => void;
+  onSortModeChange: (mode: "queue" | "alphabetical") => void;
+  onShuttleNumberChange: (value: string) => void;
+  onStepShuttleNumber: (step: number) => void;
+  onTogglePlayer: (playerId: string) => void;
+}) {
+  const playerById = useMemo(
+    () => new Map(players.map((player) => [player.id, player])),
+    [players]
+  );
+  const queuedMatches = useMemo(
+    () => plannedMatches.filter((match) => !match.confirmed && match.playerIds.length > 0),
+    [plannedMatches]
+  );
+  const queuedPlayerIds = useMemo(
+    () => new Set(queuedMatches.flatMap((match) => match.playerIds)),
+    [queuedMatches]
+  );
+  const normalizedSearch = search.trim().toLocaleLowerCase("th-TH");
+  const visiblePlayers = useMemo(() => {
+    const filteredPlayers = players.filter((player) =>
+      !normalizedSearch || player.name.toLocaleLowerCase("th-TH").includes(normalizedSearch)
+    );
+    return sortMode === "alphabetical"
+      ? [...filteredPlayers].sort((first, second) =>
+        first.name.localeCompare(second.name, "th-TH", { sensitivity: "base" })
+      )
+      : filteredPlayers;
+  }, [normalizedSearch, players, sortMode]);
+  const selectedPlayers = selectedPlayerIds
+    .map((id) => playerById.get(id))
+    .filter((player): player is Player => Boolean(player));
+  const overlapPlayers = selectedPlayers.filter((player) => queuedPlayerIds.has(player.id));
+
+  return (
+    <Box className="matchQueuePicker" role="region" aria-label="เลือกผู้เล่นเข้าคิว Match">
+      <Box className="matchQueueControls">
+        <Box className="matchQueueSelectionHeader">
+          <Typography component="h2" className="matchQueueTitle">เลือกผู้เล่น</Typography>
+          <Box className="matchQueueProgress" aria-label={`เลือกแล้ว ${selectedPlayers.length} จาก 4 คน`}>
+            <span className="matchQueueDots" aria-hidden="true">
+              {[0, 1, 2, 3].map((index) => (
+                <i key={index} className={index < selectedPlayers.length ? "isFilled" : ""} />
+              ))}
+            </span>
+            <strong className={selectedPlayers.length === 4 ? "isComplete" : ""}>
+              {selectedPlayers.length}/4
+            </strong>
+          </Box>
+        </Box>
+
+        <Box className="matchQueueSlots" aria-label="ช่องผู้เล่นที่เลือก">
+          {[0, 1, 2, 3].map((index) => {
+            const player = selectedPlayers[index];
+            return (
+              <button
+                key={index}
+                type="button"
+                className={`matchQueueSlot${player ? " isSelected" : ""}`}
+                disabled={!player || !canManageSession}
+                onClick={() => player && onTogglePlayer(player.id)}
+                aria-label={player ? `ยกเลิกเลือก ${player.name}` : `ผู้เล่น ${index + 1}`}
+              >
+                {player ? (
+                  <>
+                    <span className="matchQueueSlotName">{getFirstName(player.name)}</span>
+                    <span className="matchQueueSlotMeta">
+                      <CloseIcon aria-hidden="true" />
+                    </span>
+                  </>
+                ) : <span>ผู้เล่น {index + 1}</span>}
+              </button>
+            );
+          })}
+        </Box>
+
+        <Box className="matchQueueTools">
+          <TextField
+            value={search}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder="ค้นหาชื่อ..."
+            fullWidth
+            autoComplete="off"
+            inputProps={{ "aria-label": "ค้นหาชื่อผู้เล่น" }}
+            InputProps={{
+              startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment>,
+              endAdornment: search ? (
+                <InputAdornment position="end">
+                  <IconButton size="small" aria-label="ล้างคำค้นหา" onClick={() => onSearchChange("")}>
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                </InputAdornment>
+              ) : undefined
+            }}
+          />
+          <ToggleButtonGroup
+            value={sortMode}
+            exclusive
+            size="small"
+            onChange={(_, nextMode: "queue" | "alphabetical" | null) => {
+              if (nextMode) onSortModeChange(nextMode);
+            }}
+            aria-label="ตัวเลือกการเรียงรายชื่อ"
+          >
+            <ToggleButton value="queue" aria-label="เรียงตามคิว">ตามคิว</ToggleButton>
+            <ToggleButton value="alphabetical" aria-label="เรียงตามอักษร">ก-ฮ</ToggleButton>
+          </ToggleButtonGroup>
+
+          <Box className="matchQueueShuttleControl">
+            <Typography fontWeight={800}>ลูกที่</Typography>
+            <IconButton
+              aria-label="ลดลูก number"
+              onClick={() => onStepShuttleNumber(-1)}
+              disabled={isEditingMode || !canManageSession || activeShuttleNumber <= 1}
+            >
+              <RemoveIcon />
+            </IconButton>
+            <TextField
+              type="number"
+              value={activeShuttleNumber}
+              onChange={(event) => onShuttleNumberChange(event.target.value)}
+              disabled={isEditingMode || !canManageSession}
+              inputProps={{ min: 1, "aria-label": "ลูก number" }}
+              className="currentShuttleField"
+            />
+            <IconButton
+              aria-label="เพิ่มลูก number"
+              onClick={() => onStepShuttleNumber(1)}
+              disabled={isEditingMode || !canManageSession}
+            >
+              <AddIcon />
+            </IconButton>
+          </Box>
+        </Box>
+
+        {selectedPlayers.length === 4 && overlapPlayers.length > 0 ? (
+          <Box className="matchQueueWarning" role="alert">
+            <WarningAmberIcon />
+            <span>{overlapPlayers.map((player) => getFirstName(player.name)).join(", ")} อยู่ในคิว Match อื่นแล้ว</span>
+          </Box>
+        ) : null}
+      </Box>
+
+      <Box className="matchQueuePlayerGrid" aria-label="รายชื่อผู้เล่น">
+        {visiblePlayers.length === 0 ? (
+          <Box className="matchQueueNoResults">ไม่พบชื่อที่ค้นหา</Box>
+        ) : visiblePlayers.map((player, index) => {
+          const isSelected = selectedPlayerIds.includes(player.id);
+          const disabled = !canManageSession || (selectedPlayerIds.length === 4 && !isSelected);
+          return (
+            <Button
+              key={player.id}
+              type="button"
+              className={`playerPickerButton ${getWaitingRowClass(player, now)}${isSelected ? " playerPickerButtonSelected" : ""}`}
+              variant={isSelected ? "contained" : "outlined"}
+              disabled={disabled}
+              onClick={() => onTogglePlayer(player.id)}
+              aria-pressed={isSelected}
+              aria-label={`${isSelected ? "ยกเลิกเลือก" : "เลือก"} ${player.name}`}
+            >
+              <span className="playerPickerOrder">{index + 1}</span>
+              <span className="playerPickerName">{player.name}</span>
+            </Button>
+          );
+        })}
+      </Box>
+
+    </Box>
+  );
+}
+
+function getFirstName(name: string): string {
+  return name.trim().split(/\s+/u)[0] || name;
 }
 
 function PlannedMatchPanel({
