@@ -2295,9 +2295,6 @@ export default function HomePage() {
                   />
                 </Box>
                 <Stack direction="row" spacing={1} alignItems="center" className="authStatus">
-                  <Button variant="contained" startIcon={<AddIcon />} onClick={() => setAddPlayerDialogOpen(true)}>
-                    เพิ่มผู้เล่น
-                  </Button>
                   <Tooltip title={mode === "dark" ? "สลับไปโหมดสว่าง" : "สลับไปโหมดมืด"}>
                     <IconButton onClick={toggleTheme}>
                       {mode === "dark" ? <LightModeIcon /> : <DarkModeIcon />}
