@@ -2442,7 +2442,7 @@ export default function HomePage() {
                 <Tab
                   icon={<CreditCardIcon />}
                   iconPosition="start"
-                  label={`จ่ายเงิน ${session.players.filter((player) => !player.paid).length}`}
+                  label={`จ่ายเงิน ${session.players.filter((player) => player.paid).length}`}
                   disabled={isEditingLocked}
                 />
                 <Tab icon={<StorageIcon />} iconPosition="start" label="ข้อมูล" disabled={isEditingLocked} />
