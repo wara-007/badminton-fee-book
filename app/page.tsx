@@ -120,6 +120,7 @@ import {
   getPaymentAccount,
   normalizePaymentAccountId
 } from "@/lib/payment-accounts";
+import { DatabaseUsage, formatMegabytes } from "@/lib/database-usage";
 
 const bahtFormatter = new Intl.NumberFormat("th-TH");
 const appVersion = packageInfo.version;
@@ -264,6 +265,9 @@ export default function HomePage() {
   const [lastLocalSavedAt, setLastLocalSavedAt] = useState<string | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [remoteNotification, setRemoteNotification] = useState<string | null>(null);
+  const [databaseUsage, setDatabaseUsage] = useState<DatabaseUsage | null>(null);
+  const [databaseUsageError, setDatabaseUsageError] = useState("");
+  const [databaseUsageLoading, setDatabaseUsageLoading] = useState(false);
   const [dialog, setDialog] = useState<AppDialogState>({
     open: false,
     mode: "alert",
@@ -742,6 +746,26 @@ export default function HomePage() {
   const userRole = authSession?.role ?? null;
   const canManageSession = userRole === "admin" && !closedAt;
   const canSetPaid = (userRole === "admin" || userRole === "admin2") && !closedAt;
+
+  const refreshDatabaseUsage = useCallback(async () => {
+    if (userRole !== "admin" || !hasSupabaseConfig) return;
+    setDatabaseUsageLoading(true);
+    setDatabaseUsageError("");
+    try {
+      const response = await fetch("/api/database-usage", { cache: "no-store" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "ตรวจสอบพื้นที่ไม่สำเร็จ");
+      setDatabaseUsage(result as DatabaseUsage);
+    } catch (error) {
+      setDatabaseUsageError(error instanceof Error ? error.message : "ตรวจสอบพื้นที่ไม่สำเร็จ");
+    } finally {
+      setDatabaseUsageLoading(false);
+    }
+  }, [userRole]);
+
+  useEffect(() => {
+    if (activeTab === 5) void refreshDatabaseUsage();
+  }, [activeTab, refreshDatabaseUsage]);
   const isEditingMode = editingShuttleNumber !== null;
   const isEditingLocked = isEditingMode && !currentShuttleSummary.isComplete;
   const isEmergencySyncStatus =
@@ -2626,6 +2650,11 @@ export default function HomePage() {
                   matchSetupMode={matchSetupMode}
                   onToggleMatchSetupMode={toggleMatchSetupMode}
                   canManageSession={canManageSession}
+                  showDatabaseUsage={userRole === "admin" && hasSupabaseConfig}
+                  databaseUsage={databaseUsage}
+                  databaseUsageError={databaseUsageError}
+                  databaseUsageLoading={databaseUsageLoading}
+                  onRefreshDatabaseUsage={refreshDatabaseUsage}
                 />
               )}
             </Paper>
@@ -4605,7 +4634,12 @@ function DataManagementPanel({
   canFinishSession,
   matchSetupMode,
   onToggleMatchSetupMode,
-  canManageSession
+  canManageSession,
+  showDatabaseUsage,
+  databaseUsage,
+  databaseUsageError,
+  databaseUsageLoading,
+  onRefreshDatabaseUsage
 }: {
   onClearPlayData: () => void;
   onResetSession: () => void;
@@ -4618,6 +4652,11 @@ function DataManagementPanel({
   matchSetupMode: boolean;
   onToggleMatchSetupMode: () => void;
   canManageSession: boolean;
+  showDatabaseUsage: boolean;
+  databaseUsage: DatabaseUsage | null;
+  databaseUsageError: string;
+  databaseUsageLoading: boolean;
+  onRefreshDatabaseUsage: () => void;
 }) {
   return (
     <Box className="dataManagementPanel" role="region" aria-label="จัดการข้อมูล">
@@ -4629,6 +4668,60 @@ function DataManagementPanel({
           รวมเครื่องมือ export และจัดการข้อมูลรอบนี้
         </Typography>
       </Box>
+      {showDatabaseUsage ? (
+        <Paper
+          className={`databaseUsagePanel${databaseUsage?.level === "warning" ? " databaseUsageWarning" : ""}${databaseUsage?.level === "critical" ? " databaseUsageCritical" : ""}`}
+          elevation={0}
+          role="status"
+        >
+          <Box className="databaseUsageHeader">
+            <Box>
+              <Typography fontWeight={900}>พื้นที่ฐานข้อมูล Supabase</Typography>
+              {databaseUsage ? (
+                <Typography color="text.secondary">
+                  ใช้ {formatMegabytes(databaseUsage.usedBytes)} จาก {formatMegabytes(databaseUsage.limitBytes)} MB
+                </Typography>
+              ) : (
+                <Typography color={databaseUsageError ? "error" : "text.secondary"}>
+                  {databaseUsageError || "กำลังตรวจสอบพื้นที่"}
+                </Typography>
+              )}
+            </Box>
+            <Stack direction="row" spacing={1} alignItems="center">
+              {databaseUsage ? (
+                <Chip
+                  label={`${databaseUsage.percentUsed}%`}
+                  color={databaseUsage.level === "critical" ? "error" : databaseUsage.level === "warning" ? "warning" : "success"}
+                />
+              ) : null}
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<RefreshIcon />}
+                onClick={onRefreshDatabaseUsage}
+                disabled={databaseUsageLoading}
+              >
+                ตรวจอีกครั้ง
+              </Button>
+            </Stack>
+          </Box>
+          {databaseUsage ? (
+            <Box className="databaseUsageTrack" aria-label={`ใช้พื้นที่ฐานข้อมูล ${databaseUsage.percentUsed}%`}>
+              <Box
+                className="databaseUsageFill"
+                sx={{ width: `${Math.min(databaseUsage.percentUsed, 100)}%` }}
+              />
+            </Box>
+          ) : null}
+          {databaseUsage?.level !== "normal" ? (
+            <Typography className="databaseUsageMessage">
+              {databaseUsage?.level === "critical"
+                ? "พื้นที่ใกล้เต็มมาก ควรลบข้อมูลที่ไม่จำเป็นหรือเพิ่มแผนทันที"
+                : "พื้นที่เกิน 80% แล้ว ควรวางแผนล้างข้อมูลหรือเพิ่มพื้นที่"}
+            </Typography>
+          ) : null}
+        </Paper>
+      ) : null}
       <Box className="paymentAccountSettings">
         <Typography fontWeight={800}>บัญชีรับเงิน QR</Typography>
         <ToggleButtonGroup

@@ -1,3 +1,14 @@
+create or replace function public.get_badminton_database_usage()
+returns jsonb language sql stable security definer set search_path = pg_catalog as $$
+  select jsonb_build_object(
+    'used_bytes', pg_database_size(current_database()),
+    'checked_at', now()
+  )
+$$;
+
+revoke all on function public.get_badminton_database_usage() from public, anon, authenticated;
+grant execute on function public.get_badminton_database_usage() to service_role;
+
 create or replace function public.close_normalized_badminton_room(p_room_id text)
 returns timestamptz language plpgsql security definer set search_path = public as $$
 declare result timestamptz;

@@ -29,3 +29,5 @@ pnpm-debug.log*
 
 # local feature worktrees
 .worktrees/
+.vercel
+.env*

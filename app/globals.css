@@ -1669,6 +1669,57 @@ thead .stickyAction {
   padding: 18px;
 }
 
+.databaseUsagePanel {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--card-bg-alt);
+}
+
+.databaseUsageWarning {
+  border-color: var(--warning-border);
+  background: var(--warning-bg);
+}
+
+.databaseUsageCritical {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+}
+
+.databaseUsageHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.databaseUsageTrack {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--border-light);
+}
+
+.databaseUsageFill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+}
+
+.databaseUsageWarning .databaseUsageFill {
+  background: var(--warning-text);
+}
+
+.databaseUsageCritical .databaseUsageFill {
+  background: var(--danger-text);
+}
+
+.databaseUsageMessage {
+  font-weight: 800;
+}
+
 .dataManagementActions {
   align-items: flex-start;
 }
@@ -2096,6 +2147,11 @@ thead .stickyAction {
 
   .plannedMatchPanelAlphabet {
     grid-template-columns: 1fr;
+  }
+
+  .databaseUsageHeader {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .plannedPlayerGrid {

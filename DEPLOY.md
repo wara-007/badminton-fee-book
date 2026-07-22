@@ -14,7 +14,15 @@ Create `.env.local`:
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+SUPABASE_DATABASE_LIMIT_MB=500
+CRON_SECRET=use-a-random-string-with-at-least-16-characters
+LINE_CHANNEL_ACCESS_TOKEN=your-line-messaging-api-channel-access-token
+LINE_ALERT_TO=your-line-user-group-or-room-id
 ```
+
+`SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`, and the LINE values are server-only.
+Never prefix them with `NEXT_PUBLIC_`.
 
 ## Normalized Storage Staged Migration
 
@@ -46,6 +54,17 @@ legacy row contains changes made after cutover.
 Legacy activity logs are also retained during the staged rollout.
 
 Restart `npm run dev`.
+
+## Database Usage Alert
+
+The Data tab reads database size from `/api/database-usage`. Vercel calls the
+same endpoint every day at 09:00 Asia/Bangkok (02:00 UTC) and sends a LINE push
+message at 80% usage (warning) or 90% usage (critical).
+
+1. Run the latest `supabase/normalized-rpcs.sql` to install the protected usage RPC.
+2. Add all server-only variables above to the Vercel Production environment.
+3. Add the LINE Official Account to the target user or group before using its ID.
+4. Deploy production. Vercel Cron does not run on preview deployments.
 
 ## Vercel
 
