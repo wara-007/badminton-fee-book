@@ -66,6 +66,17 @@ message at 80% usage (warning) or 90% usage (critical).
 3. Add the LINE Official Account to the target user or group before using its ID.
 4. Deploy production. Vercel Cron does not run on preview deployments.
 
+## Automatic Session Opening
+
+Vercel calls `/api/sessions/auto-open` every Tuesday, Friday, and Sunday at
+16:00 Asia/Bangkok (09:00 UTC). The endpoint creates a room named with the
+Bangkok date in `YYYY-MM-DD` format and sends its link to LINE. Repeated calls
+are safe: an existing room is preserved and is not announced again.
+
+This job uses the existing `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`,
+`LINE_CHANNEL_ACCESS_TOKEN`, and `LINE_ALERT_TO` server-only variables. It
+requires the normalized `badminton_rooms` schema described above.
+
 ## Vercel
 
 1. Import this project into Vercel.

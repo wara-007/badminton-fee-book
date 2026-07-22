@@ -3,6 +3,7 @@ import {
   DEFAULT_DATABASE_LIMIT_BYTES,
   createDatabaseUsage,
 } from "@/lib/database-usage";
+import { sendLinePush } from "@/lib/line";
 
 export const dynamic = "force-dynamic";
 
@@ -34,30 +35,6 @@ async function loadDatabaseUsage() {
   return createDatabaseUsage(Number(result?.used_bytes), getLimitBytes());
 }
 
-async function sendLineAlert(message: string): Promise<void> {
-  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
-  const recipient = process.env.LINE_ALERT_TO;
-  if (!token || !recipient) {
-    throw new Error("LINE alert is not configured");
-  }
-
-  const response = await fetch("https://api.line.me/v2/bot/message/push", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      to: recipient,
-      messages: [{ type: "text", text: message }],
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`LINE alert failed with status ${response.status}`);
-  }
-}
-
 export async function GET(request: Request) {
   const notify = new URL(request.url).searchParams.get("notify") === "1";
   if (notify) {
@@ -73,7 +50,7 @@ export async function GET(request: Request) {
 
     if (notify && usage.level !== "normal") {
       const label = usage.level === "critical" ? "เร่งด่วน" : "ใกล้เต็ม";
-      await sendLineAlert(
+      await sendLinePush(
         `Supabase ${label}: ฐานข้อมูลใช้ ${usage.percentUsed}% (${Math.round(usage.usedBytes / 1048576)} จาก ${Math.round(usage.limitBytes / 1048576)} MB)`,
       );
       notified = true;
