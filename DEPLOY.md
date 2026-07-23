@@ -18,6 +18,7 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 SUPABASE_DATABASE_LIMIT_MB=500
 CRON_SECRET=use-a-random-string-with-at-least-16-characters
 LINE_CHANNEL_ACCESS_TOKEN=your-line-messaging-api-channel-access-token
+LINE_CHANNEL_SECRET=your-line-messaging-api-channel-secret
 LINE_ALERT_TO=your-line-user-group-or-room-id
 ```
 
@@ -83,6 +84,18 @@ outside the normal Tuesday, Friday, and Sunday schedule for testing.
 This job uses the existing `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`,
 `LINE_CHANNEL_ACCESS_TOKEN`, and `LINE_ALERT_TO` server-only variables. It
 requires the normalized `badminton_rooms` schema described above.
+
+## LINE Group Destination
+
+Run `supabase/line-group-settings.sql`, then configure the Messaging API webhook
+URL as `https://badminton-fee-book.vercel.app/api/line/webhook` and add
+`LINE_CHANNEL_SECRET` to Vercel Production. Enable `Allow bot to join group
+chats` in LINE Developers before inviting the Official Account.
+
+The webhook verifies `x-line-signature` against the untouched request body.
+When the Official Account joins or receives an event in a group, the latest
+group ID is stored privately in Supabase. Automatic session announcements use
+that group first and fall back to `LINE_ALERT_TO` until a group is captured.
 
 ## Vercel
 

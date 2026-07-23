@@ -10,6 +10,24 @@ function isAuthorizedCron(request: Request): boolean {
   return Boolean(secret && request.headers.get("authorization") === `Bearer ${secret}`);
 }
 
+async function loadLineRecipient(): Promise<string | undefined> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !serviceRoleKey) return undefined;
+
+  const client = createClient(url, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data, error } = await client
+    .from("badminton_line_settings")
+    .select("recipient_id")
+    .eq("id", true)
+    .maybeSingle();
+  if (error) throw error;
+
+  return typeof data?.recipient_id === "string" ? data.recipient_id : undefined;
+}
+
 async function createSessionIfMissing(sessionId: string): Promise<boolean> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -79,7 +97,11 @@ export async function GET(request: Request) {
 
         const roomUrl = new URL("/", request.url);
         roomUrl.searchParams.set("room", sessionId);
-        await sendLinePush(`เปิดรอบ ${sessionId} แล้ว\n${roomUrl.toString()}`);
+        const recipient = await loadLineRecipient();
+        await sendLinePush(
+          `เปิดรอบ ${sessionId} แล้ว\n${roomUrl.toString()}`,
+          recipient,
+        );
         return true;
       },
     });
