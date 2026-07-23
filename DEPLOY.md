@@ -20,6 +20,8 @@ CRON_SECRET=use-a-random-string-with-at-least-16-characters
 LINE_CHANNEL_ACCESS_TOKEN=your-line-messaging-api-channel-access-token
 LINE_CHANNEL_SECRET=your-line-messaging-api-channel-secret
 LINE_ALERT_TO=your-line-user-group-or-room-id
+LINE_ADMIN_USER_IDS=U1234567890,U0987654321
+LINE_ADMIN_SETUP_CODE=one-time-private-chat-code
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`, and the LINE values are server-only.
@@ -96,6 +98,31 @@ The webhook verifies `x-line-signature` against the untouched request body.
 When the Official Account joins or receives an event in a group, the latest
 group ID is stored privately in Supabase. Automatic session announcements use
 that group first and fall back to `LINE_ALERT_TO` until a group is captured.
+
+Run `supabase/line-admin-payments.sql` to install the service-role-only,
+idempotent payment confirmation function. `LINE_ADMIN_USER_IDS` is a
+comma-separated allowlist of LINE user IDs that may use payment commands. For
+backward compatibility, if the allowlist is empty and `LINE_ALERT_TO` is a
+LINE user ID beginning with `U`, that user is treated as the only admin.
+If neither value identifies an admin, send `ตั้งแอดมิน <LINE_ADMIN_SETUP_CODE>`
+to the Official Account in a private chat. Only the first enabled admin can be
+registered with this code; never post it in a group.
+
+Additional admins send `ขอเป็นแอดมิน` in a private chat with the Official
+Account. Existing admins receive private `อนุมัติ` and `ปฏิเสธ` buttons. The
+request is single-use, decisions are recorded atomically, and the requester is
+notified of the result.
+
+Admin commands:
+
+- `ยอด สมชาย` uses today's Bangkok room.
+- `ยอด สมชาย 2026-07-21` uses the specified room.
+- If several names contain the query, LINE displays buttons for choosing the
+  exact player.
+- The payment card contains a fixed-amount PromptPay QR and a
+  `ยืนยันว่าจ่ายแล้ว` postback button. Confirmation recalculates the amount
+  inside Postgres, records the selected payment account, increments the room
+  revision, and is safe to press repeatedly.
 
 ## Vercel
 

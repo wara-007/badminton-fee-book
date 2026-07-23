@@ -1,11 +1,64 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import {
   LineWebhookEvent,
+  findLinePlayerMatches,
   getLineGroupIds,
+  isLineAdmin,
+  parseLineBalanceCommand,
   verifyLineWebhookSignature,
 } from "@/lib/line-webhook";
+import {
+  createAdminRequestMessage,
+  createBalanceMessage,
+  createPlayerChoiceMessage,
+  parseAdminReviewPostbackData,
+  parseLinePostbackData,
+  type LineMessage,
+} from "@/lib/line-messages";
+import { sendLineMessages, sendLineReply } from "@/lib/line";
+import {
+  getPaymentAccount,
+  normalizePaymentAccountId,
+} from "@/lib/payment-accounts";
+import { createPromptPayQrUrlFromPayload } from "@/lib/promptpay";
 
 export const dynamic = "force-dynamic";
+
+type RoomRow = {
+  id: string;
+  base_fee: number | string;
+  shuttle_fee: number | string;
+  closed_at: string | null;
+};
+
+type PlayerRow = {
+  id: string;
+  name: string;
+  paid: boolean;
+  paid_amount: number | string | null;
+};
+
+type LinePaymentRpcResult = {
+  status?: "paid" | "already-paid" | "not-found" | "room-closed";
+  player_name?: string;
+  amount?: number | string;
+};
+
+type LineAdminReviewRpcResult = {
+  status?: "approved" | "rejected" | "already-reviewed" | "not-found" | "forbidden";
+  requester_user_id?: string;
+  requester_display_name?: string;
+};
+
+function createServiceClient(): SupabaseClient | null {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !serviceRoleKey) return null;
+
+  return createClient(url, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
 
 async function loadLineGroupName(groupId: string): Promise<string | null> {
   const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
@@ -19,6 +72,399 @@ async function loadLineGroupName(groupId: string): Promise<string | null> {
 
   const result = await response.json() as { groupName?: string };
   return typeof result.groupName === "string" ? result.groupName : null;
+}
+
+async function loadLineUserName(userId: string): Promise<string> {
+  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  if (!token) return "ผู้ใช้ LINE";
+
+  const response = await fetch(
+    `https://api.line.me/v2/bot/profile/${encodeURIComponent(userId)}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!response.ok) return "ผู้ใช้ LINE";
+
+  const result = await response.json() as { displayName?: string };
+  return typeof result.displayName === "string" && result.displayName.trim()
+    ? result.displayName.trim()
+    : "ผู้ใช้ LINE";
+}
+
+async function storeLineGroups(
+  client: SupabaseClient,
+  groupIds: string[],
+): Promise<void> {
+  for (const groupId of groupIds) {
+    const groupName = await loadLineGroupName(groupId);
+    const { error } = await client.from("badminton_line_settings").upsert({
+      id: true,
+      recipient_id: groupId,
+      recipient_type: "group",
+      group_name: groupName,
+      updated_at: new Date().toISOString(),
+    });
+    if (error) throw error;
+  }
+}
+
+async function loadRoomPlayers(
+  client: SupabaseClient,
+  sessionId: string,
+): Promise<{ room: RoomRow | null; players: PlayerRow[] }> {
+  const [{ data: room, error: roomError }, { data: players, error: playersError }] =
+    await Promise.all([
+      client
+        .from("badminton_rooms")
+        .select("id, base_fee, shuttle_fee, closed_at")
+        .eq("id", sessionId)
+        .maybeSingle(),
+      client
+        .from("badminton_players")
+        .select("id, name, paid, paid_amount")
+        .eq("room_id", sessionId)
+        .order("position"),
+    ]);
+  if (roomError) throw roomError;
+  if (playersError) throw playersError;
+
+  return {
+    room: room as RoomRow | null,
+    players: (players ?? []) as PlayerRow[],
+  };
+}
+
+async function createPlayerBalanceReply(
+  client: SupabaseClient,
+  sessionId: string,
+  playerId: string,
+): Promise<LineMessage> {
+  const [{ data: room, error: roomError }, { data: player, error: playerError }] =
+    await Promise.all([
+      client
+        .from("badminton_rooms")
+        .select("id, base_fee, shuttle_fee, closed_at")
+        .eq("id", sessionId)
+        .maybeSingle(),
+      client
+        .from("badminton_players")
+        .select("id, name, paid, paid_amount")
+        .eq("room_id", sessionId)
+        .eq("id", playerId)
+        .maybeSingle(),
+    ]);
+  if (roomError) throw roomError;
+  if (playerError) throw playerError;
+  if (!room) return textMessage(`ไม่พบรอบ ${sessionId}`);
+  if (!player) return textMessage(`ไม่พบรายชื่อนี้ในรอบ ${sessionId}`);
+
+  const typedPlayer = player as PlayerRow;
+  if (typedPlayer.paid) {
+    const paidAmount = Number(typedPlayer.paid_amount) || 0;
+    return textMessage(
+      `✅ ${typedPlayer.name} ชำระแล้ว\nรอบ ${sessionId}\nจำนวน ${formatBaht(paidAmount)} บาท`,
+    );
+  }
+
+  const { count: shuttleCount, error: countError } = await client
+    .from("badminton_shuttle_marks")
+    .select("*", { count: "exact", head: true })
+    .eq("room_id", sessionId)
+    .eq("player_id", playerId);
+  if (countError) throw countError;
+
+  const typedRoom = room as RoomRow;
+  const amount =
+    Number(typedRoom.base_fee) +
+    (shuttleCount ?? 0) * Number(typedRoom.shuttle_fee);
+  const accountId = await loadPaymentAccountId(client);
+  const account = getPaymentAccount(accountId);
+
+  return createBalanceMessage({
+    sessionId,
+    playerId,
+    playerName: typedPlayer.name,
+    amount,
+    shuttleCount: shuttleCount ?? 0,
+    qrImageUrl: createPromptPayQrUrlFromPayload(account.payload, amount),
+    accountId,
+    accountLabel: account.label,
+    recipientName: account.recipientName,
+  });
+}
+
+async function loadPaymentAccountId(client: SupabaseClient) {
+  const { data, error } = await client
+    .from("badminton_payment_settings")
+    .select("selected_account_id")
+    .eq("id", true)
+    .maybeSingle();
+  if (error) throw error;
+  return normalizePaymentAccountId(data?.selected_account_id);
+}
+
+async function isAuthorizedLineAdmin(
+  client: SupabaseClient,
+  userId: string | undefined,
+): Promise<boolean> {
+  if (isLineAdmin(userId)) return true;
+  if (!userId) return false;
+
+  const { data, error } = await client
+    .from("badminton_line_admins")
+    .select("user_id")
+    .eq("user_id", userId)
+    .eq("enabled", true)
+    .maybeSingle();
+  if (error) throw error;
+  return Boolean(data);
+}
+
+async function handleAdminRegistration(
+  client: SupabaseClient,
+  event: LineWebhookEvent,
+  text: string,
+): Promise<LineMessage | null> {
+  const match = text.trim().match(/^ตั้งแอดมิน\s+(\S+)$/u);
+  if (!match) return null;
+  if (event.source?.type !== "user" || !event.source.userId) {
+    return textMessage("กรุณาส่งคำสั่งตั้งแอดมินในแชตส่วนตัวกับบอท");
+  }
+
+  const setupCode = process.env.LINE_ADMIN_SETUP_CODE;
+  if (!setupCode || match[1] !== setupCode) {
+    return textMessage("รหัสตั้งแอดมินไม่ถูกต้อง");
+  }
+
+  const { count, error: countError } = await client
+    .from("badminton_line_admins")
+    .select("*", { count: "exact", head: true })
+    .eq("enabled", true);
+  if (countError) throw countError;
+  if ((count ?? 0) > 0) {
+    return textMessage("มีแอดมิน LINE ลงทะเบียนแล้ว");
+  }
+
+  const { error } = await client.from("badminton_line_admins").upsert({
+    user_id: event.source.userId,
+    enabled: true,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw error;
+  return textMessage("✅ ลงทะเบียนเป็นแอดมินเรียบร้อยแล้ว");
+}
+
+async function handleAdminRequest(
+  client: SupabaseClient,
+  event: LineWebhookEvent,
+  text: string,
+): Promise<LineMessage | null> {
+  if (text.trim() !== "ขอเป็นแอดมิน") return null;
+  if (event.source?.type !== "user" || !event.source.userId) {
+    return textMessage("กรุณาส่ง “ขอเป็นแอดมิน” ในแชตส่วนตัวกับบอท");
+  }
+  if (await isAuthorizedLineAdmin(client, event.source.userId)) {
+    return textMessage("คุณเป็นแอดมินอยู่แล้ว");
+  }
+
+  const { data: pending, error: pendingError } = await client
+    .from("badminton_line_admin_requests")
+    .select("id")
+    .eq("requester_user_id", event.source.userId)
+    .eq("status", "pending")
+    .maybeSingle();
+  if (pendingError) throw pendingError;
+  if (pending) {
+    return textMessage("คำขอของคุณกำลังรอแอดมินพิจารณา");
+  }
+
+  const requesterName = await loadLineUserName(event.source.userId);
+  const { data: requestRow, error: requestError } = await client
+    .from("badminton_line_admin_requests")
+    .insert({
+      requester_user_id: event.source.userId,
+      requester_display_name: requesterName,
+      status: "pending",
+    })
+    .select("id")
+    .single();
+  if (requestError) throw requestError;
+
+  const { data: admins, error: adminError } = await client
+    .from("badminton_line_admins")
+    .select("user_id")
+    .eq("enabled", true);
+  if (adminError) throw adminError;
+  if (!admins?.length) {
+    await client
+      .from("badminton_line_admin_requests")
+      .delete()
+      .eq("id", requestRow.id);
+    return textMessage(
+      "ยังไม่มีแอดมินสำหรับอนุมัติ กรุณาลงทะเบียนแอดมินคนแรกด้วยรหัสตั้งต้น",
+    );
+  }
+
+  const approvalMessage = createAdminRequestMessage({
+    requestId: String(requestRow.id),
+    requesterName,
+  });
+  const deliveries = await Promise.allSettled(
+    admins.map((admin) =>
+      sendLineMessages([approvalMessage], String(admin.user_id)),
+    ),
+  );
+  const delivered = deliveries.filter(
+    (result) => result.status === "fulfilled",
+  ).length;
+  if (delivered === 0) {
+    throw new Error("Failed to notify any LINE admin");
+  }
+
+  return textMessage("ส่งคำขอให้แอดมินพิจารณาแล้ว");
+}
+
+async function handleBalanceCommand(
+  client: SupabaseClient,
+  event: LineWebhookEvent,
+  text: string,
+): Promise<LineMessage | null> {
+  const command = parseLineBalanceCommand(text);
+  if (!command) return null;
+  if (!await isAuthorizedLineAdmin(client, event.source?.userId)) {
+    return textMessage("คำสั่งนี้ใช้ได้เฉพาะแอดมิน");
+  }
+
+  const { room, players } = await loadRoomPlayers(client, command.sessionId);
+  if (!room) return textMessage(`ไม่พบรอบ ${command.sessionId}`);
+
+  const matches = findLinePlayerMatches(players, command.playerQuery);
+  if (matches.length === 0) {
+    return textMessage(
+      `ไม่พบชื่อ “${command.playerQuery}” ในรอบ ${command.sessionId}`,
+    );
+  }
+  if (matches.length > 1) {
+    return createPlayerChoiceMessage({
+      sessionId: command.sessionId,
+      players: matches,
+    });
+  }
+
+  return createPlayerBalanceReply(client, command.sessionId, matches[0].id);
+}
+
+async function handlePostback(
+  client: SupabaseClient,
+  event: LineWebhookEvent,
+): Promise<LineMessage | null> {
+  const adminReview = parseAdminReviewPostbackData(event.postback?.data);
+  if (adminReview) {
+    if (!await isAuthorizedLineAdmin(client, event.source?.userId)) {
+      return textMessage("คำสั่งนี้ใช้ได้เฉพาะแอดมิน");
+    }
+
+    const { data, error } = await client.rpc("review_line_admin_request", {
+      p_request_id: adminReview.requestId,
+      p_reviewer_user_id: event.source?.userId,
+      p_approve: adminReview.decision === "approve",
+    });
+    if (error) throw error;
+
+    const result = (data ?? {}) as LineAdminReviewRpcResult;
+    if (result.status === "forbidden") {
+      return textMessage("คุณไม่มีสิทธิ์พิจารณาคำขอนี้");
+    }
+    if (result.status === "not-found") {
+      return textMessage("ไม่พบคำขอนี้");
+    }
+    if (result.status === "already-reviewed") {
+      return textMessage("คำขอนี้ได้รับการพิจารณาไปแล้ว");
+    }
+
+    const approved = result.status === "approved";
+    if (result.requester_user_id) {
+      try {
+        await sendLineMessages(
+          [textMessage(
+            approved
+              ? "✅ คำขอเป็นแอดมินได้รับการอนุมัติแล้ว"
+              : "คำขอเป็นแอดมินไม่ได้รับการอนุมัติ",
+          )],
+          result.requester_user_id,
+        );
+      } catch (error) {
+        console.error("Failed to notify LINE admin requester", error);
+      }
+    }
+
+    return textMessage(
+      `${approved ? "✅ อนุมัติ" : "ปฏิเสธ"}คำขอของ ` +
+      `${result.requester_display_name ?? "ผู้ใช้ LINE"} แล้ว`,
+    );
+  }
+
+  const postback = parseLinePostbackData(event.postback?.data);
+  if (!postback) return null;
+  if (!await isAuthorizedLineAdmin(client, event.source?.userId)) {
+    return textMessage("คำสั่งนี้ใช้ได้เฉพาะแอดมิน");
+  }
+  if (postback.action === "balance") {
+    return createPlayerBalanceReply(
+      client,
+      postback.sessionId,
+      postback.playerId,
+    );
+  }
+
+  const { data, error } = await client.rpc(
+    "mark_badminton_player_paid_from_line",
+    {
+      p_room_id: postback.sessionId,
+      p_player_id: postback.playerId,
+      p_paid_account_id: normalizePaymentAccountId(postback.accountId),
+      p_line_admin_user_id: event.source?.userId,
+    },
+  );
+  if (error) throw error;
+
+  const result = (data ?? {}) as LinePaymentRpcResult;
+  if (result.status === "not-found") {
+    return textMessage(`ไม่พบรายการในรอบ ${postback.sessionId}`);
+  }
+  if (result.status === "room-closed") {
+    return textMessage(`รอบ ${postback.sessionId} ปิดแล้ว จึงยังไม่แก้ไขสถานะ`);
+  }
+
+  const alreadyPaid = result.status === "already-paid";
+  return textMessage(
+    `${alreadyPaid ? "ℹ️ บันทึกไว้แล้ว" : "✅ บันทึกการชำระแล้ว"}\n` +
+    `${result.player_name ?? "ผู้เล่น"}\n` +
+    `รอบ ${postback.sessionId}\n` +
+    `จำนวน ${formatBaht(Number(result.amount) || 0)} บาท`,
+  );
+}
+
+async function processLineEvent(
+  client: SupabaseClient,
+  event: LineWebhookEvent,
+): Promise<boolean> {
+  if (!event.replyToken) return false;
+
+  let reply: LineMessage | null = null;
+  if (event.type === "message" && event.message?.type === "text") {
+    const text = event.message.text ?? "";
+    reply =
+      await handleAdminRequest(client, event, text) ??
+      await handleAdminRegistration(client, event, text) ??
+      await handleBalanceCommand(client, event, text);
+  } else if (event.type === "postback") {
+    reply = await handlePostback(client, event);
+  }
+  if (!reply) return false;
+
+  await sendLineReply(event.replyToken, [reply]);
+  return true;
 }
 
 export async function POST(request: Request) {
@@ -42,34 +488,37 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const groupIds = getLineGroupIds(Array.isArray(payload.events) ? payload.events : []);
-  if (groupIds.length === 0) {
-    return Response.json({ ok: true, groupsStored: 0 });
+  const events = Array.isArray(payload.events) ? payload.events : [];
+  if (events.length === 0) {
+    return Response.json({ ok: true, groupsStored: 0, eventsHandled: 0 });
   }
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceRoleKey) {
-    return Response.json({ error: "LINE group storage is not configured" }, { status: 503 });
+  const client = createServiceClient();
+  if (!client) {
+    return Response.json({ error: "LINE data service is not configured" }, { status: 503 });
   }
 
-  const client = createClient(url, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  for (const groupId of groupIds) {
-    const groupName = await loadLineGroupName(groupId);
-    const { error } = await client.from("badminton_line_settings").upsert({
-      id: true,
-      recipient_id: groupId,
-      recipient_type: "group",
-      group_name: groupName,
-      updated_at: new Date().toISOString(),
-    });
-    if (error) {
-      console.error("Failed to store LINE group destination", error);
-      return Response.json({ error: "Store group destination failed" }, { status: 503 });
+  try {
+    const groupIds = getLineGroupIds(events);
+    await storeLineGroups(client, groupIds);
+
+    let eventsHandled = 0;
+    for (const event of events) {
+      if (await processLineEvent(client, event)) eventsHandled += 1;
     }
+    return Response.json({ ok: true, groupsStored: groupIds.length, eventsHandled });
+  } catch (error) {
+    console.error("LINE webhook processing failed", error);
+    return Response.json({ error: "LINE webhook processing failed" }, { status: 503 });
   }
+}
 
-  return Response.json({ ok: true, groupsStored: groupIds.length });
+function textMessage(text: string): LineMessage {
+  return { type: "text", text };
+}
+
+function formatBaht(amount: number): string {
+  return new Intl.NumberFormat("th-TH", {
+    maximumFractionDigits: 2,
+  }).format(amount);
 }
