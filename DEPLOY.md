@@ -73,8 +73,9 @@ message at 80% usage (warning) or 90% usage (critical).
 
 Vercel calls `/api/sessions/auto-open` every Tuesday, Friday, and Sunday at
 16:00 Asia/Bangkok (09:00 UTC). The endpoint creates a room named with the
-Bangkok date in `YYYY-MM-DD` format and sends its link to LINE. Repeated calls
-are safe: an existing room is preserved and is not announced again.
+Bangkok date in `YYYY-MM-DD` format and sends its link privately to every
+enabled LINE admin. It never sends the room URL to a group. Repeated calls are
+safe: an existing room is preserved and is not announced again.
 
 To run an end-to-end check before the scheduled day, call the protected route
 with a scheduled Bangkok date, for example
@@ -83,9 +84,11 @@ with a scheduled Bangkok date, for example
 the same duplicate prevention as the scheduled job. An explicit date may be
 outside the normal Tuesday, Friday, and Sunday schedule for testing.
 
-This job uses the existing `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`,
-`LINE_CHANNEL_ACCESS_TOKEN`, and `LINE_ALERT_TO` server-only variables. It
-requires the normalized `badminton_rooms` schema described above.
+This job uses the existing `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`, and
+`LINE_CHANNEL_ACCESS_TOKEN` server-only variables. Admins are loaded from
+`badminton_line_admins`, with user IDs from `LINE_ADMIN_USER_IDS` and a
+user-type `LINE_ALERT_TO` retained only as backward-compatible admin
+fallbacks. Group IDs are never used for room announcements.
 
 ## LINE Group Destination
 

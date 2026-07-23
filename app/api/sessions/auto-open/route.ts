@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { runAutoOpenSession } from "@/lib/auto-open-session";
 import { sendLinePush } from "@/lib/line";
+import { mergeLineAdminRecipients } from "@/lib/line-admin-recipients";
 import { createInitialSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -10,22 +11,25 @@ function isAuthorizedCron(request: Request): boolean {
   return Boolean(secret && request.headers.get("authorization") === `Bearer ${secret}`);
 }
 
-async function loadLineRecipient(): Promise<string | undefined> {
+async function loadLineAdminRecipients(): Promise<string[]> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceRoleKey) return undefined;
+  if (!url || !serviceRoleKey) {
+    return mergeLineAdminRecipients([]);
+  }
 
   const client = createClient(url, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const { data, error } = await client
-    .from("badminton_line_settings")
-    .select("recipient_id")
-    .eq("id", true)
-    .maybeSingle();
+    .from("badminton_line_admins")
+    .select("user_id")
+    .eq("enabled", true);
   if (error) throw error;
 
-  return typeof data?.recipient_id === "string" ? data.recipient_id : undefined;
+  return mergeLineAdminRecipients(
+    (data ?? []).map((admin) => admin.user_id),
+  );
 }
 
 async function createSessionIfMissing(sessionId: string): Promise<boolean> {
@@ -88,21 +92,35 @@ export async function GET(request: Request) {
       allowUnscheduled: Boolean(requestedDate),
       createSession: createSessionIfMissing,
       notifySessionOpened: async (sessionId) => {
-        const lineConfigured = Boolean(
-          process.env.LINE_CHANNEL_ACCESS_TOKEN && process.env.LINE_ALERT_TO,
-        );
-        if (!lineConfigured && process.env.NODE_ENV !== "production") {
+        if (!process.env.LINE_CHANNEL_ACCESS_TOKEN) {
           return false;
         }
 
         const roomUrl = new URL("/", request.url);
         roomUrl.searchParams.set("room", sessionId);
-        const recipient = await loadLineRecipient();
-        await sendLinePush(
-          `เปิดรอบ ${sessionId} แล้ว\n${roomUrl.toString()}`,
-          recipient,
+        const recipients = await loadLineAdminRecipients();
+        if (recipients.length === 0) return false;
+
+        const deliveries = await Promise.allSettled(
+          recipients.map((recipient) =>
+            sendLinePush(
+              `🏸 เปิดรอบ ${sessionId} แล้ว\n${roomUrl.toString()}`,
+              recipient,
+            ),
+          ),
         );
-        return true;
+        const deliveredCount = deliveries.filter(
+          (delivery) => delivery.status === "fulfilled",
+        ).length;
+        deliveries.forEach((delivery, index) => {
+          if (delivery.status === "rejected") {
+            console.error(
+              `Failed to notify LINE admin ${recipients[index]}`,
+              delivery.reason,
+            );
+          }
+        });
+        return deliveredCount > 0;
       },
     });
 
