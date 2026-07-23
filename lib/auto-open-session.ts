@@ -39,11 +39,12 @@ export function getBangkokSchedule(nowValue: string | Date = new Date()): Bangko
 
 export async function runAutoOpenSession(options: {
   now?: string | Date;
+  allowUnscheduled?: boolean;
   createSession: (sessionId: string) => Promise<boolean>;
-  notifySessionOpened: (sessionId: string) => Promise<void>;
+  notifySessionOpened: (sessionId: string) => Promise<boolean>;
 }): Promise<AutoOpenResult> {
   const schedule = getBangkokSchedule(options.now);
-  if (!schedule.isAutoOpenDay) {
+  if (!schedule.isAutoOpenDay && !options.allowUnscheduled) {
     return { sessionId: schedule.sessionId, status: "not-scheduled", notified: false };
   }
 
@@ -52,6 +53,6 @@ export async function runAutoOpenSession(options: {
     return { sessionId: schedule.sessionId, status: "already-exists", notified: false };
   }
 
-  await options.notifySessionOpened(schedule.sessionId);
-  return { sessionId: schedule.sessionId, status: "created", notified: true };
+  const notified = await options.notifySessionOpened(schedule.sessionId);
+  return { sessionId: schedule.sessionId, status: "created", notified };
 }

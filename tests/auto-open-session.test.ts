@@ -20,7 +20,7 @@ describe("automatic session opening", () => {
 
   it("creates and announces a new scheduled session", async () => {
     const createSession = vi.fn().mockResolvedValue(true);
-    const notifySessionOpened = vi.fn().mockResolvedValue(undefined);
+    const notifySessionOpened = vi.fn().mockResolvedValue(true);
 
     await expect(runAutoOpenSession({
       now: "2026-07-21T09:00:00.000Z",
@@ -55,5 +55,23 @@ describe("automatic session opening", () => {
       notifySessionOpened: vi.fn(),
     })).resolves.toMatchObject({ status: "not-scheduled", notified: false });
     expect(createSession).not.toHaveBeenCalled();
+  });
+
+  it("allows an authorized date override outside the normal schedule", async () => {
+    const createSession = vi.fn().mockResolvedValue(true);
+    const notifySessionOpened = vi.fn().mockResolvedValue(true);
+
+    await expect(runAutoOpenSession({
+      now: "2026-07-23T16:00:00+07:00",
+      allowUnscheduled: true,
+      createSession,
+      notifySessionOpened,
+    })).resolves.toEqual({
+      sessionId: "2026-07-23",
+      status: "created",
+      notified: true,
+    });
+    expect(createSession).toHaveBeenCalledWith("2026-07-23");
+    expect(notifySessionOpened).toHaveBeenCalledWith("2026-07-23");
   });
 });
