@@ -116,6 +116,21 @@ Account. Existing admins receive private `อนุมัติ` and `ปฏิ�
 request is single-use, decisions are recorded atomically, and the requester is
 notified of the result.
 
+## Scheduled LINE Group Announcement
+
+Vercel calls `/api/line/announcement` every Tuesday, Friday, and Sunday at
+13:00 Asia/Bangkok (06:00 UTC). It broadcasts
+`public/line-announcement.jpg` and a weekday-aware public invitation from the
+LINE Official Account to all eligible friends/followers. The message never
+contains the admin room URL. Delivery is recorded in
+`badminton_line_announcements` so a retry cannot announce the same date twice.
+Tuesday and Friday invitations show 20:00-00:30; Sunday invitations show
+18:00-22:00.
+
+Run `supabase/line-announcements.sql` before deployment. An authorized manual
+check can use `/api/line/announcement?date=2026-07-24` with
+`Authorization: Bearer $CRON_SECRET`.
+
 Admin commands:
 
 - `ยอด สมชาย` uses today's Bangkok room.

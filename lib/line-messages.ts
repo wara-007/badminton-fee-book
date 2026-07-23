@@ -3,6 +3,11 @@ import type { PaymentAccountId } from "@/lib/payment-accounts";
 export type LineMessage =
   | { type: "text"; text: string }
   | {
+      type: "image";
+      originalContentUrl: string;
+      previewImageUrl: string;
+    }
+  | {
       type: "flex";
       altText: string;
       contents: Record<string, unknown>;

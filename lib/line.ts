@@ -48,6 +48,54 @@ export async function sendLineMessages(
   }
 }
 
+export async function broadcastLineMessages(
+  messages: LineMessage[],
+): Promise<void> {
+  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  if (!token) {
+    throw new Error("LINE broadcast is not configured");
+  }
+
+  const response = await fetch("https://api.line.me/v2/bot/message/broadcast", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ messages }),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(
+      `LINE broadcast failed with status ${response.status}: ${detail}`,
+    );
+  }
+}
+
+export async function validateLineMessages(
+  messages: LineMessage[],
+): Promise<{ valid: boolean; detail: string }> {
+  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  if (!token) {
+    return { valid: false, detail: "LINE validation is not configured" };
+  }
+
+  const response = await fetch(
+    "https://api.line.me/v2/bot/message/validate/push",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ messages }),
+    },
+  );
+  const detail = await response.text();
+  return { valid: response.ok, detail };
+}
+
 export async function sendLineReply(
   replyToken: string,
   messages: LineMessage[],
