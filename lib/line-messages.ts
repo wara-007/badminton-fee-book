@@ -294,6 +294,104 @@ export function parseAdminReviewPostbackData(value: string | undefined): {
   return { decision, requestId };
 }
 
+export function createSupportRequestMessage(options: {
+  threadId: string;
+  requesterName: string;
+  message: string;
+}): LineMessage {
+  return {
+    type: "flex",
+    altText: `ข้อความใหม่จาก ${options.requesterName}`,
+    contents: {
+      type: "bubble",
+      body: {
+        type: "box",
+        layout: "vertical",
+        spacing: "md",
+        contents: [
+          {
+            type: "text",
+            text: "ข้อความใหม่ถึงแอดมิน",
+            weight: "bold",
+            size: "lg",
+          },
+          {
+            type: "text",
+            text: options.requesterName,
+            weight: "bold",
+            size: "xl",
+            wrap: true,
+          },
+          {
+            type: "text",
+            text: options.message.slice(0, 500),
+            wrap: true,
+            color: "#374151",
+          },
+        ],
+      },
+      footer: {
+        type: "box",
+        layout: "horizontal",
+        spacing: "sm",
+        contents: [
+          {
+            type: "button",
+            style: "secondary",
+            action: {
+              type: "postback",
+              label: "ปิดเรื่อง",
+              displayText: `ปิดเรื่องของ ${options.requesterName}`,
+              data: createSupportPostbackData("close", options.threadId),
+            },
+          },
+          {
+            type: "button",
+            style: "primary",
+            color: "#2563EB",
+            action: {
+              type: "postback",
+              label: "ตอบกลับ",
+              displayText: `ตอบกลับ ${options.requesterName}`,
+              data: createSupportPostbackData("reply", options.threadId),
+            },
+          },
+        ],
+      },
+    },
+  };
+}
+
+export function createSupportPostbackData(
+  action: "reply" | "close",
+  threadId: string,
+): string {
+  return new URLSearchParams({
+    a: "support",
+    d: action,
+    q: threadId,
+  }).toString();
+}
+
+export function parseSupportPostbackData(value: string | undefined): {
+  action: "reply" | "close";
+  threadId: string;
+} | null {
+  if (!value) return null;
+  const params = new URLSearchParams(value);
+  const action = params.get("d");
+  const threadId = params.get("q");
+  if (
+    params.get("a") !== "support" ||
+    (action !== "reply" && action !== "close") ||
+    !threadId ||
+    !/^[0-9a-f-]{36}$/i.test(threadId)
+  ) {
+    return null;
+  }
+  return { action, threadId };
+}
+
 function formatBaht(amount: number): string {
   return new Intl.NumberFormat("th-TH", {
     maximumFractionDigits: 2,

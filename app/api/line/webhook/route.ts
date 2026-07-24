@@ -13,11 +13,14 @@ import {
   createAdminRequestMessage,
   createBalanceMessage,
   createPlayerChoiceMessage,
+  createSupportRequestMessage,
   parseAdminReviewPostbackData,
   parseLinePostbackData,
+  parseSupportPostbackData,
   type LineMessage,
 } from "@/lib/line-messages";
 import { sendLineMessages, sendLineReply } from "@/lib/line";
+import { mergeLineAdminNotificationRecipients } from "@/lib/line-admin-recipients";
 import {
   getPaymentAccount,
   normalizePaymentAccountId,
@@ -50,6 +53,13 @@ type LineAdminReviewRpcResult = {
   status?: "approved" | "rejected" | "already-reviewed" | "not-found" | "forbidden";
   requester_user_id?: string;
   requester_display_name?: string;
+};
+
+type LineSupportThreadRow = {
+  id: string;
+  requester_user_id: string;
+  requester_display_name: string;
+  status: "open" | "answered" | "closed";
 };
 
 function createServiceClient(): SupabaseClient | null {
@@ -219,6 +229,194 @@ async function isAuthorizedLineAdmin(
     .maybeSingle();
   if (error) throw error;
   return Boolean(data);
+}
+
+async function loadLineAdminNotificationRecipients(
+  client: SupabaseClient,
+): Promise<string[]> {
+  const [{ data: admins, error: adminsError }, { data: groups, error: groupsError }] =
+    await Promise.all([
+      client
+        .from("badminton_line_admins")
+        .select("user_id")
+        .eq("enabled", true),
+      client
+        .from("badminton_line_group_destinations")
+        .select("group_id")
+        .eq("group_type", "admin")
+        .eq("enabled", true),
+    ]);
+  if (adminsError) throw adminsError;
+  if (groupsError) throw groupsError;
+
+  return mergeLineAdminNotificationRecipients(
+    (admins ?? []).map((admin) => admin.user_id),
+    (groups ?? []).map((group) => group.group_id),
+  );
+}
+
+async function handlePendingAdminReply(
+  client: SupabaseClient,
+  event: LineWebhookEvent,
+  text: string,
+): Promise<LineMessage | null> {
+  const adminUserId = event.source?.userId;
+  if (!adminUserId || !await isAuthorizedLineAdmin(client, adminUserId)) {
+    return null;
+  }
+
+  const { data: replyState, error: stateError } = await client
+    .from("badminton_line_support_reply_states")
+    .select("thread_id, expires_at")
+    .eq("admin_user_id", adminUserId)
+    .maybeSingle();
+  if (stateError) throw stateError;
+  if (!replyState) return null;
+
+  if (new Date(replyState.expires_at).getTime() <= Date.now()) {
+    await client
+      .from("badminton_line_support_reply_states")
+      .delete()
+      .eq("admin_user_id", adminUserId);
+    return textMessage("หมดเวลาตอบกลับแล้ว กรุณากดปุ่ม “ตอบกลับ” ใหม่");
+  }
+
+  if (text.trim() === "ยกเลิกตอบ") {
+    const { error } = await client
+      .from("badminton_line_support_reply_states")
+      .delete()
+      .eq("admin_user_id", adminUserId);
+    if (error) throw error;
+    return textMessage("ยกเลิกการตอบกลับแล้ว");
+  }
+  if (!text.trim()) {
+    return textMessage("กรุณาพิมพ์ข้อความที่ต้องการส่ง หรือพิมพ์ “ยกเลิกตอบ”");
+  }
+
+  const { data: thread, error: threadError } = await client
+    .from("badminton_line_support_threads")
+    .select("id, requester_user_id, requester_display_name, status")
+    .eq("id", replyState.thread_id)
+    .maybeSingle();
+  if (threadError) throw threadError;
+  if (!thread || thread.status === "closed") {
+    await client
+      .from("badminton_line_support_reply_states")
+      .delete()
+      .eq("admin_user_id", adminUserId);
+    return textMessage("เรื่องนี้ถูกปิดแล้ว");
+  }
+
+  const typedThread = thread as LineSupportThreadRow;
+  await sendLineMessages(
+    [textMessage(`แอดมินตอบ:\n${text.trim()}`)],
+    typedThread.requester_user_id,
+  );
+
+  const [{ error: messageError }, { error: updateError }, { error: deleteError }] =
+    await Promise.all([
+      client.from("badminton_line_support_messages").insert({
+        thread_id: typedThread.id,
+        sender_type: "admin",
+        sender_line_user_id: adminUserId,
+        body: text.trim(),
+      }),
+      client
+        .from("badminton_line_support_threads")
+        .update({ status: "answered", updated_at: new Date().toISOString() })
+        .eq("id", typedThread.id),
+      client
+        .from("badminton_line_support_reply_states")
+        .delete()
+        .eq("admin_user_id", adminUserId),
+    ]);
+  if (messageError) throw messageError;
+  if (updateError) throw updateError;
+  if (deleteError) throw deleteError;
+
+  return textMessage(`✅ ส่งคำตอบให้ ${typedThread.requester_display_name} แล้ว`);
+}
+
+async function handleSupportRequest(
+  client: SupabaseClient,
+  event: LineWebhookEvent,
+  text: string,
+): Promise<LineMessage | null> {
+  const requesterUserId = event.source?.userId;
+  if (
+    event.source?.type !== "user" ||
+    !requesterUserId ||
+    await isAuthorizedLineAdmin(client, requesterUserId) ||
+    !text.trim()
+  ) {
+    return null;
+  }
+
+  const requesterName = await loadLineUserName(requesterUserId);
+  const { data: existingThread, error: existingError } = await client
+    .from("badminton_line_support_threads")
+    .select("id, requester_user_id, requester_display_name, status")
+    .eq("requester_user_id", requesterUserId)
+    .neq("status", "closed")
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (existingError) throw existingError;
+
+  let thread = existingThread as LineSupportThreadRow | null;
+  if (!thread) {
+    const { data, error } = await client
+      .from("badminton_line_support_threads")
+      .insert({
+        requester_user_id: requesterUserId,
+        requester_display_name: requesterName,
+        status: "open",
+      })
+      .select("id, requester_user_id, requester_display_name, status")
+      .single();
+    if (error) throw error;
+    thread = data as LineSupportThreadRow;
+  } else {
+    const { error } = await client
+      .from("badminton_line_support_threads")
+      .update({
+        requester_display_name: requesterName,
+        status: "open",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", thread.id);
+    if (error) throw error;
+  }
+
+  const { error: messageError } = await client
+    .from("badminton_line_support_messages")
+    .insert({
+      thread_id: thread.id,
+      sender_type: "user",
+      sender_line_user_id: requesterUserId,
+      body: text.trim(),
+    });
+  if (messageError) throw messageError;
+
+  const recipients = await loadLineAdminNotificationRecipients(client);
+  const adminMessage = createSupportRequestMessage({
+    threadId: thread.id,
+    requesterName,
+    message: text.trim(),
+  });
+  const deliveries = await Promise.allSettled(
+    recipients.map((recipient) => sendLineMessages([adminMessage], recipient)),
+  );
+  if (
+    recipients.length === 0 ||
+    deliveries.every((result) => result.status === "rejected")
+  ) {
+    console.error("Failed to notify any LINE admin about support request");
+  }
+
+  return textMessage(
+    "ได้รับข้อความแล้ว แอดมินจะตอบกลับผ่านแชตนี้\nกรุณารอสักครู่",
+  );
 }
 
 async function handleSetAdminGroup(
@@ -394,6 +592,57 @@ async function handlePostback(
   client: SupabaseClient,
   event: LineWebhookEvent,
 ): Promise<LineMessage | null> {
+  const support = parseSupportPostbackData(event.postback?.data);
+  if (support) {
+    const adminUserId = event.source?.userId;
+    if (!adminUserId || !await isAuthorizedLineAdmin(client, adminUserId)) {
+      return textMessage("คำสั่งนี้ใช้ได้เฉพาะแอดมิน");
+    }
+
+    const { data: thread, error: threadError } = await client
+      .from("badminton_line_support_threads")
+      .select("id, requester_user_id, requester_display_name, status")
+      .eq("id", support.threadId)
+      .maybeSingle();
+    if (threadError) throw threadError;
+    if (!thread) return textMessage("ไม่พบเรื่องนี้");
+    if (thread.status === "closed") return textMessage("เรื่องนี้ถูกปิดแล้ว");
+
+    if (support.action === "close") {
+      const [{ error: closeError }, { error: statesError }] = await Promise.all([
+        client
+          .from("badminton_line_support_threads")
+          .update({
+            status: "closed",
+            closed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", support.threadId),
+        client
+          .from("badminton_line_support_reply_states")
+          .delete()
+          .eq("thread_id", support.threadId),
+      ]);
+      if (closeError) throw closeError;
+      if (statesError) throw statesError;
+      return textMessage(`✅ ปิดเรื่องของ ${thread.requester_display_name} แล้ว`);
+    }
+
+    const { error: stateError } = await client
+      .from("badminton_line_support_reply_states")
+      .upsert({
+        admin_user_id: adminUserId,
+        thread_id: support.threadId,
+        expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+    if (stateError) throw stateError;
+    return textMessage(
+      `กำลังตอบ ${thread.requester_display_name}\n` +
+      "พิมพ์ข้อความถัดไปเพื่อส่ง หรือพิมพ์ “ยกเลิกตอบ”",
+    );
+  }
+
   const adminReview = parseAdminReviewPostbackData(event.postback?.data);
   if (adminReview) {
     if (!await isAuthorizedLineAdmin(client, event.source?.userId)) {
@@ -492,11 +741,13 @@ async function processLineEvent(
     const text = event.message.text ?? "";
     const publicMenuReply = getLinePublicMenuReply(text);
     reply =
+      await handlePendingAdminReply(client, event, text) ??
       (publicMenuReply ? textMessage(publicMenuReply) : null) ??
       await handleSetAdminGroup(client, event, text) ??
       await handleAdminRequest(client, event, text) ??
       await handleAdminRegistration(client, event, text) ??
-      await handleBalanceCommand(client, event, text);
+      await handleBalanceCommand(client, event, text) ??
+      await handleSupportRequest(client, event, text);
   } else if (event.type === "postback") {
     reply = await handlePostback(client, event);
   }

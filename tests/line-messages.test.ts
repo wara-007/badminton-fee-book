@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   createAdminReviewPostbackData,
   createLinePostbackData,
+  createSupportRequestMessage,
+  createSupportPostbackData,
   parseAdminReviewPostbackData,
   parseLinePostbackData,
+  parseSupportPostbackData,
 } from "@/lib/line-messages";
 
 describe("LINE interactive messages", () => {
@@ -37,5 +40,26 @@ describe("LINE interactive messages", () => {
     expect(
       parseAdminReviewPostbackData(`a=admin_review&d=delete&q=${requestId}`),
     ).toBeNull();
+  });
+
+  it("round-trips support postback data", () => {
+    const threadId = "123e4567-e89b-12d3-a456-426614174000";
+    expect(
+      parseSupportPostbackData(createSupportPostbackData("reply", threadId)),
+    ).toEqual({ action: "reply", threadId });
+    expect(
+      parseSupportPostbackData(`a=support&d=delete&q=${threadId}`),
+    ).toBeNull();
+  });
+
+  it("builds a support card with reply and close actions", () => {
+    const message = createSupportRequestMessage({
+      threadId: "123e4567-e89b-12d3-a456-426614174000",
+      requesterName: "สมชาย",
+      message: "วันนี้รับมือใหม่ไหมครับ",
+    });
+    expect(message.type).toBe("flex");
+    expect(JSON.stringify(message)).toContain("ตอบกลับ");
+    expect(JSON.stringify(message)).toContain("ปิดเรื่อง");
   });
 });
