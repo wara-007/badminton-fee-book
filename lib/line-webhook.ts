@@ -22,6 +22,10 @@ export type LineBalanceCommand = {
   sessionId: string;
 };
 
+export function isSetAdminGroupCommand(text: string): boolean {
+  return text.trim() === "ตั้งกลุ่มแอดมิน";
+}
+
 export function verifyLineWebhookSignature(
   rawBody: string,
   signature: string | null,

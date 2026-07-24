@@ -102,6 +102,13 @@ When the Official Account joins or receives an event in a group, the latest
 group ID is stored privately in Supabase. Automatic session announcements use
 that group first and fall back to `LINE_ALERT_TO` until a group is captured.
 
+To register an admin-only group, invite the Official Account to that group and
+have an enabled LINE admin send `ตั้งกลุ่มแอดมิน` inside it. The webhook verifies
+the sender, stores the group separately as an `admin` destination, and confirms
+the registration in the group. Automatic room-opening notifications then send
+the private room URL to enabled admins and explicitly registered admin groups
+only.
+
 Run `supabase/line-admin-payments.sql` to install the service-role-only,
 idempotent payment confirmation function. `LINE_ADMIN_USER_IDS` is a
 comma-separated allowlist of LINE user IDs that may use payment commands. For

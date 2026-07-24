@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { mergeLineAdminRecipients } from "@/lib/line-admin-recipients";
+import {
+  mergeLineAdminNotificationRecipients,
+  mergeLineAdminRecipients,
+} from "@/lib/line-admin-recipients";
 
 describe("LINE admin recipients", () => {
   it("combines stored and configured admins without duplicates", () => {
@@ -20,5 +23,16 @@ describe("LINE admin recipients", () => {
         "Clegacy",
       ),
     ).toEqual([]);
+  });
+
+  it("adds only explicitly stored admin groups to opening notifications", () => {
+    expect(
+      mergeLineAdminNotificationRecipients(
+        ["Ustored"],
+        ["Cadmin", "Rroom", null],
+        "Uconfigured",
+        "Clegacy",
+      ),
+    ).toEqual(["Ustored", "Uconfigured", "Cadmin"]);
   });
 });

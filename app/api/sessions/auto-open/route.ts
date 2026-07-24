@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { runAutoOpenSession } from "@/lib/auto-open-session";
 import { sendLinePush } from "@/lib/line";
-import { mergeLineAdminRecipients } from "@/lib/line-admin-recipients";
+import { mergeLineAdminNotificationRecipients } from "@/lib/line-admin-recipients";
 import { createInitialSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -15,20 +15,32 @@ async function loadLineAdminRecipients(): Promise<string[]> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !serviceRoleKey) {
-    return mergeLineAdminRecipients([]);
+    return mergeLineAdminNotificationRecipients([], []);
   }
 
   const client = createClient(url, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const { data, error } = await client
-    .from("badminton_line_admins")
-    .select("user_id")
-    .eq("enabled", true);
-  if (error) throw error;
+  const [
+    { data: admins, error: adminError },
+    { data: adminGroups, error: groupError },
+  ] = await Promise.all([
+    client
+      .from("badminton_line_admins")
+      .select("user_id")
+      .eq("enabled", true),
+    client
+      .from("badminton_line_group_destinations")
+      .select("group_id")
+      .eq("group_type", "admin")
+      .eq("enabled", true),
+  ]);
+  if (adminError) throw adminError;
+  if (groupError) throw groupError;
 
-  return mergeLineAdminRecipients(
-    (data ?? []).map((admin) => admin.user_id),
+  return mergeLineAdminNotificationRecipients(
+    (admins ?? []).map((admin) => admin.user_id),
+    (adminGroups ?? []).map((group) => group.group_id),
   );
 }
 
@@ -115,7 +127,7 @@ export async function GET(request: Request) {
         deliveries.forEach((delivery, index) => {
           if (delivery.status === "rejected") {
             console.error(
-              `Failed to notify LINE admin ${recipients[index]}`,
+              `Failed to notify LINE admin destination ${recipients[index]}`,
               delivery.reason,
             );
           }

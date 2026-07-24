@@ -5,6 +5,7 @@ import {
   getBangkokDateKey,
   getLineGroupIds,
   isLineAdmin,
+  isSetAdminGroupCommand,
   parseLineBalanceCommand,
   verifyLineWebhookSignature,
 } from "@/lib/line-webhook";
@@ -61,5 +62,11 @@ describe("LINE webhook", () => {
     expect(isLineAdmin("Utwo", "Uone, Utwo", undefined)).toBe(true);
     expect(isLineAdmin("Ulegacy", undefined, "Ulegacy")).toBe(true);
     expect(isLineAdmin("Uother", "Uone", "Uother")).toBe(false);
+  });
+
+  it("recognizes only the exact admin-group registration command", () => {
+    expect(isSetAdminGroupCommand("ตั้งกลุ่มแอดมิน")).toBe(true);
+    expect(isSetAdminGroupCommand("  ตั้งกลุ่มแอดมิน  ")).toBe(true);
+    expect(isSetAdminGroupCommand("ตั้งกลุ่มประกาศ")).toBe(false);
   });
 });

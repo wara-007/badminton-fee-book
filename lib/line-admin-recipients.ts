@@ -20,3 +20,26 @@ export function mergeLineAdminRecipients(
 
   return Array.from(recipients);
 }
+
+export function mergeLineAdminNotificationRecipients(
+  storedUserIds: unknown[],
+  storedAdminGroupIds: unknown[],
+  configuredAdminIds = process.env.LINE_ADMIN_USER_IDS,
+  legacyRecipient = process.env.LINE_ALERT_TO,
+): string[] {
+  const recipients = new Set(
+    mergeLineAdminRecipients(
+      storedUserIds,
+      configuredAdminIds,
+      legacyRecipient,
+    ),
+  );
+
+  for (const value of storedAdminGroupIds) {
+    if (typeof value === "string" && value.startsWith("C")) {
+      recipients.add(value);
+    }
+  }
+
+  return Array.from(recipients);
+}

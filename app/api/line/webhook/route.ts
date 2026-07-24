@@ -4,6 +4,7 @@ import {
   findLinePlayerMatches,
   getLineGroupIds,
   isLineAdmin,
+  isSetAdminGroupCommand,
   parseLineBalanceCommand,
   verifyLineWebhookSignature,
 } from "@/lib/line-webhook";
@@ -217,6 +218,40 @@ async function isAuthorizedLineAdmin(
     .maybeSingle();
   if (error) throw error;
   return Boolean(data);
+}
+
+async function handleSetAdminGroup(
+  client: SupabaseClient,
+  event: LineWebhookEvent,
+  text: string,
+): Promise<LineMessage | null> {
+  if (!isSetAdminGroupCommand(text)) return null;
+  if (
+    event.source?.type !== "group" ||
+    !event.source.groupId?.startsWith("C")
+  ) {
+    return textMessage("กรุณาส่ง “ตั้งกลุ่มแอดมิน” ภายในกลุ่ม LINE ที่ต้องการ");
+  }
+  if (!await isAuthorizedLineAdmin(client, event.source.userId)) {
+    return textMessage("คำสั่งนี้ใช้ได้เฉพาะแอดมิน");
+  }
+
+  const groupName = await loadLineGroupName(event.source.groupId);
+  const { error } = await client
+    .from("badminton_line_group_destinations")
+    .upsert({
+      group_id: event.source.groupId,
+      group_type: "admin",
+      group_name: groupName,
+      enabled: true,
+      registered_by: event.source.userId,
+      updated_at: new Date().toISOString(),
+    });
+  if (error) throw error;
+
+  return textMessage(
+    `✅ ตั้ง${groupName ? ` “${groupName}”` : "กลุ่มนี้"}เป็นกลุ่มแอดมินเรียบร้อยแล้ว`,
+  );
 }
 
 async function handleAdminRegistration(
@@ -455,6 +490,7 @@ async function processLineEvent(
   if (event.type === "message" && event.message?.type === "text") {
     const text = event.message.text ?? "";
     reply =
+      await handleSetAdminGroup(client, event, text) ??
       await handleAdminRequest(client, event, text) ??
       await handleAdminRegistration(client, event, text) ??
       await handleBalanceCommand(client, event, text);
