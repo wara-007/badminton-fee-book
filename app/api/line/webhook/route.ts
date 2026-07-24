@@ -359,7 +359,7 @@ async function handlePendingAdminReply(
     typedThread.requester_user_id,
   );
 
-  const closedAt = new Date().toISOString();
+  const repliedAt = new Date().toISOString();
   const [{ error: messageError }, { error: updateError }, { error: deleteError }] =
     await Promise.all([
       client.from("badminton_line_support_messages").insert({
@@ -371,9 +371,7 @@ async function handlePendingAdminReply(
       client
         .from("badminton_line_support_threads")
         .update({
-          status: "closed",
-          closed_at: closedAt,
-          updated_at: closedAt,
+          updated_at: repliedAt,
         })
         .eq("id", typedThread.id)
         .eq("status", "open")
@@ -381,28 +379,15 @@ async function handlePendingAdminReply(
       client
         .from("badminton_line_support_reply_states")
         .delete()
-        .eq("thread_id", typedThread.id),
+        .eq("admin_user_id", adminUserId),
     ]);
   if (messageError) throw messageError;
   if (updateError) throw updateError;
   if (deleteError) throw deleteError;
 
-  const adminName =
-    typedThread.assigned_admin_display_name ?? await loadLineUserName(adminUserId);
-  const recipients = await loadLineAdminNotificationRecipients(client);
-  await Promise.allSettled(
-    recipients.map((recipient) =>
-      sendLineMessages([
-        textMessage(
-          `✅ ตอบและปิดเรื่องแล้ว: ${typedThread.requester_display_name}\n` +
-          `โดย ${adminName}`,
-        ),
-      ], recipient)
-    ),
-  );
-
   return textMessage(
-    `✅ ส่งคำตอบให้ ${typedThread.requester_display_name} และปิดเรื่องแล้ว`,
+    `✅ ส่งคำตอบให้ ${typedThread.requester_display_name} แล้ว\n` +
+    "เรื่องนี้ยังเปิดอยู่ หากจบการสนทนาให้กด “ปิดเรื่อง”",
   );
 }
 
@@ -483,13 +468,25 @@ async function handleSupportRequest(
     ) {
       console.error("Failed to notify any LINE admin about support request");
     }
+  } else if (thread.assigned_admin_user_id) {
+    try {
+      await sendLineMessages(
+        [
+          textMessage(
+            `💬 ${requesterName}\n${text.trim().slice(0, 1000)}\n` +
+            "กด “ตอบกลับ” ที่การ์ดเดิมเมื่อต้องการตอบ",
+          ),
+        ],
+        thread.assigned_admin_user_id,
+      );
+    } catch (error) {
+      console.error("Failed to notify assigned LINE admin about follow-up", error);
+    }
   }
 
-  return textMessage(
-    isNewThread
-      ? "ได้รับข้อความแล้ว แอดมินจะตอบกลับผ่านแชตนี้\nกรุณารอสักครู่"
-      : "เพิ่มข้อความในเรื่องเดิมแล้ว แอดมินจะเห็นทั้งหมดเมื่อตอบกลับ",
-  );
+  return isNewThread
+    ? textMessage("ได้รับข้อความแล้ว แอดมินจะตอบกลับผ่านแชตนี้\nกรุณารอสักครู่")
+    : null;
 }
 
 async function handleSetAdminGroup(
