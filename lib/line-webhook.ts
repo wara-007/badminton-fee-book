@@ -26,6 +26,10 @@ export function isSetAdminGroupCommand(text: string): boolean {
   return text.trim() === "ตั้งกลุ่มแอดมิน";
 }
 
+export function isUnsetAdminGroupCommand(text: string): boolean {
+  return text.trim() === "ยกเลิกกลุ่มแอดมิน";
+}
+
 export function getLinePublicMenuReply(text: string): string | null {
   const command = text.trim();
   if (command === "ตารางเล่น") {

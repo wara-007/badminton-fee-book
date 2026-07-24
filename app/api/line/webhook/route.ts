@@ -6,6 +6,7 @@ import {
   getLinePublicMenuReply,
   isLineAdmin,
   isSetAdminGroupCommand,
+  isUnsetAdminGroupCommand,
   parseLineBalanceCommand,
   verifyLineWebhookSignature,
 } from "@/lib/line-webhook";
@@ -453,6 +454,43 @@ async function handleSetAdminGroup(
   );
 }
 
+async function handleUnsetAdminGroup(
+  client: SupabaseClient,
+  event: LineWebhookEvent,
+  text: string,
+): Promise<LineMessage | null> {
+  if (!isUnsetAdminGroupCommand(text)) return null;
+  if (
+    event.source?.type !== "group" ||
+    !event.source.groupId?.startsWith("C")
+  ) {
+    return textMessage(
+      "กรุณาส่ง “ยกเลิกกลุ่มแอดมิน” ภายในกลุ่ม LINE ที่ต้องการ",
+    );
+  }
+  if (!await isAuthorizedLineAdmin(client, event.source.userId)) {
+    return textMessage("คำสั่งนี้ใช้ได้เฉพาะแอดมิน");
+  }
+
+  const { data, error } = await client
+    .from("badminton_line_group_destinations")
+    .update({
+      enabled: false,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("group_id", event.source.groupId)
+    .eq("group_type", "admin")
+    .eq("enabled", true)
+    .select("group_id")
+    .maybeSingle();
+  if (error) throw error;
+
+  if (!data) {
+    return textMessage("กลุ่มนี้ไม่ได้เป็นกลุ่มแอดมินอยู่แล้ว");
+  }
+  return textMessage("✅ ยกเลิกกลุ่มแอดมินเรียบร้อยแล้ว");
+}
+
 async function handleAdminRegistration(
   client: SupabaseClient,
   event: LineWebhookEvent,
@@ -741,6 +779,7 @@ async function processLineEvent(
     const text = event.message.text ?? "";
     const publicMenuReply = getLinePublicMenuReply(text);
     reply =
+      await handleUnsetAdminGroup(client, event, text) ??
       await handlePendingAdminReply(client, event, text) ??
       (publicMenuReply ? textMessage(publicMenuReply) : null) ??
       await handleSetAdminGroup(client, event, text) ??

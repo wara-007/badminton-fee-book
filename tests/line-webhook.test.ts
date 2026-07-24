@@ -7,6 +7,7 @@ import {
   getLinePublicMenuReply,
   isLineAdmin,
   isSetAdminGroupCommand,
+  isUnsetAdminGroupCommand,
   parseLineBalanceCommand,
   verifyLineWebhookSignature,
 } from "@/lib/line-webhook";
@@ -69,6 +70,12 @@ describe("LINE webhook", () => {
     expect(isSetAdminGroupCommand("ตั้งกลุ่มแอดมิน")).toBe(true);
     expect(isSetAdminGroupCommand("  ตั้งกลุ่มแอดมิน  ")).toBe(true);
     expect(isSetAdminGroupCommand("ตั้งกลุ่มประกาศ")).toBe(false);
+  });
+
+  it("recognizes only the exact admin-group removal command", () => {
+    expect(isUnsetAdminGroupCommand("ยกเลิกกลุ่มแอดมิน")).toBe(true);
+    expect(isUnsetAdminGroupCommand("  ยกเลิกกลุ่มแอดมิน  ")).toBe(true);
+    expect(isUnsetAdminGroupCommand("ยกเลิกกลุ่มประกาศ")).toBe(false);
   });
 
   it("returns the public Rich Menu information", () => {
