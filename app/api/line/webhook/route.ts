@@ -418,7 +418,7 @@ async function handleSupportRequest(
   if (existingError) throw existingError;
 
   let thread = existingThread as LineSupportThreadRow | null;
-  const isNewThread = !thread;
+  let isNewThread = !thread;
   if (!thread) {
     const { data, error } = await client
       .from("badminton_line_support_threads")
@@ -429,8 +429,20 @@ async function handleSupportRequest(
       })
       .select("id, requester_user_id, requester_display_name, status, assigned_admin_user_id, assigned_admin_display_name")
       .single();
-    if (error) throw error;
-    thread = data as LineSupportThreadRow;
+    if (error?.code === "23505") {
+      const { data: concurrentThread, error: concurrentError } = await client
+        .from("badminton_line_support_threads")
+        .select("id, requester_user_id, requester_display_name, status, assigned_admin_user_id, assigned_admin_display_name")
+        .eq("requester_user_id", requesterUserId)
+        .eq("status", "open")
+        .single();
+      if (concurrentError) throw concurrentError;
+      thread = concurrentThread as LineSupportThreadRow;
+      isNewThread = false;
+    } else {
+      if (error) throw error;
+      thread = data as LineSupportThreadRow;
+    }
   } else {
     const { error } = await client
       .from("badminton_line_support_threads")
