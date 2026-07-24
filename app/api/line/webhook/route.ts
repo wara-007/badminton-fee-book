@@ -61,6 +61,13 @@ type LineSupportThreadRow = {
   requester_user_id: string;
   requester_display_name: string;
   status: "open" | "answered" | "closed";
+  assigned_admin_user_id: string | null;
+  assigned_admin_display_name: string | null;
+};
+
+type LineSupportClaimResult = {
+  status?: "claimed" | "already-claimed" | "busy" | "closed" | "not-found";
+  admin_name?: string;
 };
 
 function createServiceClient(): SupabaseClient | null {
@@ -275,19 +282,46 @@ async function handlePendingAdminReply(
   if (!replyState) return null;
 
   if (new Date(replyState.expires_at).getTime() <= Date.now()) {
-    await client
-      .from("badminton_line_support_reply_states")
-      .delete()
-      .eq("admin_user_id", adminUserId);
+    await Promise.all([
+      client
+        .from("badminton_line_support_reply_states")
+        .delete()
+        .eq("admin_user_id", adminUserId),
+      client
+        .from("badminton_line_support_threads")
+        .update({
+          assigned_admin_user_id: null,
+          assigned_admin_display_name: null,
+          assigned_at: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", replyState.thread_id)
+        .eq("status", "open")
+        .eq("assigned_admin_user_id", adminUserId),
+    ]);
     return textMessage("หมดเวลาตอบกลับแล้ว กรุณากดปุ่ม “ตอบกลับ” ใหม่");
   }
 
   if (text.trim() === "ยกเลิกตอบ") {
-    const { error } = await client
-      .from("badminton_line_support_reply_states")
-      .delete()
-      .eq("admin_user_id", adminUserId);
-    if (error) throw error;
+    const [{ error: stateError }, { error: threadError }] = await Promise.all([
+      client
+        .from("badminton_line_support_reply_states")
+        .delete()
+        .eq("admin_user_id", adminUserId),
+      client
+        .from("badminton_line_support_threads")
+        .update({
+          assigned_admin_user_id: null,
+          assigned_admin_display_name: null,
+          assigned_at: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", replyState.thread_id)
+        .eq("status", "open")
+        .eq("assigned_admin_user_id", adminUserId),
+    ]);
+    if (stateError) throw stateError;
+    if (threadError) throw threadError;
     return textMessage("ยกเลิกการตอบกลับแล้ว");
   }
   if (!text.trim()) {
@@ -296,11 +330,11 @@ async function handlePendingAdminReply(
 
   const { data: thread, error: threadError } = await client
     .from("badminton_line_support_threads")
-    .select("id, requester_user_id, requester_display_name, status")
+    .select("id, requester_user_id, requester_display_name, status, assigned_admin_user_id, assigned_admin_display_name")
     .eq("id", replyState.thread_id)
     .maybeSingle();
   if (threadError) throw threadError;
-  if (!thread || thread.status === "closed") {
+  if (!thread || thread.status !== "open") {
     await client
       .from("badminton_line_support_reply_states")
       .delete()
@@ -309,11 +343,23 @@ async function handlePendingAdminReply(
   }
 
   const typedThread = thread as LineSupportThreadRow;
+  if (typedThread.assigned_admin_user_id !== adminUserId) {
+    await client
+      .from("badminton_line_support_reply_states")
+      .delete()
+      .eq("admin_user_id", adminUserId);
+    return textMessage(
+      `เรื่องนี้กำลังดูแลโดย ${
+        typedThread.assigned_admin_display_name ?? "แอดมินอีกคน"
+      }`,
+    );
+  }
   await sendLineMessages(
     [textMessage(`แอดมินตอบ:\n${text.trim()}`)],
     typedThread.requester_user_id,
   );
 
+  const closedAt = new Date().toISOString();
   const [{ error: messageError }, { error: updateError }, { error: deleteError }] =
     await Promise.all([
       client.from("badminton_line_support_messages").insert({
@@ -324,18 +370,40 @@ async function handlePendingAdminReply(
       }),
       client
         .from("badminton_line_support_threads")
-        .update({ status: "answered", updated_at: new Date().toISOString() })
-        .eq("id", typedThread.id),
+        .update({
+          status: "closed",
+          closed_at: closedAt,
+          updated_at: closedAt,
+        })
+        .eq("id", typedThread.id)
+        .eq("status", "open")
+        .eq("assigned_admin_user_id", adminUserId),
       client
         .from("badminton_line_support_reply_states")
         .delete()
-        .eq("admin_user_id", adminUserId),
+        .eq("thread_id", typedThread.id),
     ]);
   if (messageError) throw messageError;
   if (updateError) throw updateError;
   if (deleteError) throw deleteError;
 
-  return textMessage(`✅ ส่งคำตอบให้ ${typedThread.requester_display_name} แล้ว`);
+  const adminName =
+    typedThread.assigned_admin_display_name ?? await loadLineUserName(adminUserId);
+  const recipients = await loadLineAdminNotificationRecipients(client);
+  await Promise.allSettled(
+    recipients.map((recipient) =>
+      sendLineMessages([
+        textMessage(
+          `✅ ตอบและปิดเรื่องแล้ว: ${typedThread.requester_display_name}\n` +
+          `โดย ${adminName}`,
+        ),
+      ], recipient)
+    ),
+  );
+
+  return textMessage(
+    `✅ ส่งคำตอบให้ ${typedThread.requester_display_name} และปิดเรื่องแล้ว`,
+  );
 }
 
 async function handleSupportRequest(
@@ -356,15 +424,16 @@ async function handleSupportRequest(
   const requesterName = await loadLineUserName(requesterUserId);
   const { data: existingThread, error: existingError } = await client
     .from("badminton_line_support_threads")
-    .select("id, requester_user_id, requester_display_name, status")
+    .select("id, requester_user_id, requester_display_name, status, assigned_admin_user_id, assigned_admin_display_name")
     .eq("requester_user_id", requesterUserId)
-    .neq("status", "closed")
+    .eq("status", "open")
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
   if (existingError) throw existingError;
 
   let thread = existingThread as LineSupportThreadRow | null;
+  const isNewThread = !thread;
   if (!thread) {
     const { data, error } = await client
       .from("badminton_line_support_threads")
@@ -373,7 +442,7 @@ async function handleSupportRequest(
         requester_display_name: requesterName,
         status: "open",
       })
-      .select("id, requester_user_id, requester_display_name, status")
+      .select("id, requester_user_id, requester_display_name, status, assigned_admin_user_id, assigned_admin_display_name")
       .single();
     if (error) throw error;
     thread = data as LineSupportThreadRow;
@@ -382,7 +451,6 @@ async function handleSupportRequest(
       .from("badminton_line_support_threads")
       .update({
         requester_display_name: requesterName,
-        status: "open",
         updated_at: new Date().toISOString(),
       })
       .eq("id", thread.id);
@@ -399,24 +467,28 @@ async function handleSupportRequest(
     });
   if (messageError) throw messageError;
 
-  const recipients = await loadLineAdminNotificationRecipients(client);
-  const adminMessage = createSupportRequestMessage({
-    threadId: thread.id,
-    requesterName,
-    message: text.trim(),
-  });
-  const deliveries = await Promise.allSettled(
-    recipients.map((recipient) => sendLineMessages([adminMessage], recipient)),
-  );
-  if (
-    recipients.length === 0 ||
-    deliveries.every((result) => result.status === "rejected")
-  ) {
-    console.error("Failed to notify any LINE admin about support request");
+  if (isNewThread) {
+    const recipients = await loadLineAdminNotificationRecipients(client);
+    const adminMessage = createSupportRequestMessage({
+      threadId: thread.id,
+      requesterName,
+      message: text.trim(),
+    });
+    const deliveries = await Promise.allSettled(
+      recipients.map((recipient) => sendLineMessages([adminMessage], recipient)),
+    );
+    if (
+      recipients.length === 0 ||
+      deliveries.every((result) => result.status === "rejected")
+    ) {
+      console.error("Failed to notify any LINE admin about support request");
+    }
   }
 
   return textMessage(
-    "ได้รับข้อความแล้ว แอดมินจะตอบกลับผ่านแชตนี้\nกรุณารอสักครู่",
+    isNewThread
+      ? "ได้รับข้อความแล้ว แอดมินจะตอบกลับผ่านแชตนี้\nกรุณารอสักครู่"
+      : "เพิ่มข้อความในเรื่องเดิมแล้ว แอดมินจะเห็นทั้งหมดเมื่อตอบกลับ",
   );
 }
 
@@ -639,14 +711,24 @@ async function handlePostback(
 
     const { data: thread, error: threadError } = await client
       .from("badminton_line_support_threads")
-      .select("id, requester_user_id, requester_display_name, status")
+      .select("id, requester_user_id, requester_display_name, status, assigned_admin_user_id, assigned_admin_display_name")
       .eq("id", support.threadId)
       .maybeSingle();
     if (threadError) throw threadError;
     if (!thread) return textMessage("ไม่พบเรื่องนี้");
-    if (thread.status === "closed") return textMessage("เรื่องนี้ถูกปิดแล้ว");
+    if (thread.status !== "open") return textMessage("เรื่องนี้ถูกปิดแล้ว");
 
     if (support.action === "close") {
+      if (
+        thread.assigned_admin_user_id &&
+        thread.assigned_admin_user_id !== adminUserId
+      ) {
+        return textMessage(
+          `เรื่องนี้กำลังดูแลโดย ${
+            thread.assigned_admin_display_name ?? "แอดมินอีกคน"
+          }`,
+        );
+      }
       const [{ error: closeError }, { error: statesError }] = await Promise.all([
         client
           .from("badminton_line_support_threads")
@@ -666,6 +748,25 @@ async function handlePostback(
       return textMessage(`✅ ปิดเรื่องของ ${thread.requester_display_name} แล้ว`);
     }
 
+    const adminName = await loadLineUserName(adminUserId);
+    const { data: claimData, error: claimError } = await client.rpc(
+      "claim_line_support_thread",
+      {
+        p_thread_id: support.threadId,
+        p_admin_user_id: adminUserId,
+        p_admin_display_name: adminName,
+      },
+    );
+    if (claimError) throw claimError;
+    const claim = (claimData ?? {}) as LineSupportClaimResult;
+    if (claim.status === "not-found") return textMessage("ไม่พบเรื่องนี้");
+    if (claim.status === "closed") return textMessage("เรื่องนี้ถูกปิดแล้ว");
+    if (claim.status === "busy") {
+      return textMessage(
+        `เรื่องนี้กำลังดูแลโดย ${claim.admin_name ?? "แอดมินอีกคน"}`,
+      );
+    }
+
     const { error: stateError } = await client
       .from("badminton_line_support_reply_states")
       .upsert({
@@ -675,8 +776,24 @@ async function handlePostback(
         updated_at: new Date().toISOString(),
       });
     if (stateError) throw stateError;
+
+    const { data: recentMessages, error: messagesError } = await client
+      .from("badminton_line_support_messages")
+      .select("body")
+      .eq("thread_id", support.threadId)
+      .eq("sender_type", "user")
+      .order("created_at", { ascending: false })
+      .limit(5);
+    if (messagesError) throw messagesError;
+    const conversation = (recentMessages ?? [])
+      .reverse()
+      .map((message) => `• ${message.body}`)
+      .join("\n")
+      .slice(0, 1500);
+
     return textMessage(
       `กำลังตอบ ${thread.requester_display_name}\n` +
+      `${conversation ? `${conversation}\n\n` : ""}` +
       "พิมพ์ข้อความถัดไปเพื่อส่ง หรือพิมพ์ “ยกเลิกตอบ”",
     );
   }
