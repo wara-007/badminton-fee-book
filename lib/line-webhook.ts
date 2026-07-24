@@ -26,6 +26,28 @@ export function isSetAdminGroupCommand(text: string): boolean {
   return text.trim() === "ตั้งกลุ่มแอดมิน";
 }
 
+export function getLinePublicMenuReply(text: string): string | null {
+  const command = text.trim();
+  if (command === "ตารางเล่น") {
+    return [
+      "ตารางเล่น",
+      "อังคารและศุกร์ 20:00–00:30 น.",
+      "อาทิตย์ 18:00–22:00 น.",
+      "สนาม SP Badminton ลาดพร้าว 71 นาคนิวาส ซ.6",
+      "ค่าสนามเหมา 90 บาท",
+      "ลูก RSL No.1 ลูกละ 26 บาท",
+    ].join("\n");
+  }
+  if (command === "ติดต่อ") {
+    return [
+      "ติดต่อ",
+      "โทร. 089-081-0878",
+      "LINE ID: Gu_Pu2499",
+    ].join("\n");
+  }
+  return null;
+}
+
 export function verifyLineWebhookSignature(
   rawBody: string,
   signature: string | null,

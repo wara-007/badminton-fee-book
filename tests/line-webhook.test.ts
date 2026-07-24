@@ -4,6 +4,7 @@ import {
   findLinePlayerMatches,
   getBangkokDateKey,
   getLineGroupIds,
+  getLinePublicMenuReply,
   isLineAdmin,
   isSetAdminGroupCommand,
   parseLineBalanceCommand,
@@ -68,5 +69,18 @@ describe("LINE webhook", () => {
     expect(isSetAdminGroupCommand("ตั้งกลุ่มแอดมิน")).toBe(true);
     expect(isSetAdminGroupCommand("  ตั้งกลุ่มแอดมิน  ")).toBe(true);
     expect(isSetAdminGroupCommand("ตั้งกลุ่มประกาศ")).toBe(false);
+  });
+
+  it("returns the public Rich Menu information", () => {
+    expect(getLinePublicMenuReply("ตารางเล่น")).toContain(
+      "อังคารและศุกร์ 20:00–00:30 น.",
+    );
+    expect(getLinePublicMenuReply("ตารางเล่น")).toContain(
+      "ลูก RSL No.1 ลูกละ 26 บาท",
+    );
+    expect(getLinePublicMenuReply("ติดต่อ")).toBe(
+      "ติดต่อ\nโทร. 089-081-0878\nLINE ID: Gu_Pu2499",
+    );
+    expect(getLinePublicMenuReply("Map สนาม")).toBeNull();
   });
 });

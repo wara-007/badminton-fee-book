@@ -3,6 +3,7 @@ import {
   LineWebhookEvent,
   findLinePlayerMatches,
   getLineGroupIds,
+  getLinePublicMenuReply,
   isLineAdmin,
   isSetAdminGroupCommand,
   parseLineBalanceCommand,
@@ -489,7 +490,9 @@ async function processLineEvent(
   let reply: LineMessage | null = null;
   if (event.type === "message" && event.message?.type === "text") {
     const text = event.message.text ?? "";
+    const publicMenuReply = getLinePublicMenuReply(text);
     reply =
+      (publicMenuReply ? textMessage(publicMenuReply) : null) ??
       await handleSetAdminGroup(client, event, text) ??
       await handleAdminRequest(client, event, text) ??
       await handleAdminRegistration(client, event, text) ??
