@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import styles from "./support-preview.module.css";
@@ -127,10 +128,13 @@ export default function SupportPreviewPage() {
   const [composer, setComposer] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const ticketsRequestInFlight = useRef(false);
+  const conversationRequestInFlight = useRef(false);
 
   const loadTickets = useCallback(
     async (silent = false) => {
-      if (!admin) return;
+      if (!admin || ticketsRequestInFlight.current) return;
+      ticketsRequestInFlight.current = true;
       if (!silent) setLoadingTickets(true);
       try {
         const response = await fetch(
@@ -146,8 +150,16 @@ export default function SupportPreviewPage() {
           tickets: TicketSummary[];
           counts: Counts;
         };
-        setTickets(data.tickets);
-        setCounts(data.counts);
+        setTickets((current) =>
+          JSON.stringify(current) === JSON.stringify(data.tickets)
+            ? current
+            : data.tickets,
+        );
+        setCounts((current) =>
+          JSON.stringify(current) === JSON.stringify(data.counts)
+            ? current
+            : data.counts,
+        );
         setSelectedId((current) => {
           if (
             requestedTicketId &&
@@ -158,13 +170,14 @@ export default function SupportPreviewPage() {
           if (current && data.tickets.some((item) => item.id === current)) {
             return current;
           }
-          return data.tickets[0]?.id ?? null;
+          return null;
         });
       } catch (loadError) {
         if (!silent) {
           setError(loadError instanceof Error ? loadError.message : "โหลด Ticket ไม่สำเร็จ");
         }
       } finally {
+        ticketsRequestInFlight.current = false;
         if (!silent) setLoadingTickets(false);
       }
     },
@@ -173,7 +186,8 @@ export default function SupportPreviewPage() {
 
   const loadConversation = useCallback(
     async (ticketId: string, silent = false) => {
-      if (!admin) return;
+      if (!admin || conversationRequestInFlight.current) return;
+      conversationRequestInFlight.current = true;
       if (!silent) setLoadingConversation(true);
       try {
         const response = await fetch(`/api/support/tickets/${ticketId}`, {
@@ -188,13 +202,22 @@ export default function SupportPreviewPage() {
           ticket: TicketDetail;
           messages: SupportMessage[];
         };
-        setTicket(data.ticket);
-        setMessages(data.messages);
+        setTicket((current) =>
+          JSON.stringify(current) === JSON.stringify(data.ticket)
+            ? current
+            : data.ticket,
+        );
+        setMessages((current) =>
+          JSON.stringify(current) === JSON.stringify(data.messages)
+            ? current
+            : data.messages,
+        );
       } catch (loadError) {
         if (!silent) {
           setError(loadError instanceof Error ? loadError.message : "โหลดข้อความไม่สำเร็จ");
         }
       } finally {
+        conversationRequestInFlight.current = false;
         if (!silent) setLoadingConversation(false);
       }
     },
@@ -230,12 +253,33 @@ export default function SupportPreviewPage() {
 
   useEffect(() => {
     if (!admin) return;
-    const interval = window.setInterval(() => {
+    const refresh = () => {
+      if (
+        document.visibilityState !== "visible" ||
+        actionLoading ||
+        composer.trim()
+      ) {
+        return;
+      }
       void loadTickets(true);
       if (selectedId) void loadConversation(selectedId, true);
-    }, 5000);
-    return () => window.clearInterval(interval);
-  }, [admin, loadConversation, loadTickets, selectedId]);
+    };
+    const interval = window.setInterval(() => {
+      refresh();
+    }, 30_000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [
+    actionLoading,
+    admin,
+    composer,
+    loadConversation,
+    loadTickets,
+    selectedId,
+  ]);
 
   const visibleTickets = useMemo(
     () =>
@@ -409,7 +453,11 @@ export default function SupportPreviewPage() {
         </div>
       )}
 
-      <section className={styles.workspace}>
+      <section
+        className={`${styles.workspace} ${
+          selectedId ? styles.workspaceConversationOpen : ""
+        }`}
+      >
         <aside className={styles.inbox}>
           <div className={styles.inboxHeader}>
             <div>
@@ -497,6 +545,15 @@ export default function SupportPreviewPage() {
           ) : (
             <>
               <header className={styles.conversationHeader}>
+                <button
+                  aria-label="กลับไปกล่องข้อความ"
+                  className={styles.mobileBackButton}
+                  onClick={() => setSelectedId(null)}
+                  type="button"
+                >
+                  <span aria-hidden="true">‹</span>
+                  <span>ข้อความ</span>
+                </button>
                 <div className={styles.person}>
                   <span className={styles.avatarLarge}>
                     {getInitials(ticket.requester_display_name)}

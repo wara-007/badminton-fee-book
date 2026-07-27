@@ -447,6 +447,10 @@
   border-bottom: 1px solid #dfe5ed;
 }
 
+.mobileBackButton {
+  display: none;
+}
+
 .person,
 .actions {
   display: flex;
@@ -663,8 +667,23 @@
 }
 
 @media (max-width: 760px) {
+  .page {
+    height: 100dvh;
+    overflow: hidden;
+  }
+
   .topbar {
+    min-height: 64px;
     padding: 12px 16px;
+  }
+
+  .topbar h1 {
+    font-size: 18px;
+  }
+
+  .brand,
+  .onlineDot {
+    display: none;
   }
 
   .admin {
@@ -673,10 +692,15 @@
   }
 
   .workspace {
-    display: block;
+    display: grid;
+    min-height: 0;
+    height: calc(100dvh - 64px);
+    grid-template-columns: 1fr;
   }
 
   .inbox {
+    min-height: 0;
+    overflow-y: auto;
     border-right: 0;
   }
 
@@ -684,8 +708,133 @@
     display: none;
   }
 
+  .workspaceConversationOpen .inbox {
+    display: none;
+  }
+
+  .workspaceConversationOpen .conversation {
+    display: grid;
+    min-height: 0;
+    height: 100%;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+  }
+
+  .conversationHeader {
+    min-height: 70px;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .mobileBackButton {
+    display: grid;
+    min-width: 54px;
+    min-height: 48px;
+    flex: 0 0 auto;
+    place-items: center;
+    gap: 0;
+    border: 0;
+    padding: 0 4px;
+    color: #1b3a6b;
+    background: transparent;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .mobileBackButton span:first-child {
+    height: 24px;
+    font-size: 30px;
+    font-weight: 400;
+    line-height: 20px;
+  }
+
+  .avatarLarge {
+    width: 40px;
+    height: 40px;
+  }
+
+  .person {
+    min-width: 0;
+    flex: 1;
+    gap: 9px;
+  }
+
+  .person div {
+    min-width: 0;
+  }
+
+  .person h2 {
+    overflow: hidden;
+    font-size: 16px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .person p {
+    overflow: hidden;
+    max-width: 34ch;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .actions .status {
+    display: none;
+  }
+
+  .secondaryButton,
+  .primaryButton,
+  .searchButton {
+    min-height: 44px;
+  }
+
+  .ownerBar {
+    gap: 10px;
+    padding: 10px 12px;
+  }
+
+  .ownerBar span {
+    display: none;
+  }
+
+  .messages {
+    min-height: 0;
+    padding: 16px 12px;
+    overscroll-behavior: contain;
+  }
+
+  .customerMessage,
+  .adminMessage {
+    max-width: 88%;
+  }
+
+  .composer {
+    padding: 10px 12px max(12px, env(safe-area-inset-bottom));
+  }
+
+  .composer textarea {
+    min-height: 54px;
+    max-height: 120px;
+    resize: none;
+    font-size: 16px;
+  }
+
+  .composerFooter span {
+    display: none;
+  }
+
+  .composerFooter {
+    justify-content: flex-end;
+    margin-top: 8px;
+  }
+
   .ticket {
     min-height: 104px;
+  }
+
+  .errorBanner,
+  .noticeBanner {
+    top: 72px;
+    width: calc(100% - 24px);
   }
 }
 
