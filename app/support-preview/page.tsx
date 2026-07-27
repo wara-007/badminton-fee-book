@@ -107,6 +107,7 @@ function getMessageDay(value: string): string {
 }
 
 export default function SupportPreviewPage() {
+  const [requestedTicketId, setRequestedTicketId] = useState<string | null>(null);
   const [admin, setAdmin] = useState<Admin | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [username, setUsername] = useState("");
@@ -148,6 +149,12 @@ export default function SupportPreviewPage() {
         setTickets(data.tickets);
         setCounts(data.counts);
         setSelectedId((current) => {
+          if (
+            requestedTicketId &&
+            data.tickets.some((item) => item.id === requestedTicketId)
+          ) {
+            return requestedTicketId;
+          }
           if (current && data.tickets.some((item) => item.id === current)) {
             return current;
           }
@@ -161,7 +168,7 @@ export default function SupportPreviewPage() {
         if (!silent) setLoadingTickets(false);
       }
     },
-    [admin, search],
+    [admin, requestedTicketId, search],
   );
 
   const loadConversation = useCallback(
@@ -193,6 +200,10 @@ export default function SupportPreviewPage() {
     },
     [admin],
   );
+
+  useEffect(() => {
+    setRequestedTicketId(new URL(window.location.href).searchParams.get("ticket"));
+  }, []);
 
   useEffect(() => {
     void fetch("/api/support/auth", { cache: "no-store" })

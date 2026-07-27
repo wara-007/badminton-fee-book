@@ -52,14 +52,20 @@ describe("LINE interactive messages", () => {
     ).toBeNull();
   });
 
-  it("builds a support card with reply and close actions", () => {
+  it("builds a support card that opens the web ticket without reply mode", () => {
     const message = createSupportRequestMessage({
       threadId: "123e4567-e89b-12d3-a456-426614174000",
       requesterName: "สมชาย",
       message: "วันนี้รับมือใหม่ไหมครับ",
+      ticketUrl:
+        "https://badminton-fee-book.vercel.app/support?ticket=123e4567-e89b-12d3-a456-426614174000",
     });
+    const serialized = JSON.stringify(message);
     expect(message.type).toBe("flex");
-    expect(JSON.stringify(message)).toContain("ตอบกลับ");
-    expect(JSON.stringify(message)).toContain("ปิดเรื่อง");
+    expect(serialized).toContain("เปิด Ticket");
+    expect(serialized).toContain('"type":"uri"');
+    expect(serialized).toContain("/support?ticket=");
+    expect(serialized).not.toContain("ตอบกลับ");
+    expect(serialized).not.toContain('"d=reply"');
   });
 });

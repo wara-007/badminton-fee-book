@@ -298,6 +298,7 @@ export function createSupportRequestMessage(options: {
   threadId: string;
   requesterName: string;
   message: string;
+  ticketUrl: string;
 }): LineMessage {
   return {
     type: "flex",
@@ -332,28 +333,16 @@ export function createSupportRequestMessage(options: {
       },
       footer: {
         type: "box",
-        layout: "horizontal",
-        spacing: "sm",
+        layout: "vertical",
         contents: [
-          {
-            type: "button",
-            style: "secondary",
-            action: {
-              type: "postback",
-              label: "ปิดเรื่อง",
-              displayText: `ปิดเรื่องของ ${options.requesterName}`,
-              data: createSupportPostbackData("close", options.threadId),
-            },
-          },
           {
             type: "button",
             style: "primary",
             color: "#2563EB",
             action: {
-              type: "postback",
-              label: "ตอบกลับ",
-              displayText: `ตอบกลับ ${options.requesterName}`,
-              data: createSupportPostbackData("reply", options.threadId),
+              type: "uri",
+              label: "เปิด Ticket",
+              uri: options.ticketUrl,
             },
           },
         ],
