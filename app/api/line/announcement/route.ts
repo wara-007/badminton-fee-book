@@ -48,12 +48,18 @@ export async function GET(request: Request) {
   const client = createClient(url, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const imageUrl = new URL("/line-announcement.jpg", request.url).toString();
+  const imageUrl = new URL("/line-announcement.jpg", request.url);
+  const previewImageUrl = new URL(
+    "/line-announcement-preview.jpg",
+    request.url,
+  );
+  imageUrl.searchParams.set("v", schedule.dateKey);
+  previewImageUrl.searchParams.set("v", schedule.dateKey);
   const messages = [
     {
       type: "image" as const,
-      originalContentUrl: imageUrl,
-      previewImageUrl: imageUrl,
+      originalContentUrl: imageUrl.toString(),
+      previewImageUrl: previewImageUrl.toString(),
     },
     {
       type: "text" as const,
