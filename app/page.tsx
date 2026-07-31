@@ -771,6 +771,15 @@ export default function HomePage() {
     syncStatus === "รอส่งขึ้นเซิร์ฟเวอร์" ||
     syncStatus === "ซิงก์ไม่สำเร็จ" ||
     syncStatus === "ข้อมูลชนกัน กรุณาตรวจสอบ";
+  const compactSyncTone = closedAt
+    ? "neutral"
+    : syncStatus === "ซิงก์แล้ว"
+      ? "success"
+      : syncStatus === "ซิงก์ไม่สำเร็จ" || syncStatus === "ข้อมูลชนกัน กรุณาตรวจสอบ"
+        ? "error"
+        : isEmergencySyncStatus
+          ? "warning"
+          : "info";
   const activePlayers = useMemo(
     () => session.players.filter((player) => !player.paid),
     [session.players]
@@ -935,7 +944,6 @@ export default function HomePage() {
       const nextEnabled = !enabled;
       if (nextEnabled) {
         setActiveTab(1);
-        setSettingsExpanded(false);
       }
       return nextEnabled;
     });
@@ -2325,8 +2333,17 @@ export default function HomePage() {
                   >
                     รอบ {sessionId}
                   </Button>
-                  <Typography component="span" className="ipadSyncStatus">
-                    <CheckCircleIcon aria-hidden="true" />
+                  <Typography
+                    component="span"
+                    className={`ipadSyncStatus ipadSyncStatus-${compactSyncTone}`}
+                  >
+                    {compactSyncTone === "success" ? (
+                      <CheckCircleIcon aria-hidden="true" />
+                    ) : compactSyncTone === "warning" || compactSyncTone === "error" ? (
+                      <WarningAmberIcon aria-hidden="true" />
+                    ) : (
+                      <RefreshIcon aria-hidden="true" />
+                    )}
                     {closedAt
                       ? "ปิดรอบแล้ว"
                       : `${syncStatus}${lastSyncedAt ? ` · อัปเดตล่าสุด ${formatMatchStartTime(lastSyncedAt)}` : ""}`}

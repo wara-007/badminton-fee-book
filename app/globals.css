@@ -2108,7 +2108,7 @@ thead .stickyAction {
 }
 
 /* iPad shell: navigation changes only; task content keeps its existing layout. */
-@media (min-width: 601px) and (max-width: 1024px) {
+@media (max-width: 1024px) {
   .appShell {
     padding-top: 0;
     padding-bottom: 88px;
@@ -2193,9 +2193,28 @@ thead .stickyAction {
   .ipadSyncStatus {
     gap: 6px;
     min-width: 0;
-    color: var(--success-text);
     font-size: 0.82rem;
     font-weight: 800;
+  }
+
+  .ipadSyncStatus-success {
+    color: var(--success-text);
+  }
+
+  .ipadSyncStatus-info {
+    color: var(--primary-light);
+  }
+
+  .ipadSyncStatus-warning {
+    color: var(--warning-text);
+  }
+
+  .ipadSyncStatus-error {
+    color: var(--danger-text);
+  }
+
+  .ipadSyncStatus-neutral {
+    color: var(--text-secondary);
   }
 
   .ipadSyncStatus .MuiSvgIcon-root {
@@ -2283,7 +2302,48 @@ thead .stickyAction {
 
 @media (max-width: 600px) {
   .appShell {
-    padding: 16px 0 28px;
+    padding: 0 0 88px;
+  }
+
+  .ipadHeaderTopRow {
+    min-height: 56px;
+    padding-inline: 12px;
+  }
+
+  .ipadBrand {
+    gap: 8px;
+    font-size: 1.08rem;
+  }
+
+  .ipadBrandIcon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+  }
+
+  .ipadHeaderTopRow .MuiButton-root {
+    min-width: 0;
+    padding-inline: 12px;
+  }
+
+  .ipadSessionRow {
+    padding-inline: 12px;
+  }
+
+  .ipadSyncStatus {
+    max-width: 58%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sheetTabs .MuiTabs-flexContainer {
+    justify-content: flex-start;
+  }
+
+  .sheetTabs .MuiTab-root {
+    flex: 0 0 76px;
+    min-width: 76px;
   }
 
   .addPlayerForm {
@@ -2956,7 +3016,7 @@ body {
 }
 
 /* Keep the tablet shell authoritative over the later shared responsive rules. */
-@media (min-width: 601px) and (max-width: 1024px) {
+@media (max-width: 1024px) {
   .appShell {
     padding-top: 0;
     padding-bottom: 88px;
