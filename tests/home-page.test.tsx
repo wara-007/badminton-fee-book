@@ -270,22 +270,21 @@ describe("Badminton fee book page", () => {
     expect(screen.getByText("v1.4.0")).toBeInTheDocument();
   });
 
-  it("focuses the page for match setup mode", async () => {
+  it("keeps match setup out of the header and places round pricing in data", async () => {
     const user = userEvent.setup();
 
     render(<HomePage />);
 
-    await user.click(screen.getByRole("button", { name: "เริ่มจัด Match" }));
-
-    expect(screen.queryByRole("heading", { name: "สมุดค่าตีแบด" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "เริ่มจัด Match" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "รอบและราคา" })).not.toBeInTheDocument();
-    expect(screen.queryByText("รอบ main")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "ออกจากโหมดจัด Match" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "เพิ่มผู้เล่น" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "จัด Match ล่วงหน้า" })).toHaveAttribute(
-      "aria-selected",
-      "true"
-    );
+
+    await user.click(screen.getByRole("tab", { name: "ข้อมูล" }));
+
+    expect(screen.getByRole("heading", { name: "จัดการข้อมูล" })).toBeInTheDocument();
+    expect(screen.getByText("รอบและราคา")).toBeInTheDocument();
+    expect(screen.getByLabelText("รหัสรอบ")).toBeInTheDocument();
+    expect(screen.getByLabelText("ค่าเริ่มต้น")).toBeInTheDocument();
+    expect(screen.getByLabelText("ค่าลูก")).toBeInTheDocument();
   });
 
   it("groups the shuttle picker by initial and shows an alphabetical index", async () => {
@@ -1323,6 +1322,7 @@ describe("Badminton fee book page", () => {
 
     await user.type(screen.getByLabelText("ชื่อผู้เล่น"), "B");
     await user.click(screen.getByRole("button", { name: "เพิ่มผู้เล่น" }));
+    await user.click(screen.getByRole("tab", { name: "ข้อมูล" }));
     await user.clear(screen.getByLabelText("ค่าเริ่มต้น"));
     await user.type(screen.getByLabelText("ค่าเริ่มต้น"), "120");
     await user.clear(screen.getByLabelText("ลูก number"));

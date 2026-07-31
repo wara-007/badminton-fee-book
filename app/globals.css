@@ -222,6 +222,10 @@ body {
   gap: 16px;
 }
 
+.ipadAppHeader {
+  display: none;
+}
+
 .authStatus {
   flex-shrink: 0;
 }
@@ -1669,6 +1673,22 @@ thead .stickyAction {
   padding: 18px;
 }
 
+.dataSessionSettings {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--card-bg-alt);
+}
+
+.dataSessionSettingsGrid {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.25fr) repeat(3, minmax(150px, 0.75fr));
+  gap: 12px;
+  align-items: start;
+}
+
 .databaseUsagePanel {
   display: grid;
   gap: 10px;
@@ -2080,6 +2100,184 @@ thead .stickyAction {
 
   .settingsPanel {
     grid-template-columns: 1fr;
+  }
+
+  .dataSessionSettingsGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* iPad shell: navigation changes only; task content keeps its existing layout. */
+@media (min-width: 601px) and (max-width: 1024px) {
+  .appShell {
+    padding-top: 0;
+    padding-bottom: 88px;
+  }
+
+  .appContainer {
+    max-width: none !important;
+    padding-inline: 0 !important;
+  }
+
+  .appContainer > .MuiStack-root {
+    gap: 0;
+  }
+
+  .appContainer > .MuiStack-root > :not(style) ~ :not(style) {
+    margin-top: 0;
+  }
+
+  .ipadAppHeader {
+    position: sticky;
+    top: 0;
+    z-index: 12;
+    display: grid;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--card-bg);
+  }
+
+  .ipadHeaderTopRow,
+  .ipadSessionRow,
+  .ipadBrand,
+  .ipadSyncStatus {
+    display: flex;
+    align-items: center;
+  }
+
+  .ipadHeaderTopRow {
+    min-height: 58px;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 8px 18px;
+  }
+
+  .ipadBrand {
+    gap: 10px;
+    color: var(--primary);
+    font-size: 1.35rem;
+    font-weight: 900;
+  }
+
+  .ipadBrandIcon {
+    display: block;
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+  }
+
+  .ipadHeaderTopRow .MuiButton-root,
+  .ipadHeaderTopRow .MuiIconButton-root {
+    min-height: 44px;
+  }
+
+  .ipadHeaderTopRow .MuiIconButton-root {
+    min-width: 44px;
+    border-color: var(--border-color);
+  }
+
+  .ipadSessionRow {
+    min-height: 42px;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 18px;
+    border-top: 1px solid var(--border-color);
+  }
+
+  .ipadSessionLink {
+    min-height: 36px !important;
+    padding-inline: 0 !important;
+    color: var(--app-text) !important;
+    font-weight: 800 !important;
+  }
+
+  .ipadSyncStatus {
+    gap: 6px;
+    min-width: 0;
+    color: var(--success-text);
+    font-size: 0.82rem;
+    font-weight: 800;
+  }
+
+  .ipadSyncStatus .MuiSvgIcon-root {
+    font-size: 18px;
+  }
+
+  .appHeader {
+    display: none;
+  }
+
+  .controlBand,
+  .tablePanel {
+    border-inline: 0;
+    border-radius: 0;
+  }
+
+  .controlBand {
+    display: none;
+  }
+
+  .sheetTabs {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 14;
+    min-height: 72px;
+    padding: 4px 8px max(4px, env(safe-area-inset-bottom));
+    border-top: 1px solid var(--border-color);
+    box-shadow: 0 -2px 8px rgb(19 35 61 / 8%);
+  }
+
+  .sheetTabs .MuiTabs-flexContainer {
+    justify-content: space-around;
+  }
+
+  .sheetTabs .MuiTab-root {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 62px;
+    gap: 2px;
+    padding: 5px 4px;
+    font-size: 0.72rem;
+  }
+
+  .sheetTabs .MuiTab-iconWrapper {
+    margin: 0 !important;
+    font-size: 22px;
+  }
+
+  .sheetTabs .MuiTab-root {
+    flex-direction: column;
+  }
+
+  .tablePanel > .MuiDivider-root:first-of-type {
+    display: none;
+  }
+
+  .matchQueuePicker {
+    display: flex;
+    height: calc(100dvh - 172px - env(safe-area-inset-bottom));
+    min-height: 0;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .matchQueueControls {
+    position: static;
+    flex: 0 0 auto;
+  }
+
+  .matchQueuePlayerGrid {
+    align-content: start;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .appFooter {
+    display: none;
   }
 }
 
@@ -2732,6 +2930,10 @@ body {
     grid-template-columns: 1fr;
   }
 
+  .dataSessionSettingsGrid {
+    grid-template-columns: 1fr;
+  }
+
   .sheetToolbar,
   .ledgerToolbar {
     align-items: stretch;
@@ -2750,6 +2952,18 @@ body {
 
   .loginPanel {
     padding: 24px 20px;
+  }
+}
+
+/* Keep the tablet shell authoritative over the later shared responsive rules. */
+@media (min-width: 601px) and (max-width: 1024px) {
+  .appShell {
+    padding-top: 0;
+    padding-bottom: 88px;
+  }
+
+  .appHeader {
+    display: none;
   }
 }
 

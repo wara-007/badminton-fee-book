@@ -27,7 +27,6 @@ import {
   Button,
   Checkbox,
   Chip,
-  Collapse,
   Container,
   CssBaseline,
   Dialog,
@@ -242,7 +241,6 @@ export default function HomePage() {
   const [playerSortMode, setPlayerSortMode] = useState<"queue" | "alphabetical">("queue");
   const [matchSetupMode, setMatchSetupMode] = useState(false);
   const [addPlayerDialogOpen, setAddPlayerDialogOpen] = useState(false);
-  const [settingsExpanded, setSettingsExpanded] = useState(false);
   const [mobileSummaryExpanded, setMobileSummaryExpanded] = useState(false);
   const [editingShuttleNumber, setEditingShuttleNumber] = useState<number | null>(null);
   const [editingReturnShuttleNumber, setEditingReturnShuttleNumber] = useState<number | null>(null);
@@ -2298,6 +2296,45 @@ export default function HomePage() {
         <Container maxWidth="xl" className="appContainer">
           <Stack spacing={3}>
             {!matchSetupMode ? (
+              <Box className="ipadAppHeader" component="header">
+                <Box className="ipadHeaderTopRow">
+                  <Box className="ipadBrand">
+                    <Box
+                      component="img"
+                      src="/app-icon.svg"
+                      alt=""
+                      aria-hidden="true"
+                      className="ipadBrandIcon"
+                    />
+                    <Typography component="span">สมุดค่าตีแบด</Typography>
+                  </Box>
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    onClick={() => setAddPlayerDialogOpen(true)}
+                    disabled={isEditingLocked || !canManageSession}
+                  >
+                    เพิ่มคน
+                  </Button>
+                </Box>
+                <Box className="ipadSessionRow">
+                  <Button
+                    className="ipadSessionLink"
+                    startIcon={<ArrowBackIcon />}
+                    onClick={() => router.push("/rooms")}
+                  >
+                    รอบ {sessionId}
+                  </Button>
+                  <Typography component="span" className="ipadSyncStatus">
+                    <CheckCircleIcon aria-hidden="true" />
+                    {closedAt
+                      ? "ปิดรอบแล้ว"
+                      : `${syncStatus}${lastSyncedAt ? ` · อัปเดตล่าสุด ${formatMatchStartTime(lastSyncedAt)}` : ""}`}
+                  </Typography>
+                </Box>
+              </Box>
+            ) : null}
+            {!matchSetupMode ? (
               <Box className="appHeader">
                 <Box className="sessionIdentity">
                   <IconButton aria-label="กลับไปหน้ารอบ" onClick={() => router.push("/rooms")}>
@@ -2334,26 +2371,6 @@ export default function HomePage() {
             {!matchSetupMode ? (
             <Paper className="controlBand" elevation={0}>
               <Stack direction={{ xs: "column", sm: "row" }} spacing={2} className="quickControls">
-                <Button
-                  variant="outlined"
-                  color="primary"
-                  onClick={toggleMatchSetupMode}
-                  className="matchSetupToggle"
-                >
-                  เริ่มจัด Match
-                </Button>
-                <Button
-                  variant="outlined"
-                  endIcon={
-                    <ExpandMoreIcon
-                      className={settingsExpanded ? "settingsChevron expanded" : "settingsChevron"}
-                    />
-                  }
-                  onClick={() => setSettingsExpanded((expanded) => !expanded)}
-                  className="settingsToggle"
-                >
-                  รอบและราคา
-                </Button>
                 <Box component="form" onSubmit={addPlayer} className="addPlayerForm">
                   <TextField
                     label="ชื่อผู้เล่น"
@@ -2373,52 +2390,6 @@ export default function HomePage() {
                   </Button>
                 </Box>
               </Stack>
-              <Collapse in={settingsExpanded}>
-                <Box className="settingsPanel">
-                  <Box component="form" onSubmit={switchSession} className="roomForm">
-                    <TextField
-                      label="รหัสรอบ"
-                      value={roomDraft}
-                      onChange={(event) => setRoomDraft(event.target.value)}
-                      disabled={isEditingLocked || !canManageSession}
-                      autoComplete="off"
-                    />
-                    <Button type="submit" variant="outlined" disabled={isEditingLocked || !canManageSession}>
-                      เปิดรอบ
-                    </Button>
-                  </Box>
-                  <TextField
-                    label="เลือกวันที่ย้อนหลัง"
-                    type="date"
-                    value={/^\d{4}-\d{2}-\d{2}$/.test(roomDraft) ? roomDraft : ""}
-                    onChange={(event) => setRoomDraft(event.target.value)}
-                    disabled={isEditingLocked || !canManageSession}
-                    InputLabelProps={{ shrink: true }}
-                  />
-                  <TextField
-                    label="ค่าเริ่มต้น"
-                    type="number"
-                    value={session.pricing.baseFee}
-                    onChange={(event) => updatePricing("baseFee", event.target.value)}
-                    disabled={isEditingLocked || !canManageSession}
-                    inputProps={{ min: 0 }}
-                    InputProps={{
-                      endAdornment: <InputAdornment position="end">บาท</InputAdornment>
-                    }}
-                  />
-                  <TextField
-                    label="ค่าลูก"
-                    type="number"
-                    value={session.pricing.shuttleFee}
-                    onChange={(event) => updatePricing("shuttleFee", event.target.value)}
-                    disabled={isEditingLocked || !canManageSession}
-                    inputProps={{ min: 0 }}
-                    InputProps={{
-                      endAdornment: <InputAdornment position="end">บาท</InputAdornment>
-                    }}
-                  />
-                </Box>
-              </Collapse>
               <Stack direction="row" spacing={1} className="syncBar">
                 <Chip label={`รอบ ${sessionId}`} size="small" color="primary" variant="outlined" />
                 {closedAt ? <Chip label="ดูอย่างเดียว" size="small" color="warning" /> : null}
@@ -2639,6 +2610,12 @@ export default function HomePage() {
                 </>
               ) : (
                 <DataManagementPanel
+                  roomDraft={roomDraft}
+                  onRoomDraftChange={setRoomDraft}
+                  onSwitchSession={switchSession}
+                  baseFee={session.pricing.baseFee}
+                  shuttleFee={session.pricing.shuttleFee}
+                  onPricingChange={updatePricing}
                   onClearPlayData={clearPlayData}
                   onResetSession={resetSession}
                   onCopySummary={copySummary}
@@ -2647,8 +2624,6 @@ export default function HomePage() {
                   onPaymentAccountChange={changePaymentAccount}
                   sessionClosed={Boolean(closedAt)}
                   canFinishSession={userRole === "admin" && hasSupabaseConfig}
-                  matchSetupMode={matchSetupMode}
-                  onToggleMatchSetupMode={toggleMatchSetupMode}
                   canManageSession={canManageSession}
                   showDatabaseUsage={userRole === "admin" && hasSupabaseConfig}
                   databaseUsage={databaseUsage}
@@ -4624,6 +4599,12 @@ function PaidSummary({
 }
 
 function DataManagementPanel({
+  roomDraft,
+  onRoomDraftChange,
+  onSwitchSession,
+  baseFee,
+  shuttleFee,
+  onPricingChange,
   onClearPlayData,
   onResetSession,
   onCopySummary,
@@ -4632,8 +4613,6 @@ function DataManagementPanel({
   onPaymentAccountChange,
   sessionClosed,
   canFinishSession,
-  matchSetupMode,
-  onToggleMatchSetupMode,
   canManageSession,
   showDatabaseUsage,
   databaseUsage,
@@ -4641,6 +4620,12 @@ function DataManagementPanel({
   databaseUsageLoading,
   onRefreshDatabaseUsage
 }: {
+  roomDraft: string;
+  onRoomDraftChange: (value: string) => void;
+  onSwitchSession: (event: FormEvent<HTMLFormElement>) => void;
+  baseFee: number;
+  shuttleFee: number;
+  onPricingChange: (field: "baseFee" | "shuttleFee", value: string) => void;
   onClearPlayData: () => void;
   onResetSession: () => void;
   onCopySummary: () => void;
@@ -4649,8 +4634,6 @@ function DataManagementPanel({
   onPaymentAccountChange: (accountId: PaymentAccountId) => void;
   sessionClosed: boolean;
   canFinishSession: boolean;
-  matchSetupMode: boolean;
-  onToggleMatchSetupMode: () => void;
   canManageSession: boolean;
   showDatabaseUsage: boolean;
   databaseUsage: DatabaseUsage | null;
@@ -4668,6 +4651,58 @@ function DataManagementPanel({
           รวมเครื่องมือ export และจัดการข้อมูลรอบนี้
         </Typography>
       </Box>
+      <Paper className="dataSessionSettings" elevation={0}>
+        <Box>
+          <Typography fontWeight={900}>รอบและราคา</Typography>
+          <Typography color="text.secondary" fontSize={14}>
+            เปิดรอบอื่นและกำหนดราคาที่ใช้คำนวณในรอบ
+          </Typography>
+        </Box>
+        <Box className="dataSessionSettingsGrid">
+          <Box component="form" onSubmit={onSwitchSession} className="roomForm">
+            <TextField
+              label="รหัสรอบ"
+              value={roomDraft}
+              onChange={(event) => onRoomDraftChange(event.target.value)}
+              disabled={!canManageSession}
+              autoComplete="off"
+            />
+            <Button type="submit" variant="outlined" disabled={!canManageSession}>
+              เปิดรอบ
+            </Button>
+          </Box>
+          <TextField
+            label="เลือกวันที่ย้อนหลัง"
+            type="date"
+            value={/^\d{4}-\d{2}-\d{2}$/.test(roomDraft) ? roomDraft : ""}
+            onChange={(event) => onRoomDraftChange(event.target.value)}
+            disabled={!canManageSession}
+            InputLabelProps={{ shrink: true }}
+          />
+          <TextField
+            label="ค่าเริ่มต้น"
+            type="number"
+            value={baseFee}
+            onChange={(event) => onPricingChange("baseFee", event.target.value)}
+            disabled={!canManageSession}
+            inputProps={{ min: 0 }}
+            InputProps={{
+              endAdornment: <InputAdornment position="end">บาท</InputAdornment>
+            }}
+          />
+          <TextField
+            label="ค่าลูก"
+            type="number"
+            value={shuttleFee}
+            onChange={(event) => onPricingChange("shuttleFee", event.target.value)}
+            disabled={!canManageSession}
+            inputProps={{ min: 0 }}
+            InputProps={{
+              endAdornment: <InputAdornment position="end">บาท</InputAdornment>
+            }}
+          />
+        </Box>
+      </Paper>
       {showDatabaseUsage ? (
         <Paper
           className={`databaseUsagePanel${databaseUsage?.level === "warning" ? " databaseUsageWarning" : ""}${databaseUsage?.level === "critical" ? " databaseUsageCritical" : ""}`}
@@ -4760,11 +4795,6 @@ function DataManagementPanel({
         </ToggleButtonGroup>
       </Box>
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1} className="dataManagementActions">
-        {matchSetupMode ? (
-          <Button color="secondary" variant="contained" onClick={onToggleMatchSetupMode}>
-            ออกจากโหมดจัด Match
-          </Button>
-        ) : null}
         <Button variant="contained" onClick={onCopySummary} disabled={!canManageSession}>
           Export สรุป
         </Button>
