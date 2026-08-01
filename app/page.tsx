@@ -3890,6 +3890,30 @@ function MatchQueuePicker({
       )
       : filteredPlayers;
   }, [normalizedSearch, players, sortMode]);
+  const alphabetGroups = useMemo(() => {
+    if (sortMode !== "alphabetical") return [];
+    return visiblePlayers.reduce<Array<{ label: string; players: Player[] }>>((groups, player) => {
+      const label = getPlayerInitialGroupLabel(player.name);
+      const existingGroup = groups.find((group) => group.label === label);
+      if (existingGroup) {
+        existingGroup.players.push(player);
+      } else {
+        groups.push({ label, players: [player] });
+      }
+      return groups;
+    }, []);
+  }, [sortMode, visiblePlayers]);
+  const playerScrollRef = useRef<HTMLDivElement | null>(null);
+  const alphabetGroupRefs = useRef<Record<string, HTMLElement | null>>({});
+  const jumpToAlphabetGroup = useCallback((label: string) => {
+    const scrollElement = playerScrollRef.current;
+    const target = alphabetGroupRefs.current[label];
+    if (!scrollElement || !target) return;
+    scrollElement.scrollTo({
+      top: Math.max(0, target.offsetTop - 8),
+      behavior: "smooth"
+    });
+  }, []);
   const selectedPlayers = selectedPlayerIds
     .map((id) => playerById.get(id))
     .filter((player): player is Player => Boolean(player));
@@ -4004,28 +4028,83 @@ function MatchQueuePicker({
         ) : null}
       </Box>
 
-      <Box className="matchQueuePlayerGrid" aria-label="รายชื่อผู้เล่น">
+      <Box
+        ref={playerScrollRef}
+        className={`matchQueuePlayerGrid${sortMode === "alphabetical" ? " matchQueuePlayerGridAlphabet" : ""}`}
+        aria-label="รายชื่อผู้เล่น"
+      >
         {visiblePlayers.length === 0 ? (
           <Box className="matchQueueNoResults">ไม่พบชื่อที่ค้นหา</Box>
+        ) : sortMode === "alphabetical" ? (
+          <Box className="matchQueueAlphabetLayout">
+            <Box className="matchQueueAlphabetGroups">
+              {alphabetGroups.map((group) => (
+                <Box
+                  key={group.label}
+                  className="matchQueueAlphabetGroup"
+                  ref={(element) => {
+                    alphabetGroupRefs.current[group.label] = element as HTMLElement | null;
+                  }}
+                >
+                  <Typography component="h3" className="matchQueueAlphabetLabel">
+                    {group.label}
+                  </Typography>
+                  <Box className="matchQueueAlphabetPlayerGrid">
+                    {group.players.map((player) => {
+                      const isSelected = selectedPlayerIds.includes(player.id);
+                      const disabled = !canManageSession || (selectedPlayerIds.length === 4 && !isSelected);
+                      return (
+                        <Button
+                          key={player.id}
+                          type="button"
+                          className={`playerPickerButton ${getWaitingRowClass(player, now)}${isSelected ? " playerPickerButtonSelected" : ""}`}
+                          variant={isSelected ? "contained" : "outlined"}
+                          disabled={disabled}
+                          onClick={() => onTogglePlayer(player.id)}
+                          aria-pressed={isSelected}
+                          aria-label={`${isSelected ? "ยกเลิกเลือก" : "เลือก"} ${player.name}`}
+                        >
+                          <span className="playerPickerName">{player.name}</span>
+                        </Button>
+                      );
+                    })}
+                  </Box>
+                </Box>
+              ))}
+            </Box>
+            <Stack className="matchQueueAlphabetIndex" role="navigation" aria-label="ดัชนีรายชื่อตามอักษร">
+              {alphabetGroups.map((group) => (
+                <Button
+                  key={`queue-index-${group.label}`}
+                  size="small"
+                  variant="outlined"
+                  onClick={() => jumpToAlphabetGroup(group.label)}
+                  aria-label={`ไปที่หมวด ${group.label}`}
+                >
+                  {group.label}
+                </Button>
+              ))}
+            </Stack>
+          </Box>
         ) : visiblePlayers.map((player, index) => {
-          const isSelected = selectedPlayerIds.includes(player.id);
-          const disabled = !canManageSession || (selectedPlayerIds.length === 4 && !isSelected);
-          return (
-            <Button
-              key={player.id}
-              type="button"
-              className={`playerPickerButton ${getWaitingRowClass(player, now)}${isSelected ? " playerPickerButtonSelected" : ""}`}
-              variant={isSelected ? "contained" : "outlined"}
-              disabled={disabled}
-              onClick={() => onTogglePlayer(player.id)}
-              aria-pressed={isSelected}
-              aria-label={`${isSelected ? "ยกเลิกเลือก" : "เลือก"} ${player.name}`}
-            >
-              <span className="playerPickerOrder">{index + 1}</span>
-              <span className="playerPickerName">{player.name}</span>
-            </Button>
-          );
-        })}
+            const isSelected = selectedPlayerIds.includes(player.id);
+            const disabled = !canManageSession || (selectedPlayerIds.length === 4 && !isSelected);
+            return (
+              <Button
+                key={player.id}
+                type="button"
+                className={`playerPickerButton ${getWaitingRowClass(player, now)}${isSelected ? " playerPickerButtonSelected" : ""}`}
+                variant={isSelected ? "contained" : "outlined"}
+                disabled={disabled}
+                onClick={() => onTogglePlayer(player.id)}
+                aria-pressed={isSelected}
+                aria-label={`${isSelected ? "ยกเลิกเลือก" : "เลือก"} ${player.name}`}
+              >
+                <span className="playerPickerOrder">{index + 1}</span>
+                <span className="playerPickerName">{player.name}</span>
+              </Button>
+            );
+          })}
       </Box>
 
     </Box>
