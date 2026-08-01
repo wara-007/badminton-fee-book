@@ -35,7 +35,7 @@ describe('badminton session calculations', () => {
       DEFAULT_PRICING,
     );
 
-    expect(total).toBe(175);
+    expect(total).toBe(168);
   });
 
   it('calculates a group total with four checked marks as one shuttle', () => {
@@ -48,7 +48,7 @@ describe('badminton session calculations', () => {
     ];
 
     expect(getBillableShuttleCount(players)).toBe(2);
-    expect(calculatePlayersTotal(players, DEFAULT_PRICING)).toBe(550);
+    expect(calculatePlayersTotal(players, DEFAULT_PRICING)).toBe(502);
   });
 
   it('calculates individual totals by summing each player amount', () => {
@@ -57,7 +57,7 @@ describe('badminton session calculations', () => {
       { ...createPlayer('B'), shuttleMarks: [1] },
     ];
 
-    expect(calculatePlayersIndividualTotal(players, DEFAULT_PRICING)).toBe(275);
+    expect(calculatePlayersIndividualTotal(players, DEFAULT_PRICING)).toBe(258);
   });
 
   it('calculates waiting status after signup and after rest time ends', () => {
@@ -151,7 +151,7 @@ describe('badminton session calculations', () => {
         '2026-05-25',
         '2026-05-25T10:00:00.000Z',
       ),
-    ).toContain('A 125 จ่ายแล้ว\nB 100 ค้าง');
+    ).toContain('A 116 จ่ายแล้ว\nB 90 ค้าง');
   });
 
   it('calculates each player from the number of checked shuttle marks', () => {
@@ -161,7 +161,7 @@ describe('badminton session calculations', () => {
       DEFAULT_PRICING,
     );
 
-    expect(total).toBe(150);
+    expect(total).toBe(142);
   });
 
   it('keeps at least the default shuttle columns and expands after the last used slot', () => {
@@ -240,9 +240,9 @@ describe('badminton session calculations', () => {
     expect(summarizeSession(players, DEFAULT_PRICING)).toEqual({
       playerCount: 2,
       shuttleCount: 2,
-      totalAmount: 275,
-      paidAmount: 150,
-      unpaidAmount: 125,
+      totalAmount: 258,
+      paidAmount: 142,
+      unpaidAmount: 116,
     });
   });
 
@@ -275,9 +275,9 @@ describe('badminton session calculations', () => {
     expect(summarizeSession(players, DEFAULT_PRICING)).toEqual({
       playerCount: 4,
       shuttleCount: 1,
-      totalAmount: 500,
-      paidAmount: 125,
-      unpaidAmount: 375,
+      totalAmount: 464,
+      paidAmount: 116,
+      unpaidAmount: 348,
     });
   });
 
@@ -317,6 +317,8 @@ describe('badminton session calculations', () => {
           shuttleCount: 4,
           amount: amountC,
           calculatedAmount: amountC,
+          paidAt: '2026-05-25T02:00:00.000Z',
+          paidAccountId: 'gsb',
         }],
       },
       {
@@ -324,16 +326,20 @@ describe('badminton session calculations', () => {
         totalAmount: amountA + amountB,
         players: [
           {
-            name: 'A',
-            shuttleCount: 2,
-            amount: amountA,
-            calculatedAmount: amountA,
-          },
-          {
             name: 'B',
             shuttleCount: 1,
             amount: amountB,
             calculatedAmount: amountB,
+            paidAt: '2026-05-24T03:00:00.000Z',
+            paidAccountId: 'gsb',
+          },
+          {
+            name: 'A',
+            shuttleCount: 2,
+            amount: amountA,
+            calculatedAmount: amountA,
+            paidAt: '2026-05-24T02:00:00.000Z',
+            paidAccountId: 'gsb',
           },
         ],
       },
@@ -402,18 +408,24 @@ describe('badminton session calculations', () => {
         playerNames: ['a', 'b', 'b', 'c'],
         isIncomplete: false,
         isOverLimit: false,
+        source: 'manual',
+        startedAt: undefined,
       },
       {
         shuttleNumber: 2,
         playerNames: ['a', 'c', 'e', 'f'],
         isIncomplete: false,
         isOverLimit: false,
+        source: 'manual',
+        startedAt: undefined,
       },
       {
         shuttleNumber: 1,
         playerNames: ['a', 'b', 'c', 'd'],
         isIncomplete: false,
         isOverLimit: false,
+        source: 'manual',
+        startedAt: undefined,
       },
     ]);
   });
@@ -453,6 +465,8 @@ describe('badminton session calculations', () => {
         playerNames: ['a', 'b', 'c'],
         isIncomplete: true,
         isOverLimit: false,
+        source: 'manual',
+        startedAt: undefined,
       },
     ]);
   });
@@ -472,6 +486,8 @@ describe('badminton session calculations', () => {
         playerNames: ['a', 'b', 'c', 'd', 'e'],
         isIncomplete: false,
         isOverLimit: true,
+        source: 'manual',
+        startedAt: undefined,
       },
     ]);
   });
@@ -526,12 +542,12 @@ describe('badminton session calculations', () => {
     const session = createInitialSession();
 
     expect(session.plannedMatches).toEqual([
-      { id: 'match-1', label: 'Match 1', playerIds: [] },
-      { id: 'match-2', label: 'Match 2', playerIds: [] },
-      { id: 'match-3', label: 'Match 3', playerIds: [] },
-      { id: 'match-4', label: 'Match 4', playerIds: [] },
-      { id: 'match-5', label: 'Match 5', playerIds: [] },
-      { id: 'match-6', label: 'Match 6', playerIds: [] },
+      { id: 'match-1', label: 'Match 1', playerIds: [], confirmed: false },
+      { id: 'match-2', label: 'Match 2', playerIds: [], confirmed: false },
+      { id: 'match-3', label: 'Match 3', playerIds: [], confirmed: false },
+      { id: 'match-4', label: 'Match 4', playerIds: [], confirmed: false },
+      { id: 'match-5', label: 'Match 5', playerIds: [], confirmed: false },
+      { id: 'match-6', label: 'Match 6', playerIds: [], confirmed: false },
     ]);
   });
 
@@ -544,7 +560,7 @@ describe('badminton session calculations', () => {
       pricing: DEFAULT_PRICING,
       currentShuttleNumber: 3,
       plannedMatches: [
-        { id: 'match-1', label: 'Match 1', playerIds: ['a', 'b', 'missing'] },
+        { id: 'match-1', label: 'Match 1', playerIds: ['a', 'b', 'missing'], confirmed: true },
         { id: 'match-2', label: 'Match 2', playerIds: ['a'] },
       ],
       activityLog: [],
@@ -553,6 +569,7 @@ describe('badminton session calculations', () => {
 
     expect(session.plannedMatches).toHaveLength(6);
     expect(session.plannedMatches[0].playerIds).toEqual(['a']);
+    expect(session.plannedMatches[0].confirmed).toBe(false);
     expect(session.plannedMatches[1].playerIds).toEqual([]);
   });
 

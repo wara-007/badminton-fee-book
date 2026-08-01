@@ -92,6 +92,12 @@ import {
   setPlayerShuttleMarks,
   summarizeSession
 } from "@/lib/session";
+
+function getMediaQuery(query: string): MediaQueryList | null {
+  return typeof window !== "undefined" && typeof window.matchMedia === "function"
+    ? window.matchMedia(query)
+    : null;
+}
 import {
   RemoteSaveConflictError,
   closeRemoteSession,
@@ -326,14 +332,14 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    const displayMode = window.matchMedia("(display-mode: standalone)");
+    const displayMode = getMediaQuery("(display-mode: standalone)");
     const updateStandaloneMode = () => {
       const iosStandalone = Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
-      setIsStandalonePwa(displayMode.matches || iosStandalone);
+      setIsStandalonePwa(Boolean(displayMode?.matches) || iosStandalone);
     };
     updateStandaloneMode();
-    displayMode.addEventListener("change", updateStandaloneMode);
-    return () => displayMode.removeEventListener("change", updateStandaloneMode);
+    displayMode?.addEventListener("change", updateStandaloneMode);
+    return () => displayMode?.removeEventListener("change", updateStandaloneMode);
   }, []);
 
   const refreshFromRemote = useCallback(async () => {
@@ -765,7 +771,7 @@ export default function HomePage() {
     if (activeTab === 5) void refreshDatabaseUsage();
   }, [activeTab, refreshDatabaseUsage]);
   useEffect(() => {
-    if (activeTab !== 0 || !window.matchMedia("(max-width: 1024px)").matches) {
+    if (activeTab !== 0 || !getMediaQuery("(max-width: 1024px)")?.matches) {
       return;
     }
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -1400,7 +1406,8 @@ export default function HomePage() {
         match.id === targetMatch.id
           ? {
             ...match,
-            playerIds: [...match.playerIds, ...nextPlayerIds]
+            playerIds: [...match.playerIds, ...nextPlayerIds],
+            confirmed: false
           }
           : match
       )
@@ -1440,7 +1447,7 @@ export default function HomePage() {
       return {
         ...current,
         plannedMatches: current.plannedMatches.map((match) =>
-          match.id === matchId ? { ...match, playerIds: nextPlayerIds } : match
+          match.id === matchId ? { ...match, playerIds: nextPlayerIds, confirmed: false } : match
         )
       };
     });
@@ -1587,18 +1594,39 @@ export default function HomePage() {
     });
   }
 
-  async function confirmPlannedMatch(matchId: string) {
+  async function confirmPlannedMatch(matchId: string, overridePlayerIds?: string[]): Promise<boolean> {
     if (isEditingLocked || !canManageSession) {
-      return;
+      return false;
     }
 
-    const targetMatch = session.plannedMatches.find((match) => match.id === matchId);
-    if (!targetMatch || targetMatch.playerIds.length !== 4) {
-      return;
-    }
+    const resolveSelection = (current: SessionState) => {
+      const sourceMatch = current.plannedMatches.find((match) => match.id === matchId);
+      if (!sourceMatch || sourceMatch.confirmed) return null;
+      const playerIds = Array.from(new Set(overridePlayerIds ?? sourceMatch.playerIds));
+      if (playerIds.length !== 4) return null;
+      const playerIdsInOtherMatches = new Set(
+        current.plannedMatches
+          .filter((match) => match.id !== matchId && !match.confirmed)
+          .flatMap((match) => match.playerIds)
+      );
+      if (playerIds.some((playerId) => playerIdsInOtherMatches.has(playerId))) return null;
+      const activePlayerById = new Map(
+        current.players.filter((player) => !player.paid).map((player) => [player.id, player])
+      );
+      const players = playerIds
+        .map((playerId) => activePlayerById.get(playerId))
+        .filter((player): player is Player => Boolean(player));
+      return players.length === 4
+        ? { match: { ...sourceMatch, playerIds }, players }
+        : null;
+    };
 
-    const targetShuttleNumber = session.currentShuttleNumber;
-    const currentSummary = getShuttleMarkSummary(session.players, targetShuttleNumber);
+    const initialSelection = resolveSelection(sessionRef.current);
+    if (!initialSelection) return false;
+    const targetMatch = initialSelection.match;
+
+    const targetShuttleNumber = sessionRef.current.currentShuttleNumber;
+    const currentSummary = getShuttleMarkSummary(sessionRef.current.players, targetShuttleNumber);
     if (currentSummary.count > 0) {
       await showAlert({
         title: "ลูกปัจจุบันมีข้อมูลแล้ว",
@@ -1611,23 +1639,10 @@ export default function HomePage() {
         confirmLabel: "รับทราบ",
         color: "warning"
       });
-      return;
+      return false;
     }
 
-    const selectedPlayers = targetMatch.playerIds
-      .map((playerId) => activePlayers.find((player) => player.id === playerId))
-      .filter((player): player is Player => Boolean(player));
-    if (selectedPlayers.length !== 4) {
-      await showAlert({
-        title: "รายชื่อไม่ครบ",
-        headline: "มีผู้เล่นบางคนไม่อยู่ในรายชื่อกำลังตีแล้ว",
-        message: "ระบบจะล้างชื่อที่ใช้ไม่ได้ออกจาก Match นี้ก่อนจัดใหม่",
-        confirmLabel: "รับทราบ",
-        color: "warning"
-      });
-      updateSession((current) => normalizeSession(current));
-      return;
-    }
+    const selectedPlayers = initialSelection.players;
 
     const playerNames = selectedPlayers.map((player) => player.name).join(", ");
     const confirmed = await showConfirm({
@@ -1643,18 +1658,44 @@ export default function HomePage() {
       color: "primary"
     });
     if (!confirmed) {
-      return;
+      return false;
     }
     const paidPlayerIds = await confirmAddingShuttleToPaidPlayers(selectedPlayers);
     if (paidPlayerIds === null) {
-      return;
+      return false;
+    }
+
+    const latestSession = sessionRef.current;
+    const latestSelection = resolveSelection(latestSession);
+    const latestSummary = getShuttleMarkSummary(latestSession.players, targetShuttleNumber);
+    if (
+      !latestSelection ||
+      latestSession.currentShuttleNumber !== targetShuttleNumber ||
+      latestSummary.count > 0
+    ) {
+      await showAlert({
+        title: "ข้อมูล Match เปลี่ยนแล้ว",
+        headline: "ยังไม่ได้ยืนยันรายชื่อนี้",
+        message: "มีการแก้รายชื่อหรือหมายเลขลูกจากอีกหน้าจอ กรุณาตรวจสอบแล้วกดยืนยันใหม่",
+        confirmLabel: "รับทราบ",
+        color: "warning"
+      });
+      return false;
     }
 
     const confirmedAt = getTrustedNowIso();
     const restUntil = addMinutes(confirmedAt, REST_MINUTES);
-    const selectedPlayerIds = new Set(targetMatch.playerIds);
+    const selectedPlayerIds = new Set(latestSelection.match.playerIds);
     setSelectedPlannedMatchId("");
     updateSession((current) => {
+      const atomicSelection = resolveSelection(current);
+      if (
+        !atomicSelection ||
+        current.currentShuttleNumber !== targetShuttleNumber ||
+        getShuttleMarkSummary(current.players, targetShuttleNumber).count > 0
+      ) {
+        return current;
+      }
       const nextPlayers = current.players.map((player) =>
         selectedPlayerIds.has(player.id)
           ? setPlayerShuttleMarks(
@@ -1684,7 +1725,7 @@ export default function HomePage() {
           plannedMatches: renumberPlannedMatches([
             ...current.plannedMatches.filter((match) => match.id !== matchId),
             {
-              ...targetMatch,
+              ...atomicSelection.match,
               playerIds: [],
               confirmed: true
             }
@@ -1699,6 +1740,7 @@ export default function HomePage() {
 
       return nextSession;
     });
+    return true;
   }
 
   async function toggleShuttleMark(playerId: string, column: number) {
@@ -2503,6 +2545,7 @@ export default function HomePage() {
                   onSortModeChange={setPlayerSortMode}
                   onShuttleNumberChange={updateCurrentShuttleNumber}
                   onStepShuttleNumber={stepCurrentShuttleNumber}
+                  onSelectPlannedMatch={confirmPlannedMatch}
                   onTogglePlayer={(playerId) =>
                     currentShuttleSummary.entries.some((entry) => entry.playerId === playerId)
                       ? removeActiveShuttlePlayer(playerId)
@@ -3878,6 +3921,7 @@ function MatchQueuePicker({
   onSortModeChange,
   onShuttleNumberChange,
   onStepShuttleNumber,
+  onSelectPlannedMatch,
   onTogglePlayer
 }: {
   players: Player[];
@@ -3893,8 +3937,11 @@ function MatchQueuePicker({
   onSortModeChange: (mode: "queue" | "alphabetical") => void;
   onShuttleNumberChange: (value: string) => void;
   onStepShuttleNumber: (step: number) => void;
+  onSelectPlannedMatch: (matchId: string, playerIds?: string[]) => Promise<boolean>;
   onTogglePlayer: (playerId: string) => void;
 }) {
+  const [previewMatchId, setPreviewMatchId] = useState("");
+  const [previewPlayerIds, setPreviewPlayerIds] = useState<string[]>([]);
   const playerById = useMemo(
     () => new Map(players.map((player) => [player.id, player])),
     [players]
@@ -3907,6 +3954,14 @@ function MatchQueuePicker({
     () => new Set(queuedMatches.flatMap((match) => match.playerIds)),
     [queuedMatches]
   );
+  const queuedMatchByPlayerId = useMemo(() => {
+    const result = new Map<string, PlannedMatch>();
+    queuedMatches.forEach((match) => {
+      match.playerIds.forEach((playerId) => result.set(playerId, match));
+    });
+    return result;
+  }, [queuedMatches]);
+  const previewMatch = queuedMatches.find((match) => match.id === previewMatchId);
   const normalizedSearch = search.trim().toLocaleLowerCase("th-TH");
   const visiblePlayers = useMemo(() => {
     const filteredPlayers = players.filter((player) =>
@@ -3942,10 +3997,32 @@ function MatchQueuePicker({
       behavior: "smooth"
     });
   }, []);
-  const selectedPlayers = selectedPlayerIds
+  const displayedSelectedPlayerIds = previewMatch ? previewPlayerIds : selectedPlayerIds;
+  const selectedPlayers = displayedSelectedPlayerIds
     .map((id) => playerById.get(id))
     .filter((player): player is Player => Boolean(player));
   const overlapPlayers = selectedPlayers.filter((player) => queuedPlayerIds.has(player.id));
+  const selectPlayerOrPlannedMatch = (playerId: string) => {
+    if (previewMatch) {
+      const playerMatch = queuedMatchByPlayerId.get(playerId);
+      const belongsToAnotherMatch = playerMatch && playerMatch.id !== previewMatch.id;
+      setPreviewPlayerIds((current) =>
+        current.includes(playerId)
+          ? current.filter((id) => id !== playerId)
+          : current.length < 4 && !belongsToAnotherMatch
+            ? [...current, playerId]
+            : current
+      );
+      return;
+    }
+    const plannedMatch = queuedMatchByPlayerId.get(playerId);
+    if (!plannedMatch) {
+      onTogglePlayer(playerId);
+      return;
+    }
+    setPreviewMatchId(plannedMatch.id);
+    setPreviewPlayerIds(plannedMatch.playerIds.slice(0, 4));
+  };
 
   return (
     <Box className="matchQueuePicker" role="region" aria-label="เลือกผู้เล่นเข้าคิว Match">
@@ -3973,7 +4050,7 @@ function MatchQueuePicker({
                 type="button"
                 className={`matchQueueSlot${player ? " isSelected" : ""}`}
                 disabled={!player || !canManageSession}
-                onClick={() => player && onTogglePlayer(player.id)}
+                onClick={() => player && (previewMatch ? selectPlayerOrPlannedMatch(player.id) : onTogglePlayer(player.id))}
                 aria-label={player ? `ยกเลิกเลือก ${player.name}` : `ผู้เล่น ${index + 1}`}
               >
                 {player ? (
@@ -3988,6 +4065,43 @@ function MatchQueuePicker({
             );
           })}
         </Box>
+
+        {previewMatch ? (
+          <Box className="matchQueueLoadedMatch">
+            <Box>
+              <Typography fontWeight={900}>ดึงรายชื่อจาก {previewMatch.label} แล้ว</Typography>
+              <Typography color="text.secondary" fontSize={12}>
+                ตรวจรายชื่อในช่องผู้เล่นก่อนยืนยัน
+              </Typography>
+            </Box>
+            <Stack direction="row" spacing={1}>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => {
+                  setPreviewMatchId("");
+                  setPreviewPlayerIds([]);
+                }}
+              >
+                ยกเลิก
+              </Button>
+              <Button
+                size="small"
+                variant="contained"
+                disabled={previewPlayerIds.length !== 4}
+                onClick={async () => {
+                  const confirmed = await onSelectPlannedMatch(previewMatch.id, previewPlayerIds);
+                  if (confirmed) {
+                    setPreviewMatchId("");
+                    setPreviewPlayerIds([]);
+                  }
+                }}
+              >
+                {previewPlayerIds.length === 4 ? "ยืนยันรายชื่อ" : `เลือกอีก ${4 - previewPlayerIds.length} คน`}
+              </Button>
+            </Stack>
+          </Box>
+        ) : null}
 
         <Box className="matchQueueTools">
           <TextField
@@ -4079,8 +4193,10 @@ function MatchQueuePicker({
                   </Typography>
                   <Box className="matchQueueAlphabetPlayerGrid">
                     {group.players.map((player) => {
-                      const isSelected = selectedPlayerIds.includes(player.id);
-                      const disabled = !canManageSession || (selectedPlayerIds.length === 4 && !isSelected);
+                      const isSelected = displayedSelectedPlayerIds.includes(player.id);
+                      const playerMatch = queuedMatchByPlayerId.get(player.id);
+                      const belongsToAnotherMatch = Boolean(previewMatch && playerMatch && playerMatch.id !== previewMatch.id);
+                      const disabled = !canManageSession || belongsToAnotherMatch || (displayedSelectedPlayerIds.length === 4 && !isSelected);
                       return (
                         <Button
                           key={player.id}
@@ -4088,11 +4204,16 @@ function MatchQueuePicker({
                           className={`playerPickerButton ${getWaitingRowClass(player, now)}${isSelected ? " playerPickerButtonSelected" : ""}`}
                           variant={isSelected ? "contained" : "outlined"}
                           disabled={disabled}
-                          onClick={() => onTogglePlayer(player.id)}
+                          onClick={() => selectPlayerOrPlannedMatch(player.id)}
                           aria-pressed={isSelected}
-                          aria-label={`${isSelected ? "ยกเลิกเลือก" : "เลือก"} ${player.name}`}
+                          aria-label={`${isSelected ? "ยกเลิกเลือก" : "เลือก"} ${player.name}${queuedMatchByPlayerId.has(player.id) ? ` อยู่ใน ${queuedMatchByPlayerId.get(player.id)?.label}` : ""}`}
                         >
                           <span className="playerPickerName">{player.name}</span>
+                          {queuedMatchByPlayerId.has(player.id) ? (
+                            <span className="playerMatchStatus">
+                              {queuedMatchByPlayerId.get(player.id)?.label.replace(/^Match\s*/i, "M")}
+                            </span>
+                          ) : null}
                         </Button>
                       );
                     })}
@@ -4115,8 +4236,10 @@ function MatchQueuePicker({
             </Stack>
           </Box>
         ) : visiblePlayers.map((player, index) => {
-            const isSelected = selectedPlayerIds.includes(player.id);
-            const disabled = !canManageSession || (selectedPlayerIds.length === 4 && !isSelected);
+          const isSelected = displayedSelectedPlayerIds.includes(player.id);
+          const playerMatch = queuedMatchByPlayerId.get(player.id);
+          const belongsToAnotherMatch = Boolean(previewMatch && playerMatch && playerMatch.id !== previewMatch.id);
+          const disabled = !canManageSession || belongsToAnotherMatch || (displayedSelectedPlayerIds.length === 4 && !isSelected);
             return (
               <Button
                 key={player.id}
@@ -4124,12 +4247,17 @@ function MatchQueuePicker({
                 className={`playerPickerButton ${getWaitingRowClass(player, now)}${isSelected ? " playerPickerButtonSelected" : ""}`}
                 variant={isSelected ? "contained" : "outlined"}
                 disabled={disabled}
-                onClick={() => onTogglePlayer(player.id)}
+              onClick={() => selectPlayerOrPlannedMatch(player.id)}
                 aria-pressed={isSelected}
-                aria-label={`${isSelected ? "ยกเลิกเลือก" : "เลือก"} ${player.name}`}
+                aria-label={`${isSelected ? "ยกเลิกเลือก" : "เลือก"} ${player.name}${queuedMatchByPlayerId.has(player.id) ? ` อยู่ใน ${queuedMatchByPlayerId.get(player.id)?.label}` : ""}`}
               >
                 <span className="playerPickerOrder">{index + 1}</span>
-                <span className="playerPickerName">{player.name}</span>
+              <span className="playerPickerName">{player.name}</span>
+              {queuedMatchByPlayerId.has(player.id) ? (
+                <span className="playerMatchStatus">
+                  {queuedMatchByPlayerId.get(player.id)?.label.replace(/^Match\s*/i, "M")}
+                </span>
+              ) : null}
               </Button>
             );
           })}
@@ -4184,11 +4312,11 @@ function PlannedMatchPanel({
   const [compactDraftIds, setCompactDraftIds] = useState<string[]>([]);
   const [compactSearch, setCompactSearch] = useState("");
   useEffect(() => {
-    const media = window.matchMedia("(max-width: 1024px)");
-    const update = () => setCompactPickerEnabled(media.matches);
+    const media = getMediaQuery("(max-width: 1024px)");
+    const update = () => setCompactPickerEnabled(Boolean(media?.matches));
     update();
-    media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
+    media?.addEventListener("change", update);
+    return () => media?.removeEventListener("change", update);
   }, []);
   const playerById = useMemo(
     () => new Map(activePlayers.map((player) => [player.id, player])),

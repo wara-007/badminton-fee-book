@@ -5,11 +5,11 @@ import HomePage from "@/app/page";
 
 describe("Badminton fee book page", () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
     localStorage.clear();
     localStorage.setItem("badminton-fee-book.auth", JSON.stringify({ role: "admin" }));
     delete (window as typeof window & { SpeechRecognition?: unknown }).SpeechRecognition;
     delete (window as typeof window & { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition;
-    vi.restoreAllMocks();
   });
 
   it("requires login and limits admin2 to paid actions", async () => {

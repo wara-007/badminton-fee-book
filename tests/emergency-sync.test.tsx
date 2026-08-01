@@ -16,7 +16,9 @@ const supabaseMock = {
   loadRemoteSession: vi.fn(),
   saveRemoteSession: vi.fn(),
   loadRemoteNow: vi.fn(),
-  subscribeRemoteSession: vi.fn()
+  subscribeRemoteSession: vi.fn(),
+  loadPaymentAccountSetting: vi.fn(),
+  subscribePaymentSettings: vi.fn()
 };
 
 describe("Emergency continue mode", () => {
@@ -34,10 +36,14 @@ describe("Emergency continue mode", () => {
     supabaseMock.saveRemoteSession.mockReset();
     supabaseMock.loadRemoteNow.mockReset();
     supabaseMock.subscribeRemoteSession.mockReset();
+    supabaseMock.loadPaymentAccountSetting.mockReset();
+    supabaseMock.subscribePaymentSettings.mockReset();
     supabaseMock.loadRemoteSession.mockResolvedValue(remoteSession);
     supabaseMock.saveRemoteSession.mockResolvedValue(undefined);
     supabaseMock.loadRemoteNow.mockResolvedValue("2026-05-25T00:00:00.000Z");
     supabaseMock.subscribeRemoteSession.mockReturnValue(() => undefined);
+    supabaseMock.loadPaymentAccountSetting.mockResolvedValue("gsb");
+    supabaseMock.subscribePaymentSettings.mockReturnValue(() => undefined);
   });
 
   it("keeps working locally and stores a pending snapshot when Supabase save fails", async () => {
@@ -130,7 +136,9 @@ async function renderHomePage() {
     loadRemoteSession: supabaseMock.loadRemoteSession,
     saveRemoteSession: supabaseMock.saveRemoteSession,
     loadRemoteNow: supabaseMock.loadRemoteNow,
-    subscribeRemoteSession: supabaseMock.subscribeRemoteSession
+    subscribeRemoteSession: supabaseMock.subscribeRemoteSession,
+    loadPaymentAccountSetting: supabaseMock.loadPaymentAccountSetting,
+    subscribePaymentSettings: supabaseMock.subscribePaymentSettings
   }));
   const { default: HomePage } = await import("@/app/page");
   render(<HomePage />);

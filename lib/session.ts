@@ -867,10 +867,14 @@ export function normalizeSession(value: unknown): SessionState {
               ? candidateMatch.id
               : defaultMatch.id,
           playerIds,
+          // A match with players is an active plan, even when older data kept
+          // confirmed=true after the same slot had previously been completed.
           confirmed:
-            typeof candidateMatch?.confirmed === 'boolean'
-              ? candidateMatch.confirmed
-              : false,
+            playerIds.length > 0
+              ? false
+              : typeof candidateMatch?.confirmed === 'boolean'
+                ? candidateMatch.confirmed
+                : false,
         };
       }),
   );

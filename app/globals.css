@@ -657,6 +657,18 @@ body {
   gap: 6px;
 }
 
+.matchQueueLoadedMatch {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--primary-bg);
+}
+
 .matchQueueSlot {
   display: grid;
   align-content: center;
@@ -1230,6 +1242,28 @@ body {
   max-width: 100%;
   overflow-wrap: anywhere;
   text-align: center;
+}
+
+.playerMatchStatus {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  max-width: calc(100% - 10px);
+  overflow: hidden;
+  padding: 2px 5px;
+  border-radius: 999px;
+  color: #fff;
+  background: var(--primary);
+  font-size: 0.62rem;
+  font-weight: 900;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.playerPickerButtonSelected .playerMatchStatus {
+  color: var(--primary);
+  background: #fff;
 }
 
 .playerPickerCount {
