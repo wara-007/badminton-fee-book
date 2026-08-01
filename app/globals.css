@@ -1312,6 +1312,83 @@ body {
   justify-content: flex-end;
 }
 
+.compactMatchPickerDialog {
+  background: var(--app-bg) !important;
+}
+
+.compactMatchPickerHeader,
+.compactMatchSearchRow,
+.compactMatchPickerFooter {
+  display: flex;
+  align-items: center;
+}
+
+.compactMatchPickerHeader {
+  min-height: 64px;
+  gap: 10px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--card-bg);
+}
+
+.compactMatchPickerControls {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--toolbar-bg);
+}
+
+.compactMatchSlots {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.compactMatchSlots .MuiButton-root {
+  min-width: 0;
+  min-height: 44px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compactMatchSearchRow {
+  gap: 8px;
+}
+
+.compactMatchPlayerGrid {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  align-content: start;
+  gap: 8px;
+  min-height: 0;
+  padding: 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.compactMatchPlayerGrid .MuiButton-root {
+  display: grid;
+  min-height: 48px;
+  padding: 6px;
+}
+
+.compactMatchPlayerGrid small {
+  font-size: 0.64rem;
+  line-height: 1.1;
+}
+
+.compactMatchPickerFooter {
+  min-height: 64px;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px max(10px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border-color);
+  background: var(--card-bg);
+}
+
 .plannedPlayerGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
@@ -2349,6 +2426,20 @@ thead .stickyAction {
   }
 
   .appFooter {
+    display: none;
+  }
+
+  .plannedMatchPanel,
+  .plannedMatchPanelAlphabet {
+    grid-template-columns: 1fr;
+  }
+
+  .plannedMatchColumn:first-child {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .plannedMatchColumn:nth-child(2) {
     display: none;
   }
 }

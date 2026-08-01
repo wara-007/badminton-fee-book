@@ -1425,6 +1425,27 @@ export default function HomePage() {
     }));
   }
 
+  function savePlannedMatchPlayers(matchId: string, playerIds: string[]) {
+    if (isEditingLocked || !canManageSession) return;
+    updateSession((current) => {
+      const activePlayerIds = new Set(current.players.filter((player) => !player.paid).map((player) => player.id));
+      const playerIdsInOtherMatches = new Set(
+        current.plannedMatches
+          .filter((match) => match.id !== matchId)
+          .flatMap((match) => match.playerIds)
+      );
+      const nextPlayerIds = Array.from(new Set(playerIds))
+        .filter((playerId) => activePlayerIds.has(playerId) && !playerIdsInOtherMatches.has(playerId))
+        .slice(0, 4);
+      return {
+        ...current,
+        plannedMatches: current.plannedMatches.map((match) =>
+          match.id === matchId ? { ...match, playerIds: nextPlayerIds } : match
+        )
+      };
+    });
+  }
+
   function cancelPlannedMatch(matchId: string) {
     if (isEditingLocked || !canManageSession) {
       return;
@@ -2503,6 +2524,7 @@ export default function HomePage() {
                   onSelectMatch={setSelectedPlannedMatchId}
                   onAddPlayer={addPlayerToPlannedMatch}
                   onRemovePlayer={removePlayerFromPlannedMatch}
+                  onSavePlayers={savePlannedMatchPlayers}
                   onCancelMatch={cancelPlannedMatch}
                   onConfirmMatch={confirmPlannedMatch}
                 />
@@ -4135,6 +4157,7 @@ function PlannedMatchPanel({
   onSelectMatch,
   onAddPlayer,
   onRemovePlayer,
+  onSavePlayers,
   onCancelMatch,
   onConfirmMatch
 }: {
@@ -4151,9 +4174,22 @@ function PlannedMatchPanel({
   onSelectMatch: (id: string) => void;
   onAddPlayer: (id: string) => void;
   onRemovePlayer: (matchId: string, playerId: string) => void;
+  onSavePlayers: (matchId: string, playerIds: string[]) => void;
   onCancelMatch: (matchId: string) => void;
   onConfirmMatch: (matchId: string) => void;
 }) {
+  const [compactPickerEnabled, setCompactPickerEnabled] = useState(false);
+  const [compactPickerOpen, setCompactPickerOpen] = useState(false);
+  const [compactMatchId, setCompactMatchId] = useState("");
+  const [compactDraftIds, setCompactDraftIds] = useState<string[]>([]);
+  const [compactSearch, setCompactSearch] = useState("");
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 1024px)");
+    const update = () => setCompactPickerEnabled(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
   const playerById = useMemo(
     () => new Map(activePlayers.map((player) => [player.id, player])),
     [activePlayers]
@@ -4168,6 +4204,44 @@ function PlannedMatchPanel({
       return 0;
     });
   }, [plannedMatches]);
+  const compactMatch = plannedMatches.find((match) => match.id === compactMatchId);
+  const compactOtherMatchPlayerIds = useMemo(
+    () => new Set(plannedMatches.filter((match) => match.id !== compactMatchId).flatMap((match) => match.playerIds)),
+    [compactMatchId, plannedMatches]
+  );
+  const normalizedCompactSearch = compactSearch.trim().toLocaleLowerCase("th-TH");
+  const compactVisiblePlayers = useMemo(() => {
+    const filtered = availablePlayers.filter((player) =>
+      !normalizedCompactSearch || player.name.toLocaleLowerCase("th-TH").includes(normalizedCompactSearch)
+    );
+    return playerSortMode === "alphabetical"
+      ? [...filtered].sort((first, second) => first.name.localeCompare(second.name, "th-TH", { sensitivity: "base" }))
+      : filtered;
+  }, [availablePlayers, normalizedCompactSearch, playerSortMode]);
+  const openCompactPicker = (match: PlannedMatch) => {
+    onSelectMatch(match.id);
+    if (!compactPickerEnabled) return;
+    setCompactMatchId(match.id);
+    setCompactDraftIds(match.playerIds.slice(0, 4));
+    setCompactSearch("");
+    setCompactPickerOpen(true);
+  };
+  const closeCompactPicker = () => setCompactPickerOpen(false);
+  const toggleCompactPlayer = (playerId: string) => {
+    if (compactOtherMatchPlayerIds.has(playerId)) return;
+    setCompactDraftIds((current) =>
+      current.includes(playerId)
+        ? current.filter((id) => id !== playerId)
+        : current.length < 4
+          ? [...current, playerId]
+          : current
+    );
+  };
+  const saveCompactPicker = () => {
+    if (!compactMatch) return;
+    onSavePlayers(compactMatch.id, compactDraftIds);
+    setCompactPickerOpen(false);
+  };
 
   const playerGroups = useMemo(() => {
     const nowDate = new Date(now);
@@ -4258,7 +4332,7 @@ function PlannedMatchPanel({
               >
                 <Button
                   className="plannedMatchSelectButton"
-                  onClick={() => onSelectMatch(match.id)}
+                  onClick={() => openCompactPicker(match)}
                   disabled={!canManageSession}
                   fullWidth
                 >
@@ -4479,6 +4553,97 @@ function PlannedMatchPanel({
           )}
         </Box>
       </Box>
+      <Dialog
+        open={compactPickerOpen}
+        onClose={closeCompactPicker}
+        fullScreen
+        PaperProps={{ className: "compactMatchPickerDialog" }}
+      >
+        <Box className="compactMatchPickerHeader">
+          <IconButton aria-label="ปิดการเลือกรายชื่อ" onClick={closeCompactPicker}>
+            <ArrowBackIcon />
+          </IconButton>
+          <Box>
+            <Typography component="h2" fontWeight={900}>{compactMatch?.label ?? "เลือกผู้เล่น"}</Typography>
+            <Typography color="text.secondary" fontSize={13}>เลือกแล้ว {compactDraftIds.length}/4 คน</Typography>
+          </Box>
+        </Box>
+        <Box className="compactMatchPickerControls">
+          <Box className="compactMatchSlots" aria-label="ผู้เล่นที่เลือกสำหรับ Match">
+            {[0, 1, 2, 3].map((index) => {
+              const player = playerById.get(compactDraftIds[index]);
+              return (
+                <Button
+                  key={index}
+                  variant={player ? "contained" : "outlined"}
+                  disabled={!player}
+                  onClick={() => player && toggleCompactPlayer(player.id)}
+                  aria-label={player ? `เอา ${player.name} ออก` : `ช่องผู้เล่น ${index + 1}`}
+                >
+                  {index + 1}. {player?.name ?? "ว่าง"}
+                </Button>
+              );
+            })}
+          </Box>
+          <Box className="compactMatchSearchRow">
+            <TextField
+              value={compactSearch}
+              onChange={(event) => setCompactSearch(event.target.value)}
+              placeholder="ค้นหาชื่อ..."
+              inputProps={{ "aria-label": "ค้นหาชื่อสำหรับ Match" }}
+              fullWidth
+              autoComplete="off"
+              InputProps={{
+                startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment>,
+                endAdornment: compactSearch ? (
+                  <InputAdornment position="end">
+                    <IconButton aria-label="ล้างคำค้นหา Match" onClick={() => setCompactSearch("")}>
+                      <CloseIcon />
+                    </IconButton>
+                  </InputAdornment>
+                ) : undefined
+              }}
+            />
+            <ToggleButtonGroup
+              value={playerSortMode}
+              exclusive
+              size="small"
+              onChange={(_, value: "queue" | "alphabetical" | null) => value && onPlayerSortModeChange(value)}
+              aria-label="เรียงรายชื่อใน Match"
+            >
+              <ToggleButton value="queue">ตามคิว</ToggleButton>
+              <ToggleButton value="alphabetical">ก-ฮ</ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
+        </Box>
+        <Box className="compactMatchPlayerGrid" aria-label="รายชื่อสำหรับเลือกเข้า Match">
+          {compactVisiblePlayers.map((player) => {
+            const selected = compactDraftIds.includes(player.id);
+            const inOtherMatch = compactOtherMatchPlayerIds.has(player.id);
+            return (
+              <Button
+                key={player.id}
+                variant={selected ? "contained" : "outlined"}
+                className={`${getWaitingRowClass(player, now)}${selected ? " playerPickerButtonSelected" : ""}`}
+                disabled={inOtherMatch || (!selected && compactDraftIds.length >= 4)}
+                onClick={() => toggleCompactPlayer(player.id)}
+                aria-pressed={selected}
+              >
+                <span className="playerPickerName">{player.name}</span>
+                {inOtherMatch ? <small>อยู่ Match อื่น</small> : null}
+              </Button>
+            );
+          })}
+        </Box>
+        <Box className="compactMatchPickerFooter">
+          <Typography fontWeight={900}>
+            {compactDraftIds.length < 4 ? `เลือกอีก ${4 - compactDraftIds.length} คน` : "ครบ 4 คนแล้ว"}
+          </Typography>
+          <Button variant="contained" onClick={saveCompactPicker} disabled={!canManageSession}>
+            บันทึกการเลือก
+          </Button>
+        </Box>
+      </Dialog>
     </Box>
   );
 }
