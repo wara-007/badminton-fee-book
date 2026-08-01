@@ -6,6 +6,17 @@ import { createInitialSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
+const DEFAULT_APP_URL = "https://badminton-fee-book.vercel.app";
+
+function getProductionAppUrl(): string {
+  return (
+    process.env.NEXT_PUBLIC_APP_URL ||
+    (process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : DEFAULT_APP_URL)
+  );
+}
+
 function isAuthorizedCron(request: Request): boolean {
   const secret = process.env.CRON_SECRET;
   return Boolean(secret && request.headers.get("authorization") === `Bearer ${secret}`);
@@ -108,7 +119,7 @@ export async function GET(request: Request) {
           return false;
         }
 
-        const roomUrl = new URL("/", request.url);
+        const roomUrl = new URL("/", getProductionAppUrl());
         roomUrl.searchParams.set("room", sessionId);
         const recipients = await loadLineAdminRecipients();
         if (recipients.length === 0) return false;

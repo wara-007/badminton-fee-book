@@ -764,6 +764,12 @@ export default function HomePage() {
   useEffect(() => {
     if (activeTab === 5) void refreshDatabaseUsage();
   }, [activeTab, refreshDatabaseUsage]);
+  useEffect(() => {
+    if (activeTab !== 0 || !window.matchMedia("(max-width: 1024px)").matches) {
+      return;
+    }
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [activeTab]);
   const isEditingMode = editingShuttleNumber !== null;
   const isEditingLocked = isEditingMode && !currentShuttleSummary.isComplete;
   const isEmergencySyncStatus =
