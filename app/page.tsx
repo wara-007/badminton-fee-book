@@ -4317,7 +4317,7 @@ function PlannedMatchPanel({
             ยืนยันแล้วจะลงเป็นลูกที่ {currentShuttleNumber}
           </Typography>
         </Box>
-        <Stack spacing={1.25}>
+        <Stack spacing={1.25} className="plannedMatchList">
           {sortedPlannedMatches.map((match) => {
             const isSelected = match.id === selectedMatchId;
             const players = match.playerIds

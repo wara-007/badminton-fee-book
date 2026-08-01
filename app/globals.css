@@ -2439,6 +2439,16 @@ thead .stickyAction {
     overflow: visible;
   }
 
+  .plannedMatchList {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .plannedMatchList > :not(style) ~ :not(style) {
+    margin-top: 0 !important;
+  }
+
   .plannedMatchColumn:nth-child(2) {
     display: none;
   }
