@@ -1350,6 +1350,14 @@ body {
   background: var(--app-bg) !important;
 }
 
+.compactMatchPickerDialog .MuiButton-root.Mui-disabled,
+.compactMatchPickerDialog .MuiIconButton-root.Mui-disabled {
+  border-color: var(--disabled-border);
+  color: var(--disabled-text);
+  background: var(--disabled-bg);
+  opacity: 1;
+}
+
 .compactMatchPickerHeader,
 .compactMatchSearchRow,
 .compactMatchPickerFooter {
