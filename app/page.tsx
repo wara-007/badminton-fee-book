@@ -2,6 +2,8 @@
 
 import AddIcon from "@mui/icons-material/Add";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import CloseIcon from "@mui/icons-material/Close";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -2570,6 +2572,14 @@ export default function HomePage() {
                   onSavePlayers={savePlannedMatchPlayers}
                   onCancelMatch={cancelPlannedMatch}
                   onConfirmMatch={confirmPlannedMatch}
+                  onConfirmDiscardChanges={() => showConfirm({
+                    title: "ออกโดยไม่บันทึก?",
+                    headline: "รายชื่อที่เลือกยังไม่ได้บันทึก",
+                    message: "หากออกตอนนี้ การเปลี่ยนแปลงใน Match นี้จะหายไป",
+                    confirmLabel: "ออกโดยไม่บันทึก",
+                    cancelLabel: "กลับไปเลือกต่อ",
+                    color: "warning"
+                  })}
                 />
               ) : activeTab === 2 ? (
                 <>
@@ -4287,7 +4297,8 @@ function PlannedMatchPanel({
   onRemovePlayer,
   onSavePlayers,
   onCancelMatch,
-  onConfirmMatch
+  onConfirmMatch,
+  onConfirmDiscardChanges
 }: {
   plannedMatches: PlannedMatch[];
   selectedMatchId: string;
@@ -4305,12 +4316,14 @@ function PlannedMatchPanel({
   onSavePlayers: (matchId: string, playerIds: string[]) => void;
   onCancelMatch: (matchId: string) => void;
   onConfirmMatch: (matchId: string) => void;
+  onConfirmDiscardChanges: () => Promise<boolean>;
 }) {
   const [compactPickerEnabled, setCompactPickerEnabled] = useState(false);
   const [compactPickerOpen, setCompactPickerOpen] = useState(false);
   const [compactMatchId, setCompactMatchId] = useState("");
   const [compactDraftIds, setCompactDraftIds] = useState<string[]>([]);
   const [compactSearch, setCompactSearch] = useState("");
+  const [compactCloseConfirming, setCompactCloseConfirming] = useState(false);
   useEffect(() => {
     const media = getMediaQuery("(max-width: 1024px)");
     const update = () => setCompactPickerEnabled(Boolean(media?.matches));
@@ -4333,6 +4346,13 @@ function PlannedMatchPanel({
     });
   }, [plannedMatches]);
   const compactMatch = plannedMatches.find((match) => match.id === compactMatchId);
+  const compactMatchIndex = plannedMatches.findIndex((match) => match.id === compactMatchId);
+  const compactPickerDirty = Boolean(
+    compactMatch && (
+      compactDraftIds.length !== compactMatch.playerIds.length ||
+      compactDraftIds.some((playerId, index) => playerId !== compactMatch.playerIds[index])
+    )
+  );
   const compactOtherMatchPlayerIds = useMemo(
     () => new Set(plannedMatches.filter((match) => match.id !== compactMatchId).flatMap((match) => match.playerIds)),
     [compactMatchId, plannedMatches]
@@ -4354,7 +4374,19 @@ function PlannedMatchPanel({
     setCompactSearch("");
     setCompactPickerOpen(true);
   };
-  const closeCompactPicker = () => setCompactPickerOpen(false);
+  const closeCompactPicker = async () => {
+    if (compactCloseConfirming) return;
+    if (compactPickerDirty) {
+      setCompactCloseConfirming(true);
+      try {
+        const confirmed = await onConfirmDiscardChanges();
+        if (!confirmed) return;
+      } finally {
+        setCompactCloseConfirming(false);
+      }
+    }
+    setCompactPickerOpen(false);
+  };
   const toggleCompactPlayer = (playerId: string) => {
     if (compactOtherMatchPlayerIds.has(playerId)) return;
     setCompactDraftIds((current) =>
@@ -4369,6 +4401,17 @@ function PlannedMatchPanel({
     if (!compactMatch) return;
     onSavePlayers(compactMatch.id, compactDraftIds);
     setCompactPickerOpen(false);
+  };
+  const moveCompactPicker = (step: -1 | 1) => {
+    const nextMatch = plannedMatches[compactMatchIndex + step];
+    if (!compactMatch || !nextMatch) return;
+    if (canManageSession) {
+      onSavePlayers(compactMatch.id, compactDraftIds);
+    }
+    onSelectMatch(nextMatch.id);
+    setCompactMatchId(nextMatch.id);
+    setCompactDraftIds(nextMatch.playerIds.slice(0, 4));
+    setCompactSearch("");
   };
 
   const playerGroups = useMemo(() => {
@@ -4414,13 +4457,14 @@ function PlannedMatchPanel({
       target.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }, []);
-  const renderPlannedPlayerButton = (player: Player, className = "plannedPlayerButton") => {
+  const renderPlannedPlayerButton = (player: Player) => {
     const isAlreadyPlanned = plannedPlayerIds.has(player.id);
+    const waitClass = getWaitingRowClass(player, now);
 
     return (
       <Button
         key={player.id}
-        className={`${className}${isAlreadyPlanned ? " plannedPlayerButtonDisabled" : ""}`}
+        className={`plannedPlayerButton playerPickerButton ${waitClass}${isAlreadyPlanned ? " plannedPlayerButtonDisabled" : ""}`}
         variant="outlined"
         disabled={!canManageSession || !selectedMatch || selectedMatchFull || isAlreadyPlanned}
         onClick={() => onAddPlayer(player.id)}
@@ -4588,16 +4632,7 @@ function PlannedMatchPanel({
                           หมวด {group.label}
                         </Typography>
                         <Box className="plannedPlayerGrid">
-                          {group.players.map((player) => {
-                            const waitStatus = getPlayerWaitStatus(player, now);
-                            const waitClass =
-                              waitStatus === "danger"
-                                ? "plannedPlayerButton plannedPlayerButtonDanger"
-                                : waitStatus === "warning"
-                                  ? "plannedPlayerButton plannedPlayerButtonWarning"
-                                  : "plannedPlayerButton";
-                            return renderPlannedPlayerButton(player, waitClass);
-                          })}
+                          {group.players.map((player) => renderPlannedPlayerButton(player))}
                         </Box>
                       </Box>
                     ))}
@@ -4631,12 +4666,7 @@ function PlannedMatchPanel({
                         วิกฤต (หลังลงล่าสุด 55 นาทีขึ้นไป) ({playerGroups.danger.length})
                       </Typography>
                       <Box className="plannedPlayerGrid">
-                        {playerGroups.danger.map((player) =>
-                          renderPlannedPlayerButton(
-                            player,
-                            "plannedPlayerButton plannedPlayerButtonDanger"
-                          )
-                        )}
+                        {playerGroups.danger.map((player) => renderPlannedPlayerButton(player))}
                       </Box>
                     </Box>
                   )}
@@ -4646,12 +4676,7 @@ function PlannedMatchPanel({
                         เตือน (หลังลงล่าสุด 40-54 นาที) ({playerGroups.warning.length})
                       </Typography>
                       <Box className="plannedPlayerGrid">
-                        {playerGroups.warning.map((player) =>
-                          renderPlannedPlayerButton(
-                            player,
-                            "plannedPlayerButton plannedPlayerButtonWarning"
-                          )
-                        )}
+                        {playerGroups.warning.map((player) => renderPlannedPlayerButton(player))}
                       </Box>
                     </Box>
                   )}
@@ -4683,17 +4708,46 @@ function PlannedMatchPanel({
       </Box>
       <Dialog
         open={compactPickerOpen}
-        onClose={closeCompactPicker}
+        onClose={() => void closeCompactPicker()}
         fullScreen
         PaperProps={{ className: "compactMatchPickerDialog" }}
       >
         <Box className="compactMatchPickerHeader">
-          <IconButton aria-label="ปิดการเลือกรายชื่อ" onClick={closeCompactPicker}>
-            <ArrowBackIcon />
+          <IconButton
+            aria-label="ปิดการเลือกรายชื่อ"
+            disabled={compactCloseConfirming}
+            onClick={() => void closeCompactPicker()}
+          >
+            <CloseIcon />
           </IconButton>
-          <Box>
+          <Box className="compactMatchPickerTitle">
             <Typography component="h2" fontWeight={900}>{compactMatch?.label ?? "เลือกผู้เล่น"}</Typography>
-            <Typography color="text.secondary" fontSize={13}>เลือกแล้ว {compactDraftIds.length}/4 คน</Typography>
+            <Typography color="text.secondary" fontSize={13}>
+              เลือกแล้ว {compactDraftIds.length}/4 คน
+              {compactMatchIndex >= 0 ? ` · Match ${compactMatchIndex + 1}/${plannedMatches.length}` : ""}
+            </Typography>
+          </Box>
+          <Box className="compactMatchPickerNav" role="group" aria-label="เลื่อน Match">
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<ChevronLeftIcon />}
+              aria-label="บันทึกและไป Match ก่อนหน้า"
+              disabled={compactMatchIndex <= 0}
+              onClick={() => moveCompactPicker(-1)}
+            >
+              ก่อนหน้า
+            </Button>
+            <Button
+              variant="outlined"
+              size="small"
+              endIcon={<ChevronRightIcon />}
+              aria-label="บันทึกและไป Match ถัดไป"
+              disabled={compactMatchIndex < 0 || compactMatchIndex >= plannedMatches.length - 1}
+              onClick={() => moveCompactPicker(1)}
+            >
+              ถัดไป
+            </Button>
           </Box>
         </Box>
         <Box className="compactMatchPickerControls">
@@ -4752,7 +4806,7 @@ function PlannedMatchPanel({
               <Button
                 key={player.id}
                 variant={selected ? "contained" : "outlined"}
-                className={`${getWaitingRowClass(player, now)}${selected ? " playerPickerButtonSelected" : ""}`}
+                className={`playerPickerButton ${getWaitingRowClass(player, now)}${selected ? " playerPickerButtonSelected" : ""}`}
                 disabled={inOtherMatch || (!selected && compactDraftIds.length >= 4)}
                 onClick={() => toggleCompactPlayer(player.id)}
                 aria-pressed={selected}

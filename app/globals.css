@@ -1365,6 +1365,23 @@ body {
   background: var(--card-bg);
 }
 
+.compactMatchPickerTitle {
+  min-width: 0;
+}
+
+.compactMatchPickerNav {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.compactMatchPickerNav .MuiButton-root {
+  min-width: 104px;
+  min-height: 44px;
+  border: 1px solid var(--border-color);
+}
+
 .compactMatchPickerControls {
   display: grid;
   gap: 10px;
